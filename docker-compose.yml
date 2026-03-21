@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentverse_postgres
+    environment:
+      POSTGRES_USER: agentverse
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: agentverse_db
+    ports: ["5432:5432"]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentverse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: agentverse_redis
+    ports: ["6379:6379"]
+    volumes: [redis_data:/data]
+
+  backend:
+    build: ./backend
+    container_name: agentverse_backend
+    ports: ["8000:8000"]
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://agentverse:password@postgres:5432/agentverse_db
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: {}
+    volumes: [./backend:/app]
+
+  frontend:
+    build: ./frontend
+    container_name: agentverse_frontend
+    ports: ["5173:80"]
+    depends_on: [backend]
+
+volumes:
+  postgres_data:
+  redis_data:

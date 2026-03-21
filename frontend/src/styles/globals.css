@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-gray-950 text-gray-100 antialiased; }
+}
+
+@layer components {
+  .card { @apply bg-gray-900 border border-gray-800 rounded-xl; }
+  .btn-primary { @apply px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-medium transition-colors; }
+  .btn-ghost { @apply px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg text-sm transition-colors; }
+  .badge { @apply px-2 py-0.5 rounded-full text-xs font-medium; }
+  .stat-label { @apply text-xs text-gray-500 uppercase tracking-wide; }
+}
+
+/* Role colors */
+.role-scientist { @apply text-blue-400; }
+.role-engineer { @apply text-yellow-400; }
+.role-artist { @apply text-pink-400; }
+.role-economist { @apply text-emerald-400; }
+.role-philosopher { @apply text-violet-400; }
+.role-historian { @apply text-amber-400; }
+.role-explorer { @apply text-cyan-400; }
+.role-diplomat { @apply text-teal-400; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }

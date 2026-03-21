@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+.next/
+build/
+
+# Env files
+.env
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# DB
+*.db
+*.sqlite3
+
+# Docker volumes
+postgres_data/
+redis_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store

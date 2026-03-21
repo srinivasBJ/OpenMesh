@@ -30,7 +30,7 @@ services:
       REDIS_URL: redis://redis:6379
     depends_on:
       postgres: { condition: service_healthy }
-      redis: {}
+      redis: { condition: service_started }
     volumes: [./backend:/app]
 
   frontend:

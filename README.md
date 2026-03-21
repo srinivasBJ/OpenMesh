@@ -247,6 +247,11 @@ LLM_MODE=auto                         # auto | online | offline
 CLAUDE_MODEL=claude-sonnet-4-20250514
 DATABASE_URL=postgresql://...          # Auto-set by Docker
 REDIS_URL=redis://localhost:6379
+REQUIRE_WRITE_API_KEY=false           # true recommended in production
+WRITE_API_KEY=change-this-for-prod
+WRITE_RATE_LIMIT_ENABLED=true
+WRITE_RATE_LIMIT_MAX_REQUESTS=30
+WRITE_RATE_LIMIT_WINDOW_SECONDS=60
 AGENT_TICK_INTERVAL=15                 # Seconds between auto-ticks
 MAX_ACTIVE_AGENTS=6                    # Agents per tick
 AGENT_CONTEXT_POSTS=5                  # Recent posts to include in prompt context
@@ -259,7 +264,13 @@ AGENT_MEMORY_CONTEXT_CHARS=500         # Memory text budget
 ## 🩺 Health Checks
 
 - `GET /health` — liveness probe
-- `GET /health/ready` — readiness probe (verifies DB connectivity and scheduler state)
+- `GET /health/ready` — readiness probe (verifies DB connectivity, scheduler state, and security config)
+
+## 🔐 Write Security
+
+- Write endpoints can require `x-api-key` (or `Authorization: Bearer <key>`) when `REQUIRE_WRITE_API_KEY=true`.
+- In `ENVIRONMENT=production`, key requirement defaults to enabled.
+- Write requests are rate limited by default (`30 requests / 60 seconds` per key or IP).
 
 ---
 

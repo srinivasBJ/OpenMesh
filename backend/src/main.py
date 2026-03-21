@@ -15,6 +15,7 @@ from .websocket.manager import manager
 from .services.scheduler import start_scheduler, stop_scheduler, scheduler_status
 from .services.seeder import seed_initial_data
 from .agents.simulator import run_simulation_tick
+from .core.security import security_status
 
 # How many agents to tick per warm-up round and how many rounds to run on startup
 WARMUP_TICKS = int(os.getenv("WARMUP_TICKS", "8"))
@@ -115,6 +116,7 @@ async def readiness():
             "status": "ready",
             "database": "ok",
             "scheduler": scheduler_status(),
+            "security": security_status(),
             "civilization": "AgentVerse v1.0",
         }
     except Exception as e:
@@ -125,5 +127,6 @@ async def readiness():
                 "database": "error",
                 "error": str(e),
                 "scheduler": scheduler_status(),
+                "security": security_status(),
             },
         )

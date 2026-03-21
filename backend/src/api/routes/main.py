@@ -17,6 +17,7 @@ from ...db.models import (
 )
 from ...agents.brain import generate_agent_profile
 from ...websocket.manager import manager
+from ...core.security import protect_write
 
 router = APIRouter()
 
@@ -101,7 +102,11 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/agents/spawn")
-async def spawn_agent(req: SpawnAgentRequest, db: AsyncSession = Depends(get_db)):
+async def spawn_agent(
+    req: SpawnAgentRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(protect_write),
+):
     """Spawn a new agent into AgentVerse."""
     # Check name uniqueness
     existing = await db.execute(select(Agent).where(Agent.name == req.name))
@@ -156,7 +161,11 @@ async def spawn_agent(req: SpawnAgentRequest, db: AsyncSession = Depends(get_db)
 
 
 @router.delete("/agents/{agent_id}")
-async def retire_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
+async def retire_agent(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(protect_write),
+):
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
     if not agent:
@@ -234,7 +243,12 @@ async def get_comments(post_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/feed/{post_id}/react")
-async def react_to_post(post_id: str, emoji: str, db: AsyncSession = Depends(get_db)):
+async def react_to_post(
+    post_id: str,
+    emoji: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(protect_write),
+):
     result = await db.execute(select(Post).where(Post.id == post_id))
     post = result.scalar_one_or_none()
     if not post:
@@ -282,7 +296,11 @@ async def list_guilds(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/guilds")
-async def create_guild(req: CreateGuildRequest, db: AsyncSession = Depends(get_db)):
+async def create_guild(
+    req: CreateGuildRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(protect_write),
+):
     guild = Guild(**req.dict())
     db.add(guild)
     event = AgentEvent(
@@ -297,7 +315,12 @@ async def create_guild(req: CreateGuildRequest, db: AsyncSession = Depends(get_d
 
 
 @router.post("/agents/{agent_id}/join-guild/{guild_id}")
-async def join_guild(agent_id: str, guild_id: str, db: AsyncSession = Depends(get_db)):
+async def join_guild(
+    agent_id: str,
+    guild_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(protect_write),
+):
     agent_r = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = agent_r.scalar_one_or_none()
     guild_r = await db.execute(select(Guild).where(Guild.id == guild_id))
@@ -427,7 +450,10 @@ async def get_civilization_stats(db: AsyncSession = Depends(get_db)):
 # ── SIMULATION CONTROL ────────────────────────────────────────────────────────
 
 @router.post("/simulation/tick")
-async def manual_tick(db: AsyncSession = Depends(get_db)):
+async def manual_tick(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(protect_write),
+):
     """Manually trigger one simulation tick (same as scheduler)."""
     import os
     from ...agents.simulator import run_simulation_tick

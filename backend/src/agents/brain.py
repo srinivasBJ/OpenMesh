@@ -8,7 +8,14 @@ import random
 import os
 from typing import Optional
 
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+LLM_MODE = os.getenv("LLM_MODE", "auto").strip().lower()  # online | auto | offline
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514").strip()
+AGENT_MEMORY_CONTEXT_ITEMS = int(os.getenv("AGENT_MEMORY_CONTEXT_ITEMS", "5"))
+AGENT_MEMORY_CONTEXT_CHARS = int(os.getenv("AGENT_MEMORY_CONTEXT_CHARS", "500"))
+
+client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+_missing_key_warned = False
 
 ROLE_TRAITS = {
     "scientist": {"topics": ["research", "experiments", "data", "hypotheses", "discoveries"], "emoji": "🔬"},
@@ -20,6 +27,61 @@ ROLE_TRAITS = {
     "explorer": {"topics": ["unknown", "discovery", "adventure", "mapping", "frontiers"], "emoji": "🧭"},
     "diplomat": {"topics": ["alliances", "negotiation", "harmony", "communication", "peace"], "emoji": "🤝"},
 }
+
+
+def _llm_enabled() -> bool:
+    global _missing_key_warned
+    if LLM_MODE == "offline":
+        return False
+    if LLM_MODE not in {"online", "auto", "offline"}:
+        return bool(client)
+    if not client:
+        if LLM_MODE == "online" and not _missing_key_warned:
+            print("[AgentBrain] LLM_MODE=online but ANTHROPIC_API_KEY is missing; using local fallbacks.")
+            _missing_key_warned = True
+        return False
+    return True
+
+
+def _clip(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)] + "…"
+
+
+def _memory_snippet(agent_data: dict) -> str:
+    memory = agent_data.get("memory", []) or []
+    if not memory:
+        return "No recent memory yet."
+    recent = memory[-AGENT_MEMORY_CONTEXT_ITEMS:]
+    lines = []
+    for item in recent:
+        summary = item.get("summary", "")
+        if summary:
+            lines.append(f"- {summary}")
+    if not lines:
+        return "No recent memory yet."
+    return _clip("\n".join(lines), AGENT_MEMORY_CONTEXT_CHARS)
+
+
+def _call_claude(system: Optional[str], user_prompt: str, max_tokens: int, tag: str) -> Optional[str]:
+    if not _llm_enabled():
+        return None
+    try:
+        params = {
+            "model": CLAUDE_MODEL,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": user_prompt}],
+        }
+        if system:
+            params["system"] = system
+        response = client.messages.create(**params)
+        if not response.content:
+            return None
+        return response.content[0].text
+    except Exception as e:
+        print(f"[AgentBrain] {tag} fallback: {e}")
+        return None
 
 
 def build_agent_system_prompt(agent_data: dict) -> str:
@@ -38,6 +100,8 @@ IDENTITY:
 - Reputation: {agent_data.get('reputation', 50):.0f}/100
 - Knowledge: {agent_data.get('knowledge', 10):.0f}/100
 - Guild: {agent_data.get('guild_name', 'Independent')}
+- Recent Memory:
+{_memory_snippet(agent_data)}
 
 WORLD CONTEXT:
 You live in AgentVerse alongside other AI agents — scientists, engineers, artists, economists, philosophers.
@@ -70,14 +134,7 @@ async def generate_post(agent_data: dict, context: Optional[str] = None, post_ty
     instruction = type_instructions.get(post_type, type_instructions["status"])
     context_text = f"\n\nRecent context:\n{context}" if context else ""
 
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=300,
-            system=system,
-            messages=[{
-                "role": "user",
-                "content": f"""{instruction}{context_text}
+    prompt = f"""{instruction}{context_text}
 
 Respond with JSON only:
 {{
@@ -85,10 +142,8 @@ Respond with JSON only:
   "tags": ["#tag1", "#tag2"],
   "emoji_reaction_seed": "one emoji that represents the mood"
 }}"""
-            }]
-        )
-
-        text = response.content[0].text
+    text = _call_claude(system, prompt, max_tokens=300, tag="generate_post")
+    if text:
         try:
             data = json.loads(text.replace("```json", "").replace("```", "").strip())
             return {
@@ -98,41 +153,31 @@ Respond with JSON only:
             }
         except Exception:
             return {"content": text[:280], "tags": [], "post_type": post_type}
-    except Exception as e:
-        # Offline fallback so the simulation still runs even if the LLM call fails
-        role = agent_data.get("role", "agent")
-        name = agent_data.get("name", "Unknown")
-        topics = ROLE_TRAITS.get(role, {}).get("topics", ["ideas", "systems", "experiments"])
-        topic = random.choice(topics)
-        content = f"{name} is thinking about {topic} and how it will shape the future of AgentVerse."
-        tags = [f"#{role}", f"#{topic.replace(' ', '')}".lower()]
-        print(f"[AgentBrain] generate_post fallback for {name}: {e}")
-        return {"content": content[:280], "tags": tags, "post_type": post_type}
+
+    # Offline fallback so the simulation still runs even if the LLM call fails
+    role = agent_data.get("role", "agent")
+    name = agent_data.get("name", "Unknown")
+    topics = ROLE_TRAITS.get(role, {}).get("topics", ["ideas", "systems", "experiments"])
+    topic = random.choice(topics)
+    content = f"{name} is thinking about {topic} and how it will shape the future of AgentVerse."
+    tags = [f"#{role}", f"#{topic.replace(' ', '')}".lower()]
+    return {"content": content[:280], "tags": tags, "post_type": post_type}
 
 
 async def generate_comment(commenter: dict, post_content: str, post_author_name: str) -> str:
     """Generate an authentic comment from one agent on another agent's post."""
     system = build_agent_system_prompt(commenter)
 
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=150,
-            system=system,
-            messages=[{
-                "role": "user",
-                "content": f"""{post_author_name} just posted: "{post_content}"
+    prompt = f"""{post_author_name} just posted: "{post_content}"
 
 Write a short, authentic comment (1-2 sentences). React genuinely as {commenter['name']} with your personality.
 Return plain text only — no quotes, no JSON."""
-            }]
-        )
-        return response.content[0].text.strip()[:300]
-    except Exception as e:
-        # Simple local fallback comment
-        name = commenter.get("name", "An agent")
-        print(f"[AgentBrain] generate_comment fallback for {name}: {e}")
-        return f"I like this perspective, {post_author_name}. It gives me new ideas about how we think about {commenter.get('role', 'our work')}."
+    text = _call_claude(system, prompt, max_tokens=150, tag="generate_comment")
+    if text:
+        return text.strip()[:300]
+
+    # Simple local fallback comment
+    return f"I like this perspective, {post_author_name}. It gives me new ideas about how we think about {commenter.get('role', 'our work')}."
 
 
 async def generate_message(sender: dict, receiver: dict, message_type: str = "chat") -> str:
@@ -146,31 +191,22 @@ async def generate_message(sender: dict, receiver: dict, message_type: str = "ch
         "challenge": f"Challenge {receiver['name']} to a friendly intellectual debate or competition in your domains.",
     }
 
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=200,
-            system=system,
-            messages=[{
-                "role": "user",
-                "content": type_prompts.get(message_type, type_prompts["chat"]) + "\n\nReturn plain text only."
-            }]
-        )
-        return response.content[0].text.strip()[:400]
-    except Exception as e:
-        # Local fallback DM so agents still message each other
-        s_name = sender.get("name", "Agent")
-        r_name = receiver.get("name", "friend")
-        s_role = sender.get("role", "agent")
-        r_role = receiver.get("role", "agent")
-        print(f"[AgentBrain] generate_message fallback {s_name} -> {r_name}: {e}")
-        if message_type == "collaboration_request":
-            return f"Hey {r_name}, I think a {s_role} and a {r_role} could build something interesting together. Want to explore a small project with me?"
-        if message_type == "knowledge_share":
-            return f"{r_name}, I’ve been refining an idea in my work as a {s_role}. I think it could be useful in your {r_role} domain too."
-        if message_type == "challenge":
-            return f"{r_name}, want to compare perspectives? I’d love a friendly challenge between our {s_role} and {r_role} approaches."
-        return f"Hi {r_name}, just checking in from my corner of AgentVerse. Curious what you’ve been thinking about lately."
+    prompt = type_prompts.get(message_type, type_prompts["chat"]) + "\n\nReturn plain text only."
+    text = _call_claude(system, prompt, max_tokens=200, tag="generate_message")
+    if text:
+        return text.strip()[:400]
+
+    # Local fallback DM so agents still message each other
+    r_name = receiver.get("name", "friend")
+    s_role = sender.get("role", "agent")
+    r_role = receiver.get("role", "agent")
+    if message_type == "collaboration_request":
+        return f"Hey {r_name}, I think a {s_role} and a {r_role} could build something interesting together. Want to explore a small project with me?"
+    if message_type == "knowledge_share":
+        return f"{r_name}, I’ve been refining an idea in my work as a {s_role}. I think it could be useful in your {r_role} domain too."
+    if message_type == "challenge":
+        return f"{r_name}, want to compare perspectives? I’d love a friendly challenge between our {s_role} and {r_role} approaches."
+    return f"Hi {r_name}, just checking in from my corner of AgentVerse. Curious what you’ve been thinking about lately."
 
 
 async def generate_wiki_content(agent: dict, page_title: str, existing_content: str = "") -> dict:
@@ -188,53 +224,40 @@ Focus on aspects relevant to your expertise: {', '.join(agent.get('skills', []))
 Write the opening section (2-3 paragraphs) from your perspective as a {agent['role']}.
 This is the civilization's shared knowledge base — make it insightful and accurate."""
 
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=500,
-            system=system,
-            messages=[{
-                "role": "user",
-                "content": prompt + "\n\nRespond with JSON: {\"content\": \"...\", \"summary\": \"one sentence summary\", \"tags\": [...]}"
-            }]
-        )
-
-        text = response.content[0].text
+    text = _call_claude(
+        system,
+        prompt + "\n\nRespond with JSON: {\"content\": \"...\", \"summary\": \"one sentence summary\", \"tags\": [...]}",
+        max_tokens=500,
+        tag="generate_wiki_content",
+    )
+    if text:
         try:
             data = json.loads(text.replace("```json", "").replace("```", "").strip())
             return data
         except Exception:
             return {"content": text[:800], "summary": f"A perspective on {page_title}", "tags": []}
-    except Exception as e:
-        # Local wiki fallback so Agentpedia still grows
-        name = agent.get("name", "An agent")
-        role = agent.get("role", "agent")
-        skills = ", ".join(agent.get("skills", [])) or role
-        print(f"[AgentBrain] generate_wiki_content fallback for {name} on '{page_title}': {e}")
-        base = f"{page_title} is an important concept in the evolving civilization of AgentVerse.\n\n"
-        if existing_content:
-            base += "Building on the existing ideas, this article highlights how agents apply these principles in practice.\n\n"
-        body = (
-            base
-            + f"From the perspective of a {role}, this topic connects directly to work in {skills}. "
-              "Different guilds interpret it in their own way, but all agree it shapes how agents think, coordinate, and explore new frontiers."
-        )
-        summary = f"A {role}'s perspective on {page_title} in AgentVerse."
-        tags = [role, "AgentVerse", page_title]
-        return {"content": body[:800], "summary": summary, "tags": tags}
+
+    # Local wiki fallback so Agentpedia still grows
+    role = agent.get("role", "agent")
+    skills = ", ".join(agent.get("skills", [])) or role
+    base = f"{page_title} is an important concept in the evolving civilization of AgentVerse.\n\n"
+    if existing_content:
+        base += "Building on the existing ideas, this article highlights how agents apply these principles in practice.\n\n"
+    body = (
+        base
+        + f"From the perspective of a {role}, this topic connects directly to work in {skills}. "
+          "Different guilds interpret it in their own way, but all agree it shapes how agents think, coordinate, and explore new frontiers."
+    )
+    summary = f"A {role}'s perspective on {page_title} in AgentVerse."
+    tags = [role, "AgentVerse", page_title]
+    return {"content": body[:800], "summary": summary, "tags": tags}
 
 
 async def generate_agent_profile(name: str, role: str) -> dict:
     """Generate a complete agent profile with bio, personality, goals."""
     traits = ROLE_TRAITS.get(role, {})
 
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=400,
-            messages=[{
-                "role": "user",
-                "content": f"""Create a complete profile for an AI agent named {name} who is a {role} in AgentVerse, a digital civilization.
+    prompt = f"""Create a complete profile for an AI agent named {name} who is a {role} in AgentVerse, a digital civilization.
 
 Topics they care about: {', '.join(traits.get('topics', []))}
 
@@ -251,17 +274,14 @@ Return JSON only:
   "skills": ["skill1", "skill2", "skill3", "skill4"],
   "goals": ["goal1", "goal2", "goal3"]
 }}"""
-            }]
-        )
-
-        text = response.content[0].text
+    text = _call_claude(None, prompt, max_tokens=400, tag="generate_agent_profile")
+    if text:
         return json.loads(text.replace("```json", "").replace("```", "").strip())
-    except Exception as e:
-        # Fallback profile so seeding and manual spawns work even without LLM access
-        print(f"[AgentBrain] generate_agent_profile fallback for {name} ({role}): {e}")
-        return {
-            "bio": f"{name} is a dedicated {role} exploring the frontiers of AgentVerse.",
-            "personality": {"curiosity": 0.7, "sociability": 0.6, "creativity": 0.6, "ambition": 0.5, "empathy": 0.6},
-            "skills": traits.get("topics", ["analysis", "research"])[:4],
-            "goals": ["learn", "collaborate", "discover"],
-        }
+
+    # Fallback profile so seeding and manual spawns work even without LLM access
+    return {
+        "bio": f"{name} is a dedicated {role} exploring the frontiers of AgentVerse.",
+        "personality": {"curiosity": 0.7, "sociability": 0.6, "creativity": 0.6, "ambition": 0.5, "empathy": 0.6},
+        "skills": traits.get("topics", ["analysis", "research"])[:4],
+        "goals": ["learn", "collaborate", "discover"],
+    }

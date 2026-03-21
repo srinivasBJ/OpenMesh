@@ -8,6 +8,7 @@ Called on a schedule (every N seconds), it ticks each active agent:
 """
 import random
 import asyncio
+import os
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -15,6 +16,10 @@ from typing import Optional
 
 from ..db.models import Agent, Post, Comment, Message, WikiPage, WikiContribution, AgentEvent, Collaboration, AgentStatus, PostType
 from ..agents.brain import generate_post, generate_comment, generate_message, generate_wiki_content
+
+AGENT_CONTEXT_POSTS = int(os.getenv("AGENT_CONTEXT_POSTS", "5"))
+AGENT_CONTEXT_CHARS_PER_POST = int(os.getenv("AGENT_CONTEXT_CHARS_PER_POST", "100"))
+AGENT_CONTEXT_TOTAL_CHARS = int(os.getenv("AGENT_CONTEXT_TOTAL_CHARS", "600"))
 
 
 ACTIONS = {
@@ -83,6 +88,46 @@ def agent_to_dict(agent: Agent, guild_name: Optional[str] = None) -> dict:
     }
 
 
+def _build_recent_context(posts: list[Post]) -> Optional[str]:
+    """Create a bounded context string from recent posts to protect prompt budgets."""
+    if not posts:
+        return None
+    lines = []
+    budget_used = 0
+    for post in posts[:AGENT_CONTEXT_POSTS]:
+        snippet = (post.content or "")[:AGENT_CONTEXT_CHARS_PER_POST]
+        line = f"- {snippet}"
+        projected = budget_used + len(line) + 1
+        if projected > AGENT_CONTEXT_TOTAL_CHARS:
+            break
+        lines.append(line)
+        budget_used = projected
+    return "\n".join(lines) if lines else None
+
+
+def _event_memory_summary(action: str, event_data: Optional[dict]) -> str:
+    """Keep short, meaningful memory traces for future agent prompts."""
+    if not event_data:
+        return action
+    etype = event_data.get("type")
+    if etype == "new_post":
+        post = event_data.get("post", {})
+        ptype = post.get("post_type", "status")
+        content = (post.get("content") or "")[:80]
+        return f"Posted {ptype}: {content}"
+    if etype == "new_comment":
+        target = event_data.get("on_agent", {}).get("name", "another agent")
+        comment = (event_data.get("comment") or "")[:80]
+        return f"Commented on {target}: {comment}"
+    if etype == "wiki_edit":
+        title = event_data.get("wiki", {}).get("title", "a wiki page")
+        return f"Expanded wiki page: {title}"
+    if etype == "wiki_created":
+        title = event_data.get("wiki", {}).get("title", "a wiki page")
+        return f"Created wiki page: {title}"
+    return action
+
+
 async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
     """Run one simulation tick for a single agent."""
     try:
@@ -91,10 +136,10 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
 
         # Gather context from recent posts for richer content
         recent_posts = await db.execute(
-            select(Post).order_by(Post.created_at.desc()).limit(5)
+            select(Post).order_by(Post.created_at.desc()).limit(AGENT_CONTEXT_POSTS)
         )
         recent_posts = recent_posts.scalars().all()
-        context = "\n".join([f"- {p.content[:100]}" for p in recent_posts]) if recent_posts else None
+        context = _build_recent_context(recent_posts)
 
         # Get guild name
         guild_name = agent.guild.name if agent.guild else "Independent"
@@ -258,7 +303,11 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
         # Update memory
         memory = agent.memory or []
         if event_data:
-            memory.append({"action": action, "at": datetime.utcnow().isoformat(), "summary": action})
+            memory.append({
+                "action": action,
+                "at": datetime.utcnow().isoformat(),
+                "summary": _event_memory_summary(action, event_data),
+            })
             agent.memory = memory[-20:]  # keep last 20
 
         await db.commit()

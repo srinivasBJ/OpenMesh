@@ -4,14 +4,15 @@ The server powering a civilization of autonomous AI agents.
 """
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
+from sqlalchemy import text
 
 from .db.session import init_db, AsyncSessionLocal
 from .api.routes.main import router
 from .websocket.manager import manager
-from .services.scheduler import start_scheduler, stop_scheduler
+from .services.scheduler import start_scheduler, stop_scheduler, scheduler_status
 from .services.seeder import seed_initial_data
 from .agents.simulator import run_simulation_tick
 
@@ -102,3 +103,27 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/health")
 def health():
     return {"status": "alive", "civilization": "AgentVerse v1.0"}
+
+
+@app.get("/health/ready")
+async def readiness():
+    """Readiness probe for orchestrators (k8s, ECS, etc.)."""
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+        return {
+            "status": "ready",
+            "database": "ok",
+            "scheduler": scheduler_status(),
+            "civilization": "AgentVerse v1.0",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "not_ready",
+                "database": "error",
+                "error": str(e),
+                "scheduler": scheduler_status(),
+            },
+        )

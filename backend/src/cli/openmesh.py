@@ -14,6 +14,7 @@ from ..services.openmesh_collector import collector
 from ..services.openmesh_doctor import run_doctor
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_traces
 from ..shared.openmesh_events import make_openmesh_event
+from .tui import run_tui
 
 
 CLI_NODE = {
@@ -360,6 +361,16 @@ async def _run_command(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _tui(args: argparse.Namespace) -> int:
+    try:
+        return await run_tui(once=args.once)
+    except Exception as exc:
+        print("OpenMesh TUI error")
+        print()
+        print(f"{exc.__class__.__name__}: {exc}")
+        return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="openmesh", description="Inspect persisted OpenMesh events.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -380,6 +391,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
     doctor.set_defaults(func=_doctor)
+
+    tui = subparsers.add_parser("tui", help="Launch the OpenMesh terminal UI.")
+    tui.add_argument("--once", action="store_true", help="Render one terminal capture and exit.")
+    tui.set_defaults(func=_tui)
 
     run = subparsers.add_parser("run", help="Run and observe a command.")
     run.add_argument("command", nargs=argparse.REMAINDER, help="Command to run after --.")

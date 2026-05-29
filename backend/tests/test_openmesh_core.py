@@ -12,6 +12,7 @@ from src.services.graph_state import reduce_graph_state
 from src.services.openmesh_collector import OpenMeshCollector
 from src.services.openmesh_queries import trace_summary
 from src.shared.openmesh_events import agent_node, make_openmesh_event
+from src.cli.tui import TuiSnapshot, render_plain
 
 
 CLI_NODE = {
@@ -212,6 +213,39 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event["session_id"], "sess_test")
         self.assertEqual(event["trace_id"], "trace_test")
         self.assertEqual(len(db.added), 1)
+
+    def test_tui_plain_render_keeps_network_visible(self):
+        snapshot = TuiSnapshot(
+            health={"events": 1, "traces": 1, "nodes": 2, "edges": 1},
+            graph={
+                "nodes": [
+                    {"id": "agent-a", "type": "agent", "name": "Research Agent", "event_count": 1, "last_seen": "2026-05-29T10:00:00Z"},
+                    {"id": "agent-b", "type": "agent", "name": "Coding Agent", "event_count": 1, "last_seen": "2026-05-29T10:00:00Z"},
+                ],
+                "edges": [
+                    {"id": "edge-1", "source": "agent-a", "target": "agent-b", "type": "communicates_with", "event_count": 1, "last_seen": "2026-05-29T10:00:00Z"}
+                ],
+            },
+            traces=[{"trace_id": "trace_test", "status": "completed", "event_count": 1, "started_at": "2026-05-29T10:00:00Z"}],
+            events=[{
+                "event_id": "evt_test",
+                "event_type": "message.sent",
+                "timestamp": "2026-05-29T10:00:00Z",
+                "trace_id": "trace_test",
+                "session_id": "sess_test",
+                "source": {"node_id": "agent-a", "node_type": "agent", "name": "Research Agent"},
+                "target": {"node_id": "agent-b", "node_type": "agent", "name": "Coding Agent"},
+                "payload": {},
+            }],
+            sessions=[],
+            loaded_at=datetime.utcnow(),
+        )
+
+        output = render_plain(snapshot)
+
+        self.assertIn("Agents / Processes", output)
+        self.assertIn("Network", output)
+        self.assertIn("communicates_with", output)
 
 
 if __name__ == "__main__":

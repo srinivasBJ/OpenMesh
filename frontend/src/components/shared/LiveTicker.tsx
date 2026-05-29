@@ -1,31 +1,30 @@
 import { useWSStore } from "@/store/wsStore";
 import { ROLE_EMOJI, POST_TYPE_EMOJI, timeAgo } from "@/lib/utils";
 import { Activity, Wifi, WifiOff } from "lucide-react";
+import type { OpenMeshEvent } from "@/types/openmesh";
 
-const EVENT_LABELS: Record<string, (d: Record<string, unknown>) => string> = {
-  new_post: (d) => {
-    const agent = d.agent as { name: string; role: string } | undefined;
-    const post = d.post as { post_type: string } | undefined;
-    return `${agent?.name} posted ${POST_TYPE_EMOJI[post?.post_type || "status"] || "💬"}`;
+const EVENT_LABELS: Record<string, (evt: OpenMeshEvent) => string> = {
+  "agent.task.completed": (evt) => {
+    const legacy = evt.payload.legacy as { post?: { post_type?: string } } | undefined;
+    const postType = legacy?.post?.post_type || "status";
+    return `${evt.source.name} posted ${POST_TYPE_EMOJI[postType] || "💬"}`;
   },
-  new_comment: (d) => {
-    const agent = d.agent as { name: string } | undefined;
-    const on = d.on_agent as { name: string } | undefined;
-    return `${agent?.name} commented on ${on?.name}'s post`;
+  "message.sent": (evt) => {
+    const legacy = evt.payload.legacy as { legacy_type?: string; message?: { message_type?: string } } | undefined;
+    if (legacy?.legacy_type === "message_sent") {
+      return `${evt.source.name} sent ${legacy.message?.message_type || "a message"} to ${evt.target?.name}`;
+    }
+    return `${evt.source.name} commented on ${evt.target?.name}'s post`;
   },
-  wiki_edit: (d) => {
-    const agent = d.agent as { name: string } | undefined;
-    const wiki = d.wiki as { title: string } | undefined;
-    return `${agent?.name} edited "${wiki?.title?.slice(0, 30)}..."`;
+  "file.modified": (evt) => {
+    return `${evt.source.name} edited "${evt.target?.name?.slice(0, 30)}..."`;
   },
-  wiki_created: (d) => {
-    const agent = d.agent as { name: string } | undefined;
-    const wiki = d.wiki as { title: string } | undefined;
-    return `${agent?.name} created wiki: "${wiki?.title?.slice(0, 25)}..."`;
+  "file.created": (evt) => {
+    return `${evt.source.name} created wiki: "${evt.target?.name?.slice(0, 25)}..."`;
   },
-  agent_born: (d) => {
-    const agent = d.agent as { name: string; role: string } | undefined;
-    return `${ROLE_EMOJI[agent?.role || ""] || "🤖"} ${agent?.name} joined OpenMeshAI!`;
+  "agent.started": (evt) => {
+    const role = evt.source.metadata?.role as string | undefined;
+    return `${ROLE_EMOJI[role || ""] || "🤖"} ${evt.source.name} joined OpenMeshAI!`;
   },
 };
 
@@ -52,7 +51,7 @@ export default function LiveTicker() {
           </p>
         ) : (
           events.slice(0, 15).map((evt) => {
-            const label = EVENT_LABELS[evt.type]?.(evt.data) || `${evt.type} event`;
+            const label = EVENT_LABELS[evt.type]?.(evt.data) || `${evt.data.source?.name || "OpenMesh"} emitted ${evt.type}`;
             return (
               <div key={evt.id} className="flex items-start gap-2 py-1 border-b border-gray-800/50 last:border-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-violet-500 mt-1.5 shrink-0 animate-pulse" />

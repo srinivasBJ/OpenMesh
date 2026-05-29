@@ -16,6 +16,7 @@ from typing import Optional
 
 from ..db.models import Agent, Post, Comment, Message, WikiPage, WikiContribution, AgentEvent, Collaboration, AgentStatus, PostType
 from ..agents.brain import generate_post, generate_comment, generate_message, generate_wiki_content
+from ..shared.openmesh_events import agent_node, make_openmesh_event
 
 AGENT_CONTEXT_POSTS = int(os.getenv("AGENT_CONTEXT_POSTS", "5"))
 AGENT_CONTEXT_CHARS_PER_POST = int(os.getenv("AGENT_CONTEXT_CHARS_PER_POST", "100"))
@@ -128,6 +129,80 @@ def _event_memory_summary(action: str, event_data: Optional[dict]) -> str:
     return action
 
 
+def _target_node_for_legacy_event(event_data: dict) -> Optional[dict]:
+    etype = event_data.get("type")
+    if etype == "new_comment":
+        target = event_data.get("on_agent", {})
+        if target.get("id") and target.get("name"):
+            return {
+                "node_id": target["id"],
+                "node_type": "agent",
+                "name": target["name"],
+                "runtime": "openmeshai.simulator",
+            }
+    if etype == "message_sent":
+        target = event_data.get("to_agent", {})
+        if target.get("id") and target.get("name"):
+            return {
+                "node_id": target["id"],
+                "node_type": "agent",
+                "name": target["name"],
+                "runtime": "openmeshai.simulator",
+            }
+    if etype in ("wiki_edit", "wiki_created"):
+        wiki = event_data.get("wiki", {})
+        if wiki.get("slug") and wiki.get("title"):
+            return {
+                "node_id": wiki["slug"],
+                "node_type": "wiki",
+                "name": wiki["title"],
+                "runtime": "openmeshai.simulator",
+            }
+    if etype == "new_post":
+        post = event_data.get("post", {})
+        return {
+            "node_id": f"post:{post.get('post_type', 'status')}",
+            "node_type": "post",
+            "name": f"{post.get('post_type', 'status')} post",
+            "runtime": "openmeshai.simulator",
+        }
+    return None
+
+
+def _openmesh_event_type(action: str, event_data: dict) -> str:
+    legacy_type = event_data.get("type")
+    if legacy_type == "message_sent":
+        return "message.sent"
+    if legacy_type == "new_comment":
+        return "message.sent"
+    if legacy_type == "wiki_edit":
+        return "file.modified"
+    if legacy_type == "wiki_created":
+        return "file.created"
+    if legacy_type == "new_post":
+        return "agent.task.completed"
+    return f"agent.{action}"
+
+
+def _build_openmesh_event(action: str, event_data: dict) -> dict:
+    agent = event_data.get("agent", {})
+    source = agent_node(
+        agent.get("id", "unknown-agent"),
+        agent.get("name", "Unknown Agent"),
+        agent.get("role"),
+    )
+    return make_openmesh_event(
+        _openmesh_event_type(action, event_data),
+        source,
+        {
+            "action": action,
+            "legacy_type": event_data.get("type"),
+            "legacy": event_data,
+        },
+        target=_target_node_for_legacy_event(event_data),
+    )
+
+
 async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
     """Run one simulation tick for a single agent."""
     try:
@@ -145,6 +220,7 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
         guild_name = agent.guild.name if agent.guild else "Independent"
         agent_dict = agent_to_dict(agent, guild_name)
 
+        legacy_event_data = None
         event_data = None
 
         if action == "rest":
@@ -169,7 +245,7 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
             if post_type in ("discovery", "milestone"):
                 agent.reputation = min(100, agent.reputation + 1.5)
 
-            event_data = {
+            legacy_event_data = {
                 "type": "new_post",
                 "agent": {"id": agent.id, "name": agent.name, "role": _role_str(agent.role)},
                 "post": {"content": result["content"], "post_type": post_type, "tags": result.get("tags", [])},
@@ -195,7 +271,7 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
                     db.add(comment)
                     # Social interaction boosts both agents
                     post_author.happiness = min(100, post_author.happiness + 1)
-                    event_data = {
+                    legacy_event_data = {
                         "type": "new_comment",
                         "agent": {"id": agent.id, "name": agent.name},
                         "on_agent": {"id": post_author.id, "name": post_author.name},
@@ -222,6 +298,12 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
                 if msg_type == "collaboration_request":
                     agent.total_collaborations += 1
                     agent.reputation = min(100, agent.reputation + 0.5)
+                legacy_event_data = {
+                    "type": "message_sent",
+                    "agent": {"id": agent.id, "name": agent.name, "role": _role_str(agent.role)},
+                    "to_agent": {"id": other.id, "name": other.name, "role": _role_str(other.role)},
+                    "message": {"content": content[:100], "message_type": msg_type},
+                }
 
         elif action == "wiki_edit":
             # Either expand existing page or create new one
@@ -243,7 +325,7 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
                 )
                 db.add(contribution)
                 agent.knowledge = min(100, agent.knowledge + knowledge_gain + 2)
-                event_data = {
+                legacy_event_data = {
                     "type": "wiki_edit",
                     "agent": {"id": agent.id, "name": agent.name},
                     "wiki": {"title": existing.title, "slug": existing.slug},
@@ -288,7 +370,7 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
                     )
                     db.add(contribution)
                     agent.reputation = min(100, agent.reputation + 2)
-                    event_data = {
+                    legacy_event_data = {
                         "type": "wiki_created",
                         "agent": {"id": agent.id, "name": agent.name},
                         "wiki": {"title": new_title, "slug": slug},
@@ -302,11 +384,12 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
 
         # Update memory
         memory = agent.memory or []
-        if event_data:
+        if legacy_event_data:
+            event_data = _build_openmesh_event(action, legacy_event_data)
             memory.append({
                 "action": action,
                 "at": datetime.utcnow().isoformat(),
-                "summary": _event_memory_summary(action, event_data),
+                "summary": _event_memory_summary(action, legacy_event_data),
             })
             agent.memory = memory[-20:]  # keep last 20
 

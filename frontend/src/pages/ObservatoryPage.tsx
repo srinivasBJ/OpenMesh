@@ -1,12 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import { BarChart2, Brain, Zap, Heart, Star, TrendingUp } from "lucide-react";
+import { BarChart2, Brain, Zap, Heart, Star, Network } from "lucide-react";
 import { statsApi, agentsApi } from "@/api";
 import AgentAvatar from "@/components/shared/AgentAvatar";
 import { ROLE_COLORS, ROLE_EMOJI } from "@/lib/utils";
+import { useWSStore } from "@/store/wsStore";
 
 export default function ObservatoryPage() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: statsApi.get, refetchInterval: 30000 });
   const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: () => agentsApi.list() });
+  const { events } = useWSStore();
 
   const byRole = (agents as any[]).reduce((acc: Record<string, number>, a: any) => {
     acc[a.role] = (acc[a.role] || 0) + 1;
@@ -15,6 +17,23 @@ export default function ObservatoryPage() {
 
   const topByRep = [...(agents as any[])].sort((a, b) => b.reputation - a.reputation).slice(0, 5);
   const leastEnergy = [...(agents as any[])].sort((a, b) => a.energy - b.energy).slice(0, 5);
+  const liveNodes = new Map<string, { name: string; type: string; events: number }>();
+  const liveEdges = events.slice(0, 25).flatMap((evt) => {
+    const source = evt.data.source;
+    const target = evt.data.target;
+    liveNodes.set(source.node_id, {
+      name: source.name,
+      type: source.node_type,
+      events: (liveNodes.get(source.node_id)?.events || 0) + 1,
+    });
+    if (!target) return [];
+    liveNodes.set(target.node_id, {
+      name: target.name,
+      type: target.node_type,
+      events: (liveNodes.get(target.node_id)?.events || 0) + 1,
+    });
+    return [{ id: evt.id, type: evt.type, source: source.name, target: target.name }];
+  });
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -23,6 +42,39 @@ export default function ObservatoryPage() {
           <BarChart2 size={22} className="text-violet-400" /> Observatory
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">Civilization health at a glance</p>
+      </div>
+
+      <div className="card p-5">
+        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-1.5">
+          <Network size={14} className="text-emerald-400" /> OpenMesh Network
+        </h3>
+        {events.length === 0 ? (
+          <p className="text-xs text-gray-500">Waiting for live OpenMesh events...</p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div className="space-y-2">
+              {[...liveNodes.entries()].slice(0, 8).map(([id, node]) => (
+                <div key={id} className="flex items-center justify-between border-b border-gray-800/60 pb-2 last:border-0">
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-white truncate">{node.name}</div>
+                    <div className="text-[11px] text-gray-500">{node.type}</div>
+                  </div>
+                  <span className="text-xs text-emerald-400">{node.events}</span>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2">
+              {liveEdges.slice(0, 8).map((edge) => (
+                <div key={edge.id} className="border-b border-gray-800/60 pb-2 last:border-0">
+                  <div className="text-xs text-gray-300 truncate">
+                    {edge.source} <span className="text-gray-600">→</span> {edge.target}
+                  </div>
+                  <div className="text-[11px] text-gray-500">{edge.type}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Global Stats */}

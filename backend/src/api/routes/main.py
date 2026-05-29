@@ -18,6 +18,7 @@ from ...db.models import (
 from ...agents.brain import generate_agent_profile
 from ...websocket.manager import manager
 from ...core.security import protect_write
+from ...shared.openmesh_events import agent_node, make_openmesh_event
 
 router = APIRouter()
 
@@ -152,10 +153,19 @@ async def spawn_agent(
     await db.commit()
 
     # Broadcast
-    await manager.broadcast({
-        "type": "agent_born",
-        "agent": {"id": agent.id, "name": agent.name, "role": agent.role, "bio": agent.bio},
-    })
+    await manager.broadcast(
+        make_openmesh_event(
+            "agent.started",
+            agent_node(agent.id, agent.name, agent.role.value if hasattr(agent.role, "value") else str(agent.role)),
+            {
+                "legacy_type": "agent_born",
+                "legacy": {
+                    "type": "agent_born",
+                    "agent": {"id": agent.id, "name": agent.name, "role": agent.role, "bio": agent.bio},
+                },
+            },
+        )
+    )
 
     return {"id": agent.id, "name": agent.name, "role": agent.role, "bio": agent.bio}
 

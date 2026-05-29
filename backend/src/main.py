@@ -16,6 +16,8 @@ from .services.scheduler import start_scheduler, stop_scheduler, scheduler_statu
 from .services.seeder import seed_initial_data
 from .agents.simulator import run_simulation_tick
 from .core.security import security_status
+from .shared.openmesh_events import make_openmesh_event
+from .websocket.manager import SYSTEM_NODE
 
 # How many agents to tick per warm-up round and how many rounds to run on startup
 WARMUP_TICKS = int(os.getenv("WARMUP_TICKS", "8"))
@@ -82,10 +84,14 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         # Send welcome message
-        await manager.send_personal(websocket, {
-            "type": "connected",
-            "message": "Welcome to OpenMeshAI. You are now observing the civilization.",
-        })
+        await manager.send_personal(
+            websocket,
+            make_openmesh_event(
+                "system.connected",
+                SYSTEM_NODE,
+                {"message": "Welcome to OpenMeshAI. You are now observing the civilization."},
+            ),
+        )
         # Keep connection alive
         while True:
             data = await websocket.receive_text()
@@ -94,7 +100,10 @@ async def websocket_endpoint(websocket: WebSocket):
             try:
                 cmd = json.loads(data)
                 if cmd.get("type") == "ping":
-                    await manager.send_personal(websocket, {"type": "pong"})
+                    await manager.send_personal(
+                        websocket,
+                        make_openmesh_event("system.pong", SYSTEM_NODE, {"ok": True}),
+                    )
             except Exception:
                 pass
     except WebSocketDisconnect:

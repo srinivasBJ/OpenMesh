@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmesh.ai/schemas/openmesh-event-0.1.json",
+  "title": "OpenMesh Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "spec_version",
+    "event_id",
+    "event_type",
+    "timestamp",
+    "source",
+    "payload"
+  ],
+  "properties": {
+    "spec_version": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "event_id": {
+      "type": "string"
+    },
+    "event_type": {
+      "type": "string",
+      "examples": [
+        "agent.started",
+        "tool.call.started",
+        "tool.call.completed",
+        "message.sent",
+        "file.modified",
+        "command.executed"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workspace_id": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "trace_id": {
+      "type": "string"
+    },
+    "span_id": {
+      "type": "string"
+    },
+    "parent_span_id": {
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/node"
+    },
+    "target": {
+      "$ref": "#/$defs/node"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/link"
+      }
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["debug", "info", "warning", "error"],
+      "default": "info"
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "node_type", "name"],
+      "properties": {
+        "node_id": {
+          "type": "string"
+        },
+        "node_type": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "tool",
+            "model",
+            "memory",
+            "file",
+            "command",
+            "browser",
+            "user",
+            "service",
+            "runtime",
+            "guild",
+            "wiki",
+            "post"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

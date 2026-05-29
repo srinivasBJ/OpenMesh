@@ -21,6 +21,9 @@ build/
 *.log
 logs/
 
+# Local scratch artifacts
+_edit_docx_tables.py
+
 # DB
 *.db
 *.sqlite3

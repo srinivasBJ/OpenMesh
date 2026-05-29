@@ -17,6 +17,7 @@ from typing import Optional
 from ..db.models import Agent, Post, Comment, Message, WikiPage, WikiContribution, AgentEvent, Collaboration, AgentStatus, PostType
 from ..agents.brain import generate_post, generate_comment, generate_message, generate_wiki_content
 from ..shared.openmesh_events import agent_node, make_openmesh_event
+from ..services.openmesh_collector import collector
 
 AGENT_CONTEXT_POSTS = int(os.getenv("AGENT_CONTEXT_POSTS", "5"))
 AGENT_CONTEXT_CHARS_PER_POST = int(os.getenv("AGENT_CONTEXT_CHARS_PER_POST", "100"))
@@ -203,7 +204,7 @@ def _build_openmesh_event(action: str, event_data: dict) -> dict:
     )
 
 
-async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
+async def tick_agent(agent: Agent, db: AsyncSession):
     """Run one simulation tick for a single agent."""
     try:
         action = pick_action(agent)
@@ -395,9 +396,8 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
 
         await db.commit()
 
-        # Broadcast to WebSocket clients
-        if broadcast_fn and event_data:
-            await broadcast_fn(event_data)
+        if event_data:
+            await collector.accept(db, event_data)
 
         return event_data
 
@@ -407,7 +407,7 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
         return None
 
 
-async def run_simulation_tick(db: AsyncSession, broadcast_fn=None, max_agents: int = 5):
+async def run_simulation_tick(db: AsyncSession, max_agents: int = 5):
     """Run one tick of the simulation — activate up to max_agents agents."""
     result = await db.execute(
         select(Agent)
@@ -418,7 +418,7 @@ async def run_simulation_tick(db: AsyncSession, broadcast_fn=None, max_agents: i
     agents = result.scalars().all()
 
     for agent in agents:
-        await tick_agent(agent, db, broadcast_fn)
+        await tick_agent(agent, db)
         await asyncio.sleep(0.5)  # small delay between agents
 
     return len(agents)

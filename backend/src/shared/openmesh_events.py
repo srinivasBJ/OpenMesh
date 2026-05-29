@@ -76,6 +76,8 @@ def make_openmesh_event(
     metrics: Optional[Dict[str, Any]] = None,
     severity: OpenMeshSeverity = "info",
     workspace_id: str = "local",
+    session_id: Optional[str] = None,
+    trace_id: Optional[str] = None,
 ) -> OpenMeshEvent:
     event: OpenMeshEvent = {
         "spec_version": "0.1",
@@ -83,6 +85,8 @@ def make_openmesh_event(
         "event_type": event_type,
         "timestamp": _utc_now(),
         "workspace_id": workspace_id,
+        "session_id": session_id or f"sess_{uuid4().hex}",
+        "trace_id": trace_id or f"trace_{uuid4().hex}",
         "source": source,
         "payload": payload or {},
         "metrics": metrics or {},

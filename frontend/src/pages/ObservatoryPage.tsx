@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { BarChart2, Brain, Zap, Heart, Star, Network } from "lucide-react";
-import { statsApi, agentsApi } from "@/api";
+import { statsApi, agentsApi, openmeshApi } from "@/api";
 import AgentAvatar from "@/components/shared/AgentAvatar";
 import { ROLE_COLORS, ROLE_EMOJI } from "@/lib/utils";
 import { useWSStore } from "@/store/wsStore";
@@ -8,6 +8,16 @@ import { useWSStore } from "@/store/wsStore";
 export default function ObservatoryPage() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: statsApi.get, refetchInterval: 30000 });
   const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: () => agentsApi.list() });
+  const { data: graph = { nodes: [], edges: [] } } = useQuery({
+    queryKey: ["openmesh-graph"],
+    queryFn: openmeshApi.graph,
+    refetchInterval: 15000,
+  });
+  const { data: traces = [] } = useQuery({
+    queryKey: ["openmesh-traces"],
+    queryFn: openmeshApi.traces,
+    refetchInterval: 15000,
+  });
   const { events } = useWSStore();
 
   const byRole = (agents as any[]).reduce((acc: Record<string, number>, a: any) => {
@@ -17,6 +27,11 @@ export default function ObservatoryPage() {
 
   const topByRep = [...(agents as any[])].sort((a, b) => b.reputation - a.reputation).slice(0, 5);
   const leastEnergy = [...(agents as any[])].sort((a, b) => a.energy - b.energy).slice(0, 5);
+  const graphNodes = graph.nodes as Array<{ id: string; name: string; type: string; event_count: number }>;
+  const graphEdges = graph.edges as Array<{ id: string; source: string; target: string; type: string; event_count: number }>;
+  const activeAgents = graphNodes.filter((node) => node.type === "agent").length;
+  const activeTraces = (traces as any[]).filter((trace) => trace.status === "active").length;
+  const nodeNames = new Map(graphNodes.map((node) => [node.id, node.name]));
   const liveNodes = new Map<string, { name: string; type: string; events: number }>();
   const liveEdges = events.slice(0, 25).flatMap((evt) => {
     const source = evt.data.source;
@@ -48,6 +63,19 @@ export default function ObservatoryPage() {
         <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-1.5">
           <Network size={14} className="text-emerald-400" /> OpenMesh Network
         </h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          {[
+            { label: "Total Nodes", value: graphNodes.length },
+            { label: "Total Edges", value: graphEdges.length },
+            { label: "Active Agents", value: activeAgents },
+            { label: "Active Traces", value: activeTraces },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-gray-800 rounded-lg p-3">
+              <div className="text-lg font-bold text-white">{value}</div>
+              <div className="text-[11px] text-gray-500">{label}</div>
+            </div>
+          ))}
+        </div>
         {events.length === 0 ? (
           <p className="text-xs text-gray-500">Waiting for live OpenMesh events...</p>
         ) : (
@@ -70,6 +98,20 @@ export default function ObservatoryPage() {
                     {edge.source} <span className="text-gray-600">→</span> {edge.target}
                   </div>
                   <div className="text-[11px] text-gray-500">{edge.type}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {graphEdges.length > 0 && (
+          <div className="mt-5 border-t border-gray-800 pt-4">
+            <h4 className="text-xs font-semibold text-gray-300 mb-2">Recent Relationships</h4>
+            <div className="space-y-2">
+              {graphEdges.slice(0, 5).map((edge) => (
+                <div key={edge.id} className="text-xs text-gray-400 truncate">
+                  {nodeNames.get(edge.source) || edge.source}{" "}
+                  <span className="text-gray-600">{edge.type}</span>{" "}
+                  {nodeNames.get(edge.target) || edge.target}
                 </div>
               ))}
             </div>

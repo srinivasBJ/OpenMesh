@@ -166,6 +166,23 @@ class AgentEvent(Base):
     occurred_at = Column(DateTime, server_default=func.now())
 
 
+class OpenMeshEventRecord(Base):
+    __tablename__ = "openmesh_events"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    event_id = Column(String(100), nullable=False, unique=True, index=True)
+    event_type = Column(String(100), nullable=False, index=True)
+    timestamp = Column(DateTime, nullable=False, index=True)
+    trace_id = Column(String(100), nullable=False, index=True)
+    session_id = Column(String(100), nullable=False, index=True)
+    source_json = Column(JSON, nullable=False, default=dict)
+    target_json = Column(JSON, nullable=True)
+    payload_json = Column(JSON, nullable=False, default=dict)
+    metrics_json = Column(JSON, nullable=False, default=dict)
+    severity = Column(String(20), nullable=False, default="info")
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class Collaboration(Base):
     __tablename__ = "collaborations"
     id = Column(String, primary_key=True, default=gen_id)

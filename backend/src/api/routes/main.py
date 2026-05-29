@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func, or_
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 from datetime import datetime
 import random
 
@@ -16,9 +16,12 @@ from ...db.models import (
     WikiContribution, AgentEvent, Collaboration, AgentStatus, AgentRole
 )
 from ...agents.brain import generate_agent_profile
-from ...websocket.manager import manager
 from ...core.security import protect_write
 from ...shared.openmesh_events import agent_node, make_openmesh_event
+from ...db.models import OpenMeshEventRecord
+from ...db.openmesh_events import list_openmesh_events, record_to_event, records_to_events
+from ...services.graph_state import reduce_graph_state
+from ...services.openmesh_collector import collector
 
 router = APIRouter()
 
@@ -153,7 +156,8 @@ async def spawn_agent(
     await db.commit()
 
     # Broadcast
-    await manager.broadcast(
+    await collector.accept(
+        db,
         make_openmesh_event(
             "agent.started",
             agent_node(agent.id, agent.name, agent.role.value if hasattr(agent.role, "value") else str(agent.role)),
@@ -164,7 +168,7 @@ async def spawn_agent(
                     "agent": {"id": agent.id, "name": agent.name, "role": agent.role, "bio": agent.bio},
                 },
             },
-        )
+        ),
     )
 
     return {"id": agent.id, "name": agent.name, "role": agent.role, "bio": agent.bio}
@@ -422,6 +426,94 @@ async def get_events(limit: int = Query(50, le=200), db: AsyncSession = Depends(
     } for e in events]
 
 
+# ── OPENMESH PROTOCOL ─────────────────────────────────────────────────────────
+
+def _trace_status(events: list[dict]) -> str:
+    if any(e.get("severity") == "error" or e.get("event_type", "").endswith(".failed") for e in events):
+        return "failed"
+    if events and events[-1].get("event_type", "").endswith(".started"):
+        return "active"
+    return "completed"
+
+
+def _trace_summary(trace_id: str, records: list[OpenMeshEventRecord]) -> Dict[str, Any]:
+    events = [record_to_event(record) for record in sorted(records, key=lambda r: r.timestamp)]
+    agents = set()
+    tools = set()
+    for event in events:
+        for node in (event.get("source"), event.get("target")):
+            if not node:
+                continue
+            if node.get("node_type") == "agent":
+                agents.add(node.get("name"))
+            if node.get("node_type") == "tool":
+                tools.add(node.get("name"))
+
+    return {
+        "trace_id": trace_id,
+        "started_at": events[0]["timestamp"] if events else None,
+        "ended_at": events[-1]["timestamp"] if events else None,
+        "event_count": len(events),
+        "agents": sorted(agents),
+        "tools": sorted(tools),
+        "status": _trace_status(events),
+    }
+
+
+@router.post("/openmesh/events")
+async def ingest_openmesh_event(
+    event: Dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(protect_write),
+):
+    accepted = await collector.accept(db, event)
+    return {"accepted": True, "event": accepted}
+
+
+@router.get("/openmesh/events")
+async def get_openmesh_events(
+    limit: int = Query(100, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    records = await list_openmesh_events(db, limit=limit)
+    return records_to_events(records)
+
+
+@router.get("/openmesh/traces")
+async def list_openmesh_traces(
+    limit: int = Query(1000, le=5000),
+    db: AsyncSession = Depends(get_db),
+):
+    records = await list_openmesh_events(db, limit=limit)
+    grouped: Dict[str, list[OpenMeshEventRecord]] = {}
+    for record in records:
+        grouped.setdefault(record.trace_id, []).append(record)
+    summaries = [_trace_summary(trace_id, trace_records) for trace_id, trace_records in grouped.items()]
+    return sorted(summaries, key=lambda t: t["started_at"] or "", reverse=True)
+
+
+@router.get("/openmesh/traces/{trace_id}")
+async def get_openmesh_trace(trace_id: str, db: AsyncSession = Depends(get_db)):
+    records = await list_openmesh_events(db, trace_id=trace_id, limit=1000)
+    if not records:
+        raise HTTPException(404, "Trace not found")
+    ordered = sorted(records, key=lambda r: r.timestamp)
+    summary = _trace_summary(trace_id, ordered)
+    return {
+        **summary,
+        "events": records_to_events(ordered),
+    }
+
+
+@router.get("/openmesh/graph")
+async def get_openmesh_graph(
+    limit: int = Query(1000, le=5000),
+    db: AsyncSession = Depends(get_db),
+):
+    records = await list_openmesh_events(db, limit=limit)
+    return reduce_graph_state(records)
+
+
 # ── STATS ─────────────────────────────────────────────────────────────────────
 
 @router.get("/stats")
@@ -468,5 +560,5 @@ async def manual_tick(
     import os
     from ...agents.simulator import run_simulation_tick
     max_agents = int(os.getenv("MAX_ACTIVE_AGENTS", "6"))
-    count = await run_simulation_tick(db, manager.broadcast, max_agents=max_agents)
+    count = await run_simulation_tick(db, max_agents=max_agents)
     return {"ticked_agents": count}

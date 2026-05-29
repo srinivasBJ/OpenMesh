@@ -41,3 +41,10 @@ export const statsApi = {
 export const simulationApi = {
   tick: () => api.post("/simulation/tick").then(r => r.data),
 };
+
+export const openmeshApi = {
+  events: (limit?: number) => api.get("/openmesh/events", { params: { limit } }).then(r => r.data),
+  traces: () => api.get("/openmesh/traces").then(r => r.data),
+  trace: (traceId: string) => api.get(`/openmesh/traces/${traceId}`).then(r => r.data),
+  graph: () => api.get("/openmesh/graph").then(r => r.data),
+};

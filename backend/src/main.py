@@ -31,7 +31,7 @@ async def run_warmup_ticks():
     for i in range(WARMUP_TICKS):
         try:
             async with AsyncSessionLocal() as db:
-                count = await run_simulation_tick(db, manager.broadcast, max_agents=WARMUP_AGENTS_PER_TICK)
+                count = await run_simulation_tick(db, max_agents=WARMUP_AGENTS_PER_TICK)
                 total_acted += count
                 if count > 0:
                     print(f"[Warmup] Tick {i + 1}/{WARMUP_TICKS}: {count} agents acted")

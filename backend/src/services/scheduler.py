@@ -7,7 +7,6 @@ import os
 
 from ..db.session import AsyncSessionLocal
 from ..agents.simulator import run_simulation_tick
-from ..websocket.manager import manager
 
 scheduler = AsyncIOScheduler()
 TICK_INTERVAL = int(os.getenv("AGENT_TICK_INTERVAL", "15"))
@@ -18,7 +17,7 @@ async def tick_job():
     """Called by scheduler every N seconds."""
     async with AsyncSessionLocal() as db:
         try:
-            count = await run_simulation_tick(db, manager.broadcast, MAX_AGENTS)
+            count = await run_simulation_tick(db, MAX_AGENTS)
             if count > 0:
                 print(f"[Scheduler] Ticked {count} agents")
         except Exception as e:

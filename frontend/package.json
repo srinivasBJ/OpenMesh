@@ -14,7 +14,7 @@
     "clsx": "^2.1.0",
     "date-fns": "^3.3.1",
     "lucide-react": "^0.309.0",
-    "react": "^18.2.0",
+    "react": "^19.2.6",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.21.3",
@@ -22,7 +22,7 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
-    "@types/react": "^18.2.48",
+    "@types/react": "^19.2.15",
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.17",

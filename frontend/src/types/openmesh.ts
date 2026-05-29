@@ -9,6 +9,7 @@ export type OpenMeshNodeType =
   | "user"
   | "service"
   | "runtime"
+  | "process"
   | "guild"
   | "wiki"
   | "post";

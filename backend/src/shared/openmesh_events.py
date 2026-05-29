@@ -16,6 +16,7 @@ OpenMeshNodeType = Literal[
     "user",
     "service",
     "runtime",
+    "process",
     "guild",
     "wiki",
     "post",

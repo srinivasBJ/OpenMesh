@@ -20,7 +20,7 @@ from ...core.security import protect_write
 from ...shared.openmesh_events import agent_node, make_openmesh_event
 from ...services.openmesh_collector import collector
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
-from ...services.openmesh_queries import get_graph, get_trace, get_traces
+from ...services.openmesh_queries import get_graph, get_session, get_sessions, get_trace, get_traces
 
 router = APIRouter()
 
@@ -468,6 +468,22 @@ async def get_openmesh_graph(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_graph(db, limit=limit)
+
+
+@router.get("/openmesh/sessions")
+async def list_openmesh_sessions(
+    limit: int = Query(100, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_sessions(db, limit=limit)
+
+
+@router.get("/openmesh/sessions/{session_id}")
+async def get_openmesh_session(session_id: str, db: AsyncSession = Depends(get_db)):
+    session = await get_session(db, session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    return session
 
 
 # ── STATS ─────────────────────────────────────────────────────────────────────

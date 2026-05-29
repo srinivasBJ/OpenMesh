@@ -41,10 +41,13 @@ async def list_openmesh_events(
     *,
     limit: int = 100,
     trace_id: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> list[OpenMeshEventRecord]:
     query = select(OpenMeshEventRecord)
     if trace_id:
         query = query.where(OpenMeshEventRecord.trace_id == trace_id)
+    if session_id:
+        query = query.where(OpenMeshEventRecord.session_id == session_id)
     query = query.order_by(desc(OpenMeshEventRecord.timestamp)).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())

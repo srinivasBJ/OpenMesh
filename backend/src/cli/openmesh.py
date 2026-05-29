@@ -3,10 +3,24 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import defaultdict
+from datetime import datetime
+from shlex import join as shell_join
 from typing import Any, Callable
+from uuid import uuid4
 
 from ..db.session import AsyncSessionLocal
+from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_session
+from ..services.openmesh_collector import collector
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_traces
+from ..shared.openmesh_events import make_openmesh_event
+
+
+CLI_NODE = {
+    "node_id": "openmesh.cli",
+    "node_type": "service",
+    "name": "OpenMesh CLI",
+    "runtime": "python.argparse",
+}
 
 
 def _node_name(node: dict[str, Any] | None) -> str:
@@ -77,6 +91,84 @@ def _print_graph(graph: dict[str, list[dict[str, Any]]]) -> None:
         print()
 
 
+def _utc_now() -> datetime:
+    return datetime.utcnow()
+
+
+def _process_node(session_id: str, command: str) -> dict[str, Any]:
+    return {
+        "node_id": f"process:{session_id}",
+        "node_type": "process",
+        "name": command,
+        "runtime": "subprocess",
+        "metadata": {"session_id": session_id},
+    }
+
+
+def _command_node(command: str) -> dict[str, Any]:
+    executable = command.split(" ", 1)[0] if command else "command"
+    return {
+        "node_id": f"command:{executable}",
+        "node_type": "command",
+        "name": command,
+        "runtime": "shell",
+    }
+
+
+async def _emit_process_event(
+    db,
+    event_type: str,
+    *,
+    session_id: str,
+    trace_id: str,
+    source: dict[str, Any],
+    payload: dict[str, Any],
+    target: dict[str, Any] | None = None,
+    severity: str = "info",
+) -> dict[str, Any]:
+    event = make_openmesh_event(
+        event_type,
+        source,
+        payload,
+        target=target,
+        severity=severity,
+        session_id=session_id,
+        trace_id=trace_id,
+    )
+    await collector.accept(db, event)
+    return event
+
+
+async def _stream_output(
+    db,
+    stream: asyncio.StreamReader,
+    *,
+    event_type: str,
+    session_id: str,
+    trace_id: str,
+    process: dict[str, Any],
+    command: str,
+    severity: str,
+    emit_lock: asyncio.Lock,
+) -> None:
+    while True:
+        line = await stream.readline()
+        if not line:
+            break
+        text = line.decode(errors="replace").rstrip("\n")
+        print(text)
+        async with emit_lock:
+            await _emit_process_event(
+                db,
+                event_type,
+                session_id=session_id,
+                trace_id=trace_id,
+                source=process,
+                payload={"command": command, "line": text},
+                severity=severity,
+            )
+
+
 async def _with_db(handler: Callable[..., Any], *args: Any) -> int:
     try:
         async with AsyncSessionLocal() as db:
@@ -123,6 +215,126 @@ async def _graph(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _run_command(args: argparse.Namespace) -> int:
+    command_parts = args.command
+    if command_parts and command_parts[0] == "--":
+        command_parts = command_parts[1:]
+    if not command_parts:
+        print("Usage: openmesh run -- <command>")
+        return 2
+
+    command = shell_join(command_parts)
+    session_id = f"sess_{uuid4().hex}"
+    trace_id = f"trace_{uuid4().hex}"
+    process = _process_node(session_id, command)
+    command_target = _command_node(command)
+
+    async def run(db) -> int:
+        started_at = _utc_now()
+        await create_openmesh_session(db, session_id=session_id, command=command, started_at=started_at)
+        await _emit_process_event(
+            db,
+            "process.started",
+            session_id=session_id,
+            trace_id=trace_id,
+            source=CLI_NODE,
+            target=process,
+            payload={"command": command, "argv": command_parts, "started_at": started_at.isoformat() + "Z"},
+        )
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *command_parts,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except Exception as exc:
+            ended_at = _utc_now()
+            await _emit_process_event(
+                db,
+                "process.failed",
+                session_id=session_id,
+                trace_id=trace_id,
+                source=process,
+                target=command_target,
+                payload={
+                    "command": command,
+                    "error": str(exc),
+                    "started_at": started_at.isoformat() + "Z",
+                    "ended_at": ended_at.isoformat() + "Z",
+                },
+                severity="error",
+            )
+            await complete_openmesh_session(
+                db,
+                session_id=session_id,
+                ended_at=ended_at,
+                status="failed",
+                exit_code=None,
+            )
+            raise
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+        emit_lock = asyncio.Lock()
+        await asyncio.gather(
+            _stream_output(
+                db,
+                proc.stdout,
+                event_type="process.stdout",
+                session_id=session_id,
+                trace_id=trace_id,
+                process=process,
+                command=command,
+                severity="info",
+                emit_lock=emit_lock,
+            ),
+            _stream_output(
+                db,
+                proc.stderr,
+                event_type="process.stderr",
+                session_id=session_id,
+                trace_id=trace_id,
+                process=process,
+                command=command,
+                severity="warning",
+                emit_lock=emit_lock,
+            ),
+        )
+        exit_code = await proc.wait()
+        ended_at = _utc_now()
+        status = "completed" if exit_code == 0 else "failed"
+        event_type = "process.completed" if exit_code == 0 else "process.failed"
+        await _emit_process_event(
+            db,
+            event_type,
+            session_id=session_id,
+            trace_id=trace_id,
+            source=process,
+            target=command_target,
+            payload={
+                "command": command,
+                "exit_code": exit_code,
+                "started_at": started_at.isoformat() + "Z",
+                "ended_at": ended_at.isoformat() + "Z",
+            },
+            severity="info" if exit_code == 0 else "error",
+        )
+        await complete_openmesh_session(
+            db,
+            session_id=session_id,
+            ended_at=ended_at,
+            status=status,
+            exit_code=exit_code,
+        )
+        print()
+        print(f"OpenMesh session: {session_id}")
+        print(f"OpenMesh trace: {trace_id}")
+        print(f"Exit code: {exit_code}")
+        return exit_code
+
+    return await _with_db(run)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="openmesh", description="Inspect persisted OpenMesh events.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -140,6 +352,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     graph = subparsers.add_parser("graph", help="Show OpenMesh graph relationships.")
     graph.set_defaults(func=_graph)
+
+    run = subparsers.add_parser("run", help="Run and observe a command.")
+    run.add_argument("command", nargs=argparse.REMAINDER, help="Command to run after --.")
+    run.set_defaults(func=_run_command)
 
     return parser
 

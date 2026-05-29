@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import OpenMeshEventRecord
 from ..db.openmesh_events import list_openmesh_events, record_to_event, records_to_events
+from ..db.openmesh_sessions import get_openmesh_session, list_openmesh_sessions, session_to_dict
 from .graph_state import reduce_graph_state
 
 
@@ -70,6 +71,23 @@ async def get_trace(db: AsyncSession, trace_id: str) -> dict | None:
 async def get_graph(db: AsyncSession, limit: int = 1000) -> dict:
     records = await list_openmesh_events(db, limit=limit)
     return reduce_graph_state(records)
+
+
+async def get_sessions(db: AsyncSession, limit: int = 100) -> list[dict]:
+    records = await list_openmesh_sessions(db, limit=limit)
+    return [session_to_dict(record) for record in records]
+
+
+async def get_session(db: AsyncSession, session_id: str) -> dict | None:
+    record = await get_openmesh_session(db, session_id)
+    if not record:
+        return None
+    events = await list_openmesh_events(db, session_id=session_id, limit=1000)
+    session_events = [record_to_event(event) for event in events]
+    return {
+        **session_to_dict(record),
+        "events": sorted(session_events, key=lambda event: event["timestamp"]),
+    }
 
 
 async def get_health(db: AsyncSession) -> dict:

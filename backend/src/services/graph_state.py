@@ -6,6 +6,9 @@ from ..db.models import OpenMeshEventRecord
 
 
 EDGE_TYPES = {
+    "process.started": "spawned",
+    "process.completed": "executed",
+    "process.failed": "executed",
     "tool.call.started": "calls_tool",
     "tool.call.completed": "calls_tool",
     "message.sent": "communicates_with",

@@ -183,6 +183,19 @@ class OpenMeshEventRecord(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class OpenMeshSessionRecord(Base):
+    __tablename__ = "openmesh_sessions"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    session_id = Column(String(100), nullable=False, unique=True, index=True)
+    command = Column(Text, nullable=False)
+    started_at = Column(DateTime, nullable=False, index=True)
+    ended_at = Column(DateTime, nullable=True)
+    status = Column(String(50), nullable=False, default="running", index=True)
+    exit_code = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class Collaboration(Base):
     __tablename__ = "collaborations"
     id = Column(String, primary_key=True, default=gen_id)

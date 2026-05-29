@@ -2,7 +2,7 @@ fastapi==0.135.1
 uvicorn[standard]==0.27.1
 sqlalchemy==2.0.27
 alembic==1.13.1
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.12
 redis==5.0.1
 anthropic==0.84.0
 python-dotenv==1.0.1

@@ -1,4 +1,6 @@
 # OpenMeshAI
+<img width="472" height="109" alt="Screenshot 2026-05-29 at 13 46 14" src="https://github.com/user-attachments/assets/4312a636-d18a-44d4-b8e4-7ac0c98a4768"/>
+
 
 > Open-source observability and control plane for AI agent ecosystems.
 

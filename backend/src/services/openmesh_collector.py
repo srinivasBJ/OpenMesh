@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from fastapi import HTTPException
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.openmesh_events import create_openmesh_event
@@ -16,8 +16,13 @@ REQUIRED_NODE_FIELDS = {"node_id", "node_type", "name"}
 
 class OpenMeshCollector:
     def validate_event(self, event: Dict[str, Any]) -> None:
+        if not isinstance(event, dict):
+            raise HTTPException(status_code=422, detail="OpenMesh event must be a JSON object")
         if not is_openmesh_event(event):
-            raise HTTPException(status_code=422, detail="Invalid OpenMesh event envelope")
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid OpenMesh event envelope: expected spec_version='0.1', event_type, and source",
+            )
         missing = [
             field
             for field in ("event_id", "event_type", "timestamp", "trace_id", "session_id", "payload")
@@ -25,13 +30,20 @@ class OpenMeshCollector:
         ]
         if missing:
             raise HTTPException(status_code=422, detail=f"Missing OpenMesh event fields: {', '.join(missing)}")
+        if not isinstance(event.get("payload"), dict):
+            raise HTTPException(status_code=422, detail="Invalid OpenMesh payload: expected object")
+        if event.get("severity") and event["severity"] not in {"debug", "info", "warning", "error"}:
+            raise HTTPException(status_code=422, detail="Invalid OpenMesh severity")
 
         for node_key in ("source", "target"):
             node = event.get(node_key)
             if node is None and node_key == "target":
                 continue
             if not isinstance(node, dict) or not REQUIRED_NODE_FIELDS.issubset(node.keys()):
-                raise HTTPException(status_code=422, detail=f"Invalid OpenMesh {node_key} node")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid OpenMesh {node_key} node: expected node_id, node_type, and name",
+                )
 
     async def accept(
         self,
@@ -46,6 +58,12 @@ class OpenMeshCollector:
             await db.commit()
         except IntegrityError:
             await db.rollback()
+        except SQLAlchemyError as exc:
+            await db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not persist OpenMesh event: {exc.__class__.__name__}",
+            ) from exc
         if broadcast:
             await manager.broadcast(event)
         return event

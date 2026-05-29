@@ -11,6 +11,7 @@ from uuid import uuid4
 from ..db.session import AsyncSessionLocal
 from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_session
 from ..services.openmesh_collector import collector
+from ..services.openmesh_doctor import run_doctor
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_traces
 from ..shared.openmesh_events import make_openmesh_event
 
@@ -89,6 +90,21 @@ def _print_graph(graph: dict[str, list[dict[str, Any]]]) -> None:
             target = nodes.get(edge["target"], {"name": edge["target"]})
             print(f"{branch} {edge['type']} -> {target['name']}")
         print()
+
+
+def _print_doctor(report: dict[str, Any]) -> None:
+    print("OpenMesh Doctor")
+    print()
+    for check in report["checks"]:
+        print(f"{check['name']}: {check['status']}")
+        detail = check.get("detail")
+        if isinstance(detail, dict):
+            for key, value in detail.items():
+                print(f"  {key}: {value}")
+        elif detail:
+            print(f"  {detail}")
+    print()
+    print(f"Overall: {report['status']}")
 
 
 def _utc_now() -> datetime:
@@ -211,6 +227,15 @@ async def _graph(args: argparse.Namespace) -> int:
     async def run(db):
         graph = await get_graph(db)
         _print_graph(graph)
+
+    return await _with_db(run)
+
+
+async def _doctor(args: argparse.Namespace) -> int:
+    async def run(db):
+        report = await run_doctor(db)
+        _print_doctor(report)
+        return 0 if report["status"] == "OK" else 1
 
     return await _with_db(run)
 
@@ -352,6 +377,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     graph = subparsers.add_parser("graph", help="Show OpenMesh graph relationships.")
     graph.set_defaults(func=_graph)
+
+    doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
+    doctor.set_defaults(func=_doctor)
 
     run = subparsers.add_parser("run", help="Run and observe a command.")
     run.add_argument("command", nargs=argparse.REMAINDER, help="Command to run after --.")

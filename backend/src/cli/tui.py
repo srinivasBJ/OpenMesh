@@ -14,6 +14,16 @@ from ..db.session import AsyncSessionLocal
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_sessions, get_traces
 
 
+OPENMESH_LOGO = r"""
+   ____                  __  ___          __
+  / __ \____  ___  ____ /  |/  /__  _____/ /_
+ / / / / __ \/ _ \/ __ `/ /|_/ / _ \/ ___/ __ \
+/ /_/ / /_/ /  __/ /_/ / /  / /  __(__  ) / / /
+\____/ .___/\___/\__,_/_/  /_/\___/____/_/ /_/
+    /_/
+"""
+
+
 @dataclass
 class TuiSnapshot:
     health: dict[str, Any]
@@ -85,6 +95,15 @@ def _node_status(node: dict[str, Any], sessions: list[dict[str, Any]]) -> str:
     return "observed"
 
 
+def _status_label(status: str) -> str:
+    normalized = status.lower()
+    if normalized in {"active", "running", "online"}:
+        return f"● {status}"
+    if normalized in {"failed", "error"}:
+        return f"✖ {status}"
+    return f"○ {status}"
+
+
 def network_lines(snapshot: TuiSnapshot, limit: int = 80) -> list[str]:
     nodes, outgoing = _node_maps(snapshot)
     if not nodes:
@@ -114,7 +133,8 @@ def network_lines(snapshot: TuiSnapshot, limit: int = 80) -> list[str]:
 def render_plain(snapshot: TuiSnapshot) -> str:
     health = snapshot.health
     lines = [
-        "OPENMESH",
+        OPENMESH_LOGO.strip("\n"),
+        "OPENMESH CONTROL ROOM",
         f"Events {health['events']}  Traces {health['traces']}  Nodes {health['nodes']}  "
         f"Edges {health['edges']}  Sessions {len(snapshot.sessions)}",
         "",
@@ -148,7 +168,7 @@ def agent_process_rows(snapshot: TuiSnapshot) -> list[str]:
     for node in visible:
         rows.append(
             f"{_short(node['name'], 17):<17} "
-            f"{_node_status(node, snapshot.sessions):<9} "
+            f"{_status_label(_node_status(node, snapshot.sessions)):<11} "
             f"e:{node.get('event_count', 0):<3} "
             f"t:{trace_counts.get(node['id'], 0):<2} "
             f"{_time(node.get('last_seen'))}"
@@ -160,7 +180,7 @@ def trace_rows(snapshot: TuiSnapshot, limit: int = 50) -> list[str]:
     if not snapshot.traces:
         return ["No traces yet"]
     return [
-        f"{_short(trace['trace_id'], 15):<15} {trace['status']:<9} "
+        f"{_short(trace['trace_id'], 15):<15} {_status_label(trace['status']):<11} "
         f"{trace['event_count']:>3} {_time(trace['started_at'])}"
         for trace in snapshot.traces[:limit]
     ]
@@ -182,21 +202,31 @@ class Panel(Static):
 class OpenMeshTui(App):
     CSS = """
     Screen {
-        background: #090807;
-        color: #c9b8a0;
+        background: #070605;
+        color: #b8afa2;
     }
 
     #topbar {
-        height: 3;
-        background: #15110d;
-        color: #c96f2d;
+        height: 8;
+        background: #11100e;
+        color: #c56b2c;
         text-style: bold;
-        padding: 0 1;
-        border-bottom: solid #5b321d;
+        padding: 0 2;
+        border-bottom: heavy #7a3f20;
+    }
+
+    #logo-line {
+        color: #c56b2c;
+    }
+
+    #status-line {
+        color: #8f9aa0;
+        text-style: none;
     }
 
     #grid {
         height: 1fr;
+        padding: 1 1 0 1;
     }
 
     .column {
@@ -205,43 +235,58 @@ class OpenMeshTui(App):
 
     .panel {
         height: 1fr;
-        border: solid #4a3428;
-        background: #100d0a;
-        padding: 0 1;
+        border: solid #3b3731;
+        background: #0d0c0a;
+        padding: 0 1 1 1;
     }
 
     .panel:focus {
-        border: solid #c96f2d;
+        border: heavy #c56b2c;
     }
 
     #network-panel {
-        border: solid #9b5127;
+        border: heavy #9b5127;
+        background: #100c09;
+    }
+
+    .panel-title {
+        height: 1;
+        color: #c56b2c;
+        text-style: bold;
+        background: #17130f;
     }
 
     DataTable {
-        background: #100d0a;
-        color: #c9b8a0;
+        background: #0d0c0a;
+        color: #b8afa2;
         height: 1fr;
     }
 
     DataTable > .datatable--header {
-        color: #d7823a;
+        color: #c56b2c;
         text-style: bold;
     }
 
     DataTable > .datatable--cursor {
-        background: #5b321d;
-        color: #f2d2aa;
+        background: #6e3a20;
+        color: #f1d0ad;
+        text-style: bold;
+    }
+
+    DataTable > .datatable--hover {
+        background: #211a14;
     }
 
     #network-body, #event-body {
         height: 1fr;
-        color: #c9b8a0;
+        color: #b8afa2;
+        padding-top: 1;
     }
 
     Footer {
-        background: #15110d;
-        color: #9d8d78;
+        background: #11100e;
+        color: #8f9aa0;
+        border-top: solid #3b3731;
     }
     """
 
@@ -260,17 +305,21 @@ class OpenMeshTui(App):
         self.selected_detail = "Enter inspects the focused row. Network stays visible."
 
     def compose(self) -> ComposeResult:
-        yield Static("OPENMESH  ::  terminal network operations  ::  loading", id="topbar")
+        yield Static("", id="topbar")
         with Horizontal(id="grid"):
             with Vertical(classes="column"):
-                with Panel("Agents / Processes", id="agents-panel", classes="panel"):
+                with Panel("", id="agents-panel", classes="panel"):
+                    yield Static("AGENTS / PROCESSES", classes="panel-title")
                     yield DataTable(id="agents-table")
-                with Panel("Traces", id="traces-panel", classes="panel"):
+                with Panel("", id="traces-panel", classes="panel"):
+                    yield Static("TRACES", classes="panel-title")
                     yield DataTable(id="traces-table")
             with Vertical(classes="column"):
-                with Panel("Network", id="network-panel", classes="panel"):
+                with Panel("", id="network-panel", classes="panel"):
+                    yield Static("NETWORK", classes="panel-title")
                     yield Static("", id="network-body")
-                with Panel("Event Stream", id="events-panel", classes="panel"):
+                with Panel("", id="events-panel", classes="panel"):
+                    yield Static("EVENT STREAM", classes="panel-title")
                     yield Static("", id="event-body")
         yield Footer()
 
@@ -289,9 +338,10 @@ class OpenMeshTui(App):
         self.snapshot = await load_snapshot()
         health = self.snapshot.health
         self.query_one("#topbar", Static).update(
-            f"OPENMESH  events:{health['events']} traces:{health['traces']} "
+            f"[#c56b2c]{OPENMESH_LOGO.strip()}[/]\n"
+            f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [q quit]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -310,7 +360,7 @@ class OpenMeshTui(App):
             table.add_row(
                 _short(node["name"], 28),
                 node["type"],
-                _node_status(node, self.snapshot.sessions),
+                _status_label(_node_status(node, self.snapshot.sessions)),
                 str(node.get("event_count", 0)),
                 f"{_time(node.get('last_seen'))} / t:{trace_counts.get(node['id'], 0)}",
                 key=node["id"],
@@ -323,7 +373,7 @@ class OpenMeshTui(App):
         for trace in self.snapshot.traces:
             table.add_row(
                 _short(trace["trace_id"], 24),
-                trace["status"],
+                _status_label(trace["status"]),
                 str(trace["event_count"]),
                 _time(trace["started_at"]),
                 key=trace["trace_id"],

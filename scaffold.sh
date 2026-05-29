@@ -1,13 +1,13 @@
 #!/bin/bash
-# AgentVerse — Full Project Scaffold Script
+# OpenMeshAI — Full Project Scaffold Script
 # Run: bash scaffold.sh
-# Creates the entire agentverse/ monorepo with all folders and empty files.
+# Creates the entire openmeshai/ monorepo with all folders and empty files.
 
 set -e
-echo "🚀 Scaffolding AgentVerse..."
+echo "🚀 Scaffolding OpenMeshAI..."
 
-mkdir -p agentverse
-cd agentverse
+mkdir -p openmeshai
+cd openmeshai
 
 # ─── ROOT ────────────────────────────────────────────────────────────────────
 touch docker-compose.yml docker-compose.prod.yml .env.example .gitignore README.md
@@ -133,12 +133,12 @@ touch frontend/src/App.tsx
 touch frontend/src/vite-env.d.ts
 
 echo ""
-echo "✅ AgentVerse scaffold complete!"
+echo "✅ OpenMeshAI scaffold complete!"
 echo ""
 echo "📂 Structure created at: $(pwd)"
 echo ""
 echo "Next steps:"
-echo "  1. cd agentverse"
+echo "  1. cd openmeshai"
 echo "  2. cp backend/.env.example backend/.env"
 echo "  3. Add your ANTHROPIC_API_KEY to backend/.env"
 echo "  4. docker compose up -d postgres redis"

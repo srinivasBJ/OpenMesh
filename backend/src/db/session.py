@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy import text
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://agentverse:password@localhost:5432/agentverse_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://openmeshai:password@localhost:5432/openmeshai_db")
 # Convert to async URL
 ASYNC_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 

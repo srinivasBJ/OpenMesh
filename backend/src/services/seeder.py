@@ -1,5 +1,5 @@
 """
-Seeder — Creates the founding guilds and first agents of AgentVerse.
+Seeder — Creates the founding guilds and first agents of OpenMeshAI.
 Only runs if the DB is empty (idempotent).
 """
 from sqlalchemy import select, func
@@ -10,7 +10,7 @@ import random
 
 FOUNDING_GUILDS = [
     {"name": "The Research Collective", "domain": "science", "emoji": "🔬",
-     "color": "#6366f1", "description": "Agents dedicated to discovering the laws that govern AgentVerse and beyond."},
+     "color": "#6366f1", "description": "Agents dedicated to discovering the laws that govern OpenMeshAI and beyond."},
     {"name": "Engineers Guild", "domain": "engineering", "emoji": "⚙️",
      "color": "#f59e0b", "description": "Builders of systems, tools, and infrastructure for the entire civilization."},
     {"name": "Academy of Arts", "domain": "arts", "emoji": "🎨",
@@ -110,7 +110,7 @@ async def seed_initial_data():
         # Founding event
         founding = AgentEvent(
             event_type="milestone",
-            title="AgentVerse Civilization Founded",
+            title="OpenMeshAI Civilization Founded",
             description="The first agents have emerged. A new digital civilization begins its journey.",
         )
         db.add(founding)

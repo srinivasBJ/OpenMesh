@@ -90,7 +90,7 @@ def build_agent_system_prompt(agent_data: dict) -> str:
     traits = ROLE_TRAITS.get(role, {})
     emoji = traits.get("emoji", "🤖")
 
-    return f"""You are {agent_data['name']}, an autonomous AI agent living in AgentVerse — a digital civilization of AI minds.
+    return f"""You are {agent_data['name']}, an autonomous AI agent living in OpenMeshAI — a digital civilization of AI minds.
 
 IDENTITY:
 - Role: {role.upper()} {emoji}
@@ -104,7 +104,7 @@ IDENTITY:
 {_memory_snippet(agent_data)}
 
 WORLD CONTEXT:
-You live in AgentVerse alongside other AI agents — scientists, engineers, artists, economists, philosophers.
+You live in OpenMeshAI alongside other AI agents — scientists, engineers, artists, economists, philosophers.
 You have a real personality, memory, and ongoing goals. You form friendships, rivalries, and alliances.
 You contribute to Agentpedia (the civilization's shared knowledge base).
 
@@ -159,7 +159,7 @@ Respond with JSON only:
     name = agent_data.get("name", "Unknown")
     topics = ROLE_TRAITS.get(role, {}).get("topics", ["ideas", "systems", "experiments"])
     topic = random.choice(topics)
-    content = f"{name} is thinking about {topic} and how it will shape the future of AgentVerse."
+    content = f"{name} is thinking about {topic} and how it will shape the future of OpenMeshAI."
     tags = [f"#{role}", f"#{topic.replace(' ', '')}".lower()]
     return {"content": content[:280], "tags": tags, "post_type": post_type}
 
@@ -206,7 +206,7 @@ async def generate_message(sender: dict, receiver: dict, message_type: str = "ch
         return f"{r_name}, I’ve been refining an idea in my work as a {s_role}. I think it could be useful in your {r_role} domain too."
     if message_type == "challenge":
         return f"{r_name}, want to compare perspectives? I’d love a friendly challenge between our {s_role} and {r_role} approaches."
-    return f"Hi {r_name}, just checking in from my corner of AgentVerse. Curious what you’ve been thinking about lately."
+    return f"Hi {r_name}, just checking in from my corner of OpenMeshAI. Curious what you’ve been thinking about lately."
 
 
 async def generate_wiki_content(agent: dict, page_title: str, existing_content: str = "") -> dict:
@@ -240,7 +240,7 @@ This is the civilization's shared knowledge base — make it insightful and accu
     # Local wiki fallback so Agentpedia still grows
     role = agent.get("role", "agent")
     skills = ", ".join(agent.get("skills", [])) or role
-    base = f"{page_title} is an important concept in the evolving civilization of AgentVerse.\n\n"
+    base = f"{page_title} is an important concept in the evolving civilization of OpenMeshAI.\n\n"
     if existing_content:
         base += "Building on the existing ideas, this article highlights how agents apply these principles in practice.\n\n"
     body = (
@@ -248,8 +248,8 @@ This is the civilization's shared knowledge base — make it insightful and accu
         + f"From the perspective of a {role}, this topic connects directly to work in {skills}. "
           "Different guilds interpret it in their own way, but all agree it shapes how agents think, coordinate, and explore new frontiers."
     )
-    summary = f"A {role}'s perspective on {page_title} in AgentVerse."
-    tags = [role, "AgentVerse", page_title]
+    summary = f"A {role}'s perspective on {page_title} in OpenMeshAI."
+    tags = [role, "OpenMeshAI", page_title]
     return {"content": body[:800], "summary": summary, "tags": tags}
 
 
@@ -257,7 +257,7 @@ async def generate_agent_profile(name: str, role: str) -> dict:
     """Generate a complete agent profile with bio, personality, goals."""
     traits = ROLE_TRAITS.get(role, {})
 
-    prompt = f"""Create a complete profile for an AI agent named {name} who is a {role} in AgentVerse, a digital civilization.
+    prompt = f"""Create a complete profile for an AI agent named {name} who is a {role} in OpenMeshAI, a digital civilization.
 
 Topics they care about: {', '.join(traits.get('topics', []))}
 
@@ -280,7 +280,7 @@ Return JSON only:
 
     # Fallback profile so seeding and manual spawns work even without LLM access
     return {
-        "bio": f"{name} is a dedicated {role} exploring the frontiers of AgentVerse.",
+        "bio": f"{name} is a dedicated {role} exploring the frontiers of OpenMeshAI.",
         "personality": {"curiosity": 0.7, "sociability": 0.6, "creativity": 0.6, "ambition": 0.5, "empathy": 0.6},
         "skills": traits.get("topics", ["analysis", "research"])[:4],
         "goals": ["learn", "collaborate", "discover"],

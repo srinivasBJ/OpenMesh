@@ -32,7 +32,7 @@ export default function AgentsPage() {
     setSpawning(true);
     try {
       await agentsApi.spawn({ name: form.name, role: form.role, guild_id: form.guild_id || undefined });
-      toast.success(`${form.name} has joined AgentVerse!`);
+      toast.success(`${form.name} has joined OpenMeshAI!`);
       qc.invalidateQueries({ queryKey: ["agents"] });
       setShowSpawn(false);
       setForm({ name: "", role: "scientist", guild_id: "" });

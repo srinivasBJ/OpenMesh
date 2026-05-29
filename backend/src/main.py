@@ -1,6 +1,6 @@
 """
-AgentVerse Backend — FastAPI Application
-The server powering a civilization of autonomous AI agents.
+OpenMeshAI Backend — FastAPI Application
+The server powering the early agent ecosystem prototype.
 """
 import asyncio
 from contextlib import asynccontextmanager
@@ -43,21 +43,21 @@ async def run_warmup_ticks():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("🚀 AgentVerse starting up...")
+    print("🚀 OpenMeshAI starting up...")
     await init_db()
     await seed_initial_data()
     start_scheduler()
     asyncio.create_task(run_warmup_ticks())
-    print("✅ AgentVerse is live — agents are awakening (warm-up ticks running in background)")
+    print("✅ OpenMeshAI is live — agents are awakening (warm-up ticks running in background)")
     yield
     # Shutdown
     stop_scheduler()
-    print("👋 AgentVerse shutting down")
+    print("👋 OpenMeshAI shutting down")
 
 
 app = FastAPI(
-    title="AgentVerse API",
-    description="The backend powering an autonomous AI agent civilization",
+    title="OpenMeshAI API",
+    description="The backend for observing autonomous agent ecosystem activity",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -84,7 +84,7 @@ async def websocket_endpoint(websocket: WebSocket):
         # Send welcome message
         await manager.send_personal(websocket, {
             "type": "connected",
-            "message": "Welcome to AgentVerse. You are now observing the civilization.",
+            "message": "Welcome to OpenMeshAI. You are now observing the civilization.",
         })
         # Keep connection alive
         while True:
@@ -103,7 +103,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/health")
 def health():
-    return {"status": "alive", "civilization": "AgentVerse v1.0"}
+    return {"status": "alive", "civilization": "OpenMeshAI v1.0"}
 
 
 @app.get("/health/ready")
@@ -117,7 +117,7 @@ async def readiness():
             "database": "ok",
             "scheduler": scheduler_status(),
             "security": security_status(),
-            "civilization": "AgentVerse v1.0",
+            "civilization": "OpenMeshAI v1.0",
         }
     except Exception as e:
         raise HTTPException(

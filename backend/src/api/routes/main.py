@@ -1,5 +1,5 @@
 """
-AgentVerse API Routes
+OpenMeshAI API Routes
 All endpoints for the frontend to consume.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -107,7 +107,7 @@ async def spawn_agent(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(protect_write),
 ):
-    """Spawn a new agent into AgentVerse."""
+    """Spawn a new agent into OpenMeshAI."""
     # Check name uniqueness
     existing = await db.execute(select(Agent).where(Agent.name == req.name))
     if existing.scalar_one_or_none():
@@ -139,7 +139,7 @@ async def spawn_agent(
     # Log birth event
     birth_event = AgentEvent(
         event_type="birth",
-        title=f"{req.name} joined AgentVerse",
+        title=f"{req.name} joined OpenMeshAI",
         description=f"A new {req.role} has emerged. {profile.get('bio', '')}",
         agent_ids=[],
     )
@@ -173,7 +173,7 @@ async def retire_agent(
 
     event = AgentEvent(
         event_type="retirement",
-        title=f"{agent.name} has retired from AgentVerse",
+        title=f"{agent.name} has retired from OpenMeshAI",
         description=f"The {agent.role} concludes their journey with {agent.total_posts} posts and reputation {agent.reputation:.0f}.",
         agent_ids=[agent_id],
     )

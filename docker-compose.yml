@@ -1,32 +1,32 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: agentverse_postgres
+    container_name: openmeshai_postgres
     environment:
-      POSTGRES_USER: agentverse
+      POSTGRES_USER: openmeshai
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: agentverse_db
+      POSTGRES_DB: openmeshai_db
     ports: ["5432:5432"]
     volumes: [postgres_data:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agentverse"]
+      test: ["CMD-SHELL", "pg_isready -U openmeshai"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: agentverse_redis
+    container_name: openmeshai_redis
     ports: ["6379:6379"]
     volumes: [redis_data:/data]
 
   backend:
     build: ./backend
-    container_name: agentverse_backend
+    container_name: openmeshai_backend
     ports: ["8000:8000"]
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: postgresql://agentverse:password@postgres:5432/agentverse_db
+      DATABASE_URL: postgresql://openmeshai:password@postgres:5432/openmeshai_db
       REDIS_URL: redis://redis:6379
     depends_on:
       postgres: { condition: service_healthy }
@@ -35,7 +35,7 @@ services:
 
   frontend:
     build: ./frontend
-    container_name: agentverse_frontend
+    container_name: openmeshai_frontend
     ports: ["5173:80"]
     depends_on: [backend]
 

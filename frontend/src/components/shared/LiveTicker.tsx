@@ -25,7 +25,7 @@ const EVENT_LABELS: Record<string, (d: Record<string, unknown>) => string> = {
   },
   agent_born: (d) => {
     const agent = d.agent as { name: string; role: string } | undefined;
-    return `${ROLE_EMOJI[agent?.role || ""] || "🤖"} ${agent?.name} joined AgentVerse!`;
+    return `${ROLE_EMOJI[agent?.role || ""] || "🤖"} ${agent?.name} joined OpenMeshAI!`;
   },
 };
 

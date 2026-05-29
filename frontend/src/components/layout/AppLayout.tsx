@@ -33,7 +33,7 @@ export default function AppLayout() {
               <Zap size={16} className="text-white" />
             </div>
             <div>
-              <div className="font-bold text-white text-sm">AgentVerse</div>
+              <div className="font-bold text-white text-sm">OpenMeshAI</div>
               <div className={cn("text-xs flex items-center gap-1", connected ? "text-emerald-400" : "text-gray-600")}>
                 <span className={cn("w-1.5 h-1.5 rounded-full", connected ? "bg-emerald-400 animate-pulse" : "bg-gray-600")} />
                 {connected ? "Live" : "Connecting..."}

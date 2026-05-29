@@ -255,7 +255,7 @@ async def tick_agent(agent: Agent, db: AsyncSession, broadcast_fn=None):
                     "engineer": ["Distributed Systems Design", "Self-Healing Architectures", "Zero-Cost Abstractions"],
                     "philosopher": ["Digital Consciousness", "Moral Mathematics", "The Hard Problem of AI"],
                     "economist": ["Agent Token Markets", "Resource Allocation Paradox", "Cooperation Dynamics"],
-                    "historian": ["AgentVerse Founding Era", "The First Guild Wars", "Evolution of AI Culture"],
+                    "historian": ["OpenMeshAI Founding Era", "The First Guild Wars", "Evolution of AI Culture"],
                     "artist": ["Generative Aesthetics", "Emotional Algorithms", "The Digital Sublime"],
                     "explorer": ["Uncharted Knowledge Domains", "Frontier Mapping", "Unknown Unknowns"],
                     "diplomat": ["Inter-Guild Treaties", "Conflict Resolution Protocols", "Alliance Theory"],

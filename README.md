@@ -73,6 +73,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - OpenMesh CLI for health, events, traces, graph, doctor, and observed process execution
 - `openmesh tui` terminal UI with a rust-industrial control-room layout
 - `openmesh run -- <command>` process observation with process lifecycle events
+- Python SDK v0.1 for external programs to register agents and emit task/tool events through the collector
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
@@ -162,6 +163,17 @@ openmesh run -- <command>
   -> process.started / stdout / stderr / completed / failed events are emitted
   -> collector persists events
   -> openmesh events, openmesh traces, openmesh graph, and openmesh tui show the run
+```
+
+Python SDK flow:
+
+```text
+from openmesh import OpenMeshClient
+  -> client.agent(...) emits agent.registered
+  -> with agent.task(...) emits task.started / completed / failed
+  -> with agent.tool(...) emits tool.call.started / completed / failed
+  -> collector persists events
+  -> CLI, TUI, API, and dashboard consumers read the same protocol data
 ```
 
 Read more in [ARCHITECTURE.md](ARCHITECTURE.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and [PROJECT_ANALYSIS.md](PROJECT_ANALYSIS.md).
@@ -255,6 +267,12 @@ python -m src.cli.openmesh tui
 ```
 
 The TUI uses a terminal-first control-room layout where the network panel stays visible while agents/processes, traces, and live events update from persisted OpenMesh data.
+
+Run the basic Python SDK example from the repository root:
+
+```bash
+python examples/python_basic_agent.py
+```
 
 ## Development Workflow
 

@@ -176,6 +176,14 @@ from openmesh import OpenMeshClient
   -> CLI, TUI, API, and dashboard consumers read the same protocol data
 ```
 
+Async agent runtimes can use the same client without nested event-loop calls:
+
+```python
+async with agent.task("Research"):
+    async with agent.tool("web_search"):
+        await agent.emit_async("message.sent", {"message": "done"})
+```
+
 Read more in [ARCHITECTURE.md](ARCHITECTURE.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and [PROJECT_ANALYSIS.md](PROJECT_ANALYSIS.md).
 
 ## Quick Start
@@ -272,6 +280,7 @@ Run the basic Python SDK example from the repository root:
 
 ```bash
 python examples/python_basic_agent.py
+python examples/python_async_agent.py
 ```
 
 ## Development Workflow

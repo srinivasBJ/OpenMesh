@@ -110,5 +110,69 @@ class OpenMeshSdkTests(unittest.TestCase):
         self.assertEqual(tool_events[0]["trace_id"], tool_events[1]["trace_id"])
 
 
+class OpenMeshAsyncSdkTests(unittest.IsolatedAsyncioTestCase):
+    async def collect_events(self, action):
+        sessions = []
+
+        def session_factory():
+            session = FakeAsyncSession()
+            sessions.append(session)
+            return FakeSessionContext(session)
+
+        with patch("src.sdk.client.AsyncSessionLocal", session_factory):
+            await action()
+
+        records = [session.added[0] for session in sessions if session.added]
+        return [record_to_event(record) for record in records]
+
+    async def test_async_task_and_tool_emit_on_existing_event_loop(self):
+        async def action():
+            client = OpenMeshClient(session_id="sess_async_sdk", broadcast=False)
+            agent = client.agent(id="async-research-agent", name="Async Research Agent")
+            async with agent.task("Research vector databases"):
+                async with agent.tool("web_search"):
+                    await agent.emit_async("message.sent", {"message": "async summary ready"})
+
+        events = await self.collect_events(action)
+        event_types = [event["event_type"] for event in events]
+        trace_ids = {event["trace_id"] for event in events}
+
+        self.assertEqual(
+            event_types,
+            [
+                "agent.registered",
+                "task.started",
+                "tool.call.started",
+                "message.sent",
+                "tool.call.completed",
+                "task.completed",
+            ],
+        )
+        self.assertEqual(len(trace_ids), 1)
+        self.assertEqual(events[0]["session_id"], "sess_async_sdk")
+
+    async def test_async_tool_failure_emits_failed_and_reraises(self):
+        class ExpectedError(RuntimeError):
+            pass
+
+        async def action():
+            client = OpenMeshClient(session_id="sess_async_sdk", broadcast=False)
+            agent = client.agent(id="async-research-agent", name="Async Research Agent")
+            with self.assertRaises(ExpectedError):
+                async with agent.task("Research vector databases"):
+                    async with agent.tool("web_search"):
+                        raise ExpectedError("search failed")
+
+        events = await self.collect_events(action)
+        event_types = [event["event_type"] for event in events]
+        tool_failed = [event for event in events if event["event_type"] == "tool.call.failed"][0]
+        task_failed = [event for event in events if event["event_type"] == "task.failed"][0]
+
+        self.assertIn("tool.call.failed", event_types)
+        self.assertIn("task.failed", event_types)
+        self.assertEqual(tool_failed["severity"], "error")
+        self.assertEqual(task_failed["payload"]["error_type"], "ExpectedError")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -272,6 +272,7 @@ python -m src.cli.openmesh run -- python3 -c "print('hello openmesh')"
 python -m src.cli.openmesh events
 python -m src.cli.openmesh traces
 python -m src.cli.openmesh graph
+python -m src.cli.openmesh discover
 python -m src.cli.openmesh tui
 ```
 

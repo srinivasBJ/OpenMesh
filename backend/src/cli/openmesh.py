@@ -11,6 +11,7 @@ from uuid import uuid4
 from ..db.session import AsyncSessionLocal
 from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_session
 from ..services.openmesh_collector import collector
+from ..services.discovery import get_discovery
 from ..services.openmesh_doctor import run_doctor
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_traces
 from ..shared.openmesh_events import make_openmesh_event
@@ -127,6 +128,27 @@ def _print_integrations(integrations: list[dict[str, Any]]) -> None:
             f"{_integration_symbol(integration)} {integration['name']}{suffix} "
             f"- {integration['status_label']} - version: {version}"
         )
+
+
+def _print_discovery(discovery: dict[str, list[dict[str, Any]]]) -> None:
+    sections = [
+        ("Frameworks", "frameworks"),
+        ("Agents", "agents"),
+        ("Tools", "tools"),
+        ("Processes", "processes"),
+        ("Services", "services"),
+    ]
+    for title, key in sections:
+        print(title)
+        print()
+        entries = discovery.get(key, [])
+        if not entries:
+            print("  none observed")
+        for entry in entries:
+            marker = "✓" if key == "frameworks" else "-"
+            detail = f"{entry['status']} · events:{entry['event_count']} · relationships:{entry['relationship_count']}"
+            print(f"{marker} {entry['name']} ({detail})")
+        print()
 
 
 def _utc_now() -> datetime:
@@ -265,6 +287,14 @@ async def _doctor(args: argparse.Namespace) -> int:
 async def _integrations(args: argparse.Namespace) -> int:
     _print_integrations(list_integrations())
     return 0
+
+
+async def _discover(args: argparse.Namespace) -> int:
+    async def run(db):
+        discovery = await get_discovery(db, limit=args.limit)
+        _print_discovery(discovery)
+
+    return await _with_db(run)
 
 
 async def _run_command(args: argparse.Namespace) -> int:
@@ -420,6 +450,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     integrations = subparsers.add_parser("integrations", help="Show OpenMesh framework integration status.")
     integrations.set_defaults(func=_integrations)
+
+    discover = subparsers.add_parser("discover", help="Show observed OpenMesh ecosystem registry.")
+    discover.add_argument("--limit", type=int, default=5000, help="Maximum events to derive discovery from.")
+    discover.set_defaults(func=_discover)
 
     tui = subparsers.add_parser("tui", help="Launch the OpenMesh terminal UI.")
     tui.add_argument("--once", action="store_true", help="Render one terminal capture and exit.")

@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from src.db.openmesh_events import create_openmesh_event, record_to_event
 from src.db.openmesh_sessions import complete_openmesh_session, create_openmesh_session, session_to_dict
+from src.services.discovery import build_discovery
 from src.services.graph_state import reduce_graph_state
 from src.services.openmesh_collector import OpenMeshCollector
 from src.services.openmesh_queries import trace_summary
@@ -201,6 +202,50 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(graph["edges"][0]["type"], "transitions_to")
         self.assertEqual(graph["nodes"][0]["runtime"], "langgraph")
 
+    def test_discovery_registry_groups_observed_entities(self):
+        tool_event = self.make_event("tool.call.completed")
+        tool_event["target"] = {
+            "node_id": "tool:web_search",
+            "node_type": "tool",
+            "name": "web_search",
+            "runtime": "openmesh.sdk.python",
+        }
+        framework_event = self.make_event("node.transition")
+        framework_event["source"] = {
+            "node_id": "langgraph:basic:Node A",
+            "node_type": "service",
+            "name": "Node A",
+            "runtime": "langgraph",
+            "metadata": {"framework": "langgraph"},
+        }
+        framework_event["target"] = {
+            "node_id": "langgraph:basic:Node B",
+            "node_type": "service",
+            "name": "Node B",
+            "runtime": "langgraph",
+            "metadata": {"framework": "langgraph"},
+        }
+        process_event = self.make_event("process.started")
+        process_event["source"] = CLI_NODE
+        process_event["target"] = process_node("sess_test", "python hello.py")
+        records = [
+            SimpleNamespace(
+                event_type=event["event_type"],
+                timestamp=datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")).replace(tzinfo=None),
+                source_json=event["source"],
+                target_json=event.get("target"),
+                severity=event["severity"],
+            )
+            for event in (tool_event, framework_event, process_event)
+        ]
+
+        discovery = build_discovery(records)
+
+        self.assertEqual(discovery["frameworks"][0]["name"], "LangGraph")
+        self.assertEqual(discovery["tools"][0]["name"], "web_search")
+        self.assertTrue(any(entry["name"] == "python hello.py" for entry in discovery["processes"]))
+        self.assertTrue(any(entry["name"] == "Research Agent" for entry in discovery["agents"]))
+
     async def test_session_creation_and_completion(self):
         db = FakeSessionStore()
         started = datetime.utcnow()
@@ -267,6 +312,7 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             }],
             sessions=[],
             integrations=[],
+            discovery={"frameworks": [], "agents": [], "tools": [], "processes": [], "services": []},
             loaded_at=datetime.utcnow(),
         )
 

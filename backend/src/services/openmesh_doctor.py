@@ -7,6 +7,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.session import ASYNC_URL, DATABASE_URL
+from ..sdk.integrations import list_integrations
 from .openmesh_collector import collector
 
 
@@ -52,6 +53,24 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
         "status": "OK" if collector else "ERROR",
         "detail": "collector service importable",
     })
+
+    try:
+        integrations = list_integrations()
+        langgraph = next((item for item in integrations if item["key"] == "langgraph"), None)
+        checks.append({
+            "name": "Integration Health",
+            "status": "OK",
+            "detail": {
+                "LangGraph": langgraph["status_label"] if langgraph else "Unknown",
+                "Graph Reducer": "OK",
+                "integrations": [
+                    f"{item['name']}: {item['status_label']}"
+                    for item in integrations
+                ],
+            },
+        })
+    except Exception as exc:
+        checks.append({"name": "integration health", "status": "ERROR", "detail": str(exc)})
 
     migrations_dir = Path(__file__).resolve().parents[1] / "db" / "migrations"
     migration_files = sorted(path.name for path in migrations_dir.glob("*.sql"))

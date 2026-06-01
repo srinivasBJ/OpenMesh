@@ -14,6 +14,7 @@ from ..services.openmesh_collector import collector
 from ..services.openmesh_doctor import run_doctor
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_traces
 from ..shared.openmesh_events import make_openmesh_event
+from ..sdk.integrations import list_integrations
 from .tui import run_tui
 
 
@@ -106,6 +107,26 @@ def _print_doctor(report: dict[str, Any]) -> None:
             print(f"  {detail}")
     print()
     print(f"Overall: {report['status']}")
+
+
+def _integration_symbol(integration: dict[str, Any]) -> str:
+    if integration.get("active") or integration.get("available"):
+        return "✓"
+    return "○"
+
+
+def _print_integrations(integrations: list[dict[str, Any]]) -> None:
+    print("Installed Integrations")
+    print()
+    for integration in integrations:
+        version = integration.get("version") or "-"
+        suffix = ""
+        if integration.get("status") == "planned":
+            suffix = " (planned)"
+        print(
+            f"{_integration_symbol(integration)} {integration['name']}{suffix} "
+            f"- {integration['status_label']} - version: {version}"
+        )
 
 
 def _utc_now() -> datetime:
@@ -239,6 +260,11 @@ async def _doctor(args: argparse.Namespace) -> int:
         return 0 if report["status"] == "OK" else 1
 
     return await _with_db(run)
+
+
+async def _integrations(args: argparse.Namespace) -> int:
+    _print_integrations(list_integrations())
+    return 0
 
 
 async def _run_command(args: argparse.Namespace) -> int:
@@ -391,6 +417,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
     doctor.set_defaults(func=_doctor)
+
+    integrations = subparsers.add_parser("integrations", help="Show OpenMesh framework integration status.")
+    integrations.set_defaults(func=_integrations)
 
     tui = subparsers.add_parser("tui", help="Launch the OpenMesh terminal UI.")
     tui.add_argument("--once", action="store_true", help="Render one terminal capture and exit.")

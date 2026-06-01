@@ -2,7 +2,7 @@
 <img width="472" height="109" alt="Screenshot 2026-05-29 at 13 46 14" src="https://github.com/user-attachments/assets/4312a636-d18a-44d4-b8e4-7ac0c98a4768"/>
 
 
-> Open-source observability and control plane for AI agent ecosystems.
+> Open-source observability and control plane for AI agent frameworks and ecosystems.
 
 [![CI](https://github.com/srinivasBJ/OpenMeshAI/actions/workflows/ci.yml/badge.svg)](https://github.com/srinivasBJ/OpenMeshAI/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
@@ -11,7 +11,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-OpenMeshAI is an open-source platform for observing, understanding, and eventually managing AI agent ecosystems.
+OpenMeshAI is an open-source platform for observing, understanding, and eventually managing AI agent frameworks and ecosystems.
 
 It is not a chatbot. It is not intended to remain a simple multi-agent simulator. The current codebase is an early full-stack prototype that already models agent identity, memory, guilds, social activity, event timelines, WebSocket updates, and scheduled orchestration. The long-term product direction is an agent mesh platform: identity layer, runtime layer, social layer, observability layer, and collaboration graph for AI systems.
 

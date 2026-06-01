@@ -266,6 +266,7 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "payload": {},
             }],
             sessions=[],
+            integrations=[],
             loaded_at=datetime.utcnow(),
         )
 

@@ -21,6 +21,7 @@ from ...shared.openmesh_events import agent_node, make_openmesh_event
 from ...services.openmesh_collector import collector
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
 from ...services.openmesh_queries import get_graph, get_session, get_sessions, get_trace, get_traces
+from ...sdk.integrations import list_integrations
 
 router = APIRouter()
 
@@ -484,6 +485,11 @@ async def get_openmesh_session(session_id: str, db: AsyncSession = Depends(get_d
     if not session:
         raise HTTPException(404, "Session not found")
     return session
+
+
+@router.get("/openmesh/integrations")
+async def get_openmesh_integrations():
+    return {"integrations": list_integrations()}
 
 
 # ── STATS ─────────────────────────────────────────────────────────────────────

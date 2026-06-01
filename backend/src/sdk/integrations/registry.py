@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from importlib.metadata import PackageNotFoundError, version
 from importlib.util import find_spec
 from typing import Optional
 
@@ -34,17 +35,24 @@ def mark_integration_active(key: str) -> None:
 
 
 def list_integrations() -> list[dict[str, object]]:
-    return [integration_status(key) for key in sorted(INTEGRATIONS)]
+    return [integration_status(key) for key in INTEGRATIONS]
 
 
 def integration_status(key: str) -> dict[str, object]:
     spec = INTEGRATIONS[key]
     available = find_spec(spec.package) is not None
+    package_version: Optional[str] = None
+    if available:
+        try:
+            package_version = version(spec.package)
+        except PackageNotFoundError:
+            package_version = None
     data = asdict(spec)
     data.update(
         {
             "available": available,
             "active": key in _active_integrations,
+            "version": package_version,
             "status_label": _status_label(spec, available),
         }
     )

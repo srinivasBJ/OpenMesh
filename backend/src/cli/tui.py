@@ -12,6 +12,7 @@ from textual.widgets import DataTable, Footer, Static
 
 from ..db.session import AsyncSessionLocal
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_sessions, get_traces
+from ..sdk.integrations import list_integrations
 
 
 OPENMESH_LOGO = r"""
@@ -31,6 +32,7 @@ class TuiSnapshot:
     traces: list[dict[str, Any]]
     events: list[dict[str, Any]]
     sessions: list[dict[str, Any]]
+    integrations: list[dict[str, Any]]
     loaded_at: datetime
 
 
@@ -42,6 +44,7 @@ async def load_snapshot() -> TuiSnapshot:
             traces=await get_traces(db, limit=1000),
             events=await get_events(db, limit=100),
             sessions=await get_sessions(db, limit=1000),
+            integrations=list_integrations(),
             loaded_at=datetime.utcnow(),
         )
 
@@ -136,7 +139,7 @@ def render_plain(snapshot: TuiSnapshot) -> str:
         OPENMESH_LOGO.strip("\n"),
         "OPENMESH CONTROL ROOM",
         f"Events {health['events']}  Traces {health['traces']}  Nodes {health['nodes']}  "
-        f"Edges {health['edges']}  Sessions {len(snapshot.sessions)}",
+        f"Edges {health['edges']}  Sessions {len(snapshot.sessions)}  Integrations {len(snapshot.integrations)}",
         "",
         "┌─ Agents / Processes ─────────────┬─ Network ───────────────────────┐",
     ]
@@ -146,9 +149,9 @@ def render_plain(snapshot: TuiSnapshot) -> str:
         left = nodes[index] if index < len(nodes) else ""
         right = network[index] if index < len(network) else ""
         lines.append(f"│ {_short(left, 34):<34} │ {_short(right, 34):<34} │")
-    lines.append("├─ Traces ─────────────────────────┼─ Event Stream ──────────────────┤")
+    lines.append("├─ Traces ─────────────────────────┼─ Event Stream / Integrations ───┤")
     traces = trace_rows(snapshot, limit=8)
-    events = event_rows(snapshot, limit=8)
+    events = event_rows(snapshot, limit=5) + ["", "Integrations"] + integration_rows(snapshot)
     for index in range(max(len(traces), len(events), 1)):
         left = traces[index] if index < len(traces) else ""
         right = events[index] if index < len(events) else ""
@@ -193,6 +196,22 @@ def event_rows(snapshot: TuiSnapshot, limit: int = 50) -> list[str]:
         f"{_time(event.get('timestamp'))} {_short(event['event_type'], 19)}"
         for event in snapshot.events[:limit]
     ]
+
+
+def integration_rows(snapshot: TuiSnapshot) -> list[str]:
+    if not snapshot.integrations:
+        return ["No integrations registered"]
+    rows = []
+    for integration in snapshot.integrations:
+        symbol = "✓" if integration.get("available") or integration.get("active") else "○"
+        version = integration.get("version") or "-"
+        planned = " planned" if integration.get("status") == "planned" else ""
+        rows.append(
+            f"{symbol} {_short(str(integration['name']), 14):<14} "
+            f"{_short(str(integration['status_label']), 11):<11} "
+            f"v:{version}{planned}"
+        )
+    return rows
 
 
 class Panel(Static):
@@ -295,6 +314,7 @@ class OpenMeshTui(App):
         ("2", "focus_panel('traces')", "Traces"),
         ("3", "focus_panel('network')", "Graph"),
         ("4", "focus_panel('events')", "Events"),
+        ("5", "show_integrations", "Integrations"),
         ("enter", "inspect_selected", "Inspect"),
         ("q", "quit", "Quit"),
     ]
@@ -303,6 +323,7 @@ class OpenMeshTui(App):
         super().__init__()
         self.snapshot: TuiSnapshot | None = None
         self.selected_detail = "Enter inspects the focused row. Network stays visible."
+        self.lower_right_mode = "events"
 
     def compose(self) -> ComposeResult:
         yield Static("", id="topbar")
@@ -319,7 +340,7 @@ class OpenMeshTui(App):
                     yield Static("NETWORK", classes="panel-title")
                     yield Static("", id="network-body")
                 with Panel("", id="events-panel", classes="panel"):
-                    yield Static("EVENT STREAM", classes="panel-title")
+                    yield Static("EVENT STREAM", id="event-title", classes="panel-title")
                     yield Static("", id="event-body")
         yield Footer()
 
@@ -341,7 +362,8 @@ class OpenMeshTui(App):
             f"[#c56b2c]{OPENMESH_LOGO.strip()}[/]\n"
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [q quit][/]"
+            "observability for agent frameworks  "
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -385,6 +407,11 @@ class OpenMeshTui(App):
 
     def _refresh_events(self) -> None:
         assert self.snapshot is not None
+        if self.lower_right_mode == "integrations":
+            self.query_one("#event-title", Static).update("INTEGRATIONS")
+            self.query_one("#event-body", Static).update("\n".join(integration_rows(self.snapshot)))
+            return
+        self.query_one("#event-title", Static).update("EVENT STREAM")
         self.query_one("#event-body", Static).update("\n".join(event_rows(self.snapshot, limit=50)))
 
     def action_focus_panel(self, panel: str) -> None:
@@ -394,7 +421,15 @@ class OpenMeshTui(App):
             "network": "#network-body",
             "events": "#event-body",
         }[panel]
+        if panel == "events":
+            self.lower_right_mode = "events"
+            self._refresh_events()
         self.query_one(target, Widget).focus()
+
+    def action_show_integrations(self) -> None:
+        self.lower_right_mode = "integrations"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
 
     def action_inspect_selected(self) -> None:
         focused = self.focused

@@ -155,6 +155,39 @@ Exit criteria:
 - Developers can connect local agents to OpenMeshAI without writing raw HTTP calls.
 - CLI-connected agents appear automatically in the web interface.
 
+## Phase 8: Reference Framework Integrations
+
+Goal: prove OpenMesh can observe real agent frameworks through the SDK without replacing their runtimes.
+
+Status: LangGraph is the first reference integration.
+
+Work items:
+
+- Keep LangGraph instrumentation lightweight and opt-in.
+- Track node lifecycle events as `node.started`, `node.completed`, and `node.failed`.
+- Track execution transitions as `node.transition` graph relationships.
+- Maintain an integration registry for installed and active integrations.
+- Keep CrewAI, AutoGen, and OpenHands as future backlog items until the LangGraph path is stable.
+
+Exit criteria:
+
+- A minimal LangGraph workflow appears in OpenMesh events, traces, graph output, and the TUI.
+- Future framework integrations can reuse the same SDK -> collector -> persistence -> graph pipeline.
+
+## Future Backlog: Active Analysis & MCP Discovery
+
+OpenMesh should remain focused on discovery, registry, relationship mapping, and observability. Analysis is a future layer built on top of reliable event and graph data.
+
+Potential future capabilities:
+
+- MCP endpoint health checks
+- Capability discovery
+- Tool inventory generation
+- Authentication analysis
+- Permission visibility
+- Dependency and trust-chain mapping
+- Security posture insights
+
 ## Long-Term Vision
 
 Future work should remain compatible with:

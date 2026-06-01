@@ -173,6 +173,34 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("executed", edge_types)
         self.assertIn("process", node_types)
 
+    def test_graph_reduction_langgraph_transition_edges(self):
+        event = self.make_event("node.transition")
+        event["source"] = {
+            "node_id": "langgraph:basic:Node A",
+            "node_type": "service",
+            "name": "Node A",
+            "runtime": "langgraph",
+        }
+        event["target"] = {
+            "node_id": "langgraph:basic:Node B",
+            "node_type": "service",
+            "name": "Node B",
+            "runtime": "langgraph",
+        }
+        records = [
+            SimpleNamespace(
+                event_type=event["event_type"],
+                timestamp=datetime.utcnow(),
+                source_json=event["source"],
+                target_json=event["target"],
+            )
+        ]
+
+        graph = reduce_graph_state(records)
+
+        self.assertEqual(graph["edges"][0]["type"], "transitions_to")
+        self.assertEqual(graph["nodes"][0]["runtime"], "langgraph")
+
     async def test_session_creation_and_completion(self):
         db = FakeSessionStore()
         started = datetime.utcnow()

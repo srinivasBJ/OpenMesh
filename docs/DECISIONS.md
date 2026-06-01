@@ -19,3 +19,15 @@ The first test suite uses `unittest` so tests can run without adding a new test 
 ## Process Observation Before SDKs
 
 `openmesh run -- <command>` is the first external runtime integration. SDKs and framework integrations should wait until this lower-level observation path is stable.
+
+## LangGraph Is The First Reference Integration
+
+LangGraph is the first framework integration because its node and edge execution model aligns naturally with OpenMesh graph and trace architecture.
+
+LangGraph nodes emit lifecycle events. LangGraph transitions emit graph relationships. This proves the SDK -> collector -> persistence -> traces -> graph path without adding a parallel pipeline.
+
+## Active Analysis Is Future Work
+
+MCP endpoint health checks, capability discovery, tool inventory generation, authentication analysis, permission visibility, dependency mapping, trust-chain mapping, and security posture insights belong on the roadmap.
+
+They should remain future analysis layers built on top of OpenMesh discovery, registry, relationship mapping, and observability data.

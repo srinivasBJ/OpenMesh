@@ -13,6 +13,7 @@ EDGE_TYPES = {
     "tool.call.completed": "calls_tool",
     "message.sent": "communicates_with",
     "delegation.created": "delegates_to",
+    "node.transition": "transitions_to",
 }
 
 

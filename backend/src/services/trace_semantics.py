@@ -98,7 +98,7 @@ def graph_edges_for_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         target = event.get("target")
         if not source or not target:
             continue
-        edge_type = edge_type_for(event["event_type"], target.get("node_type"))
+        edge_type = edge_type_for(event["event_type"], target.get("node_type"), source.get("node_type"))
         if not edge_type:
             continue
         edges.append(
@@ -106,9 +106,13 @@ def graph_edges_for_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "source": source["name"],
                 "target": target["name"],
                 "type": edge_type,
+                "relationship_type": edge_type,
                 "trace_id": event["trace_id"],
                 "event_id": event["event_id"],
                 "span_id": event.get("span_id"),
+                "first_seen": event.get("timestamp"),
+                "last_seen": event.get("timestamp"),
+                "observation_count": 1,
             }
         )
     return edges

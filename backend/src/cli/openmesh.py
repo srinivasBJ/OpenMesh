@@ -109,7 +109,7 @@ def _hierarchy_lines(nodes: list[dict[str, Any]], prefix: str = "") -> list[str]
     return lines
 
 
-def _print_graph(graph: dict[str, list[dict[str, Any]]]) -> None:
+def _print_graph(graph: dict[str, Any], *, details: bool = False) -> None:
     nodes = {node["id"]: node for node in graph["nodes"]}
     outgoing: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for edge in graph["edges"]:
@@ -130,7 +130,25 @@ def _print_graph(graph: dict[str, list[dict[str, Any]]]) -> None:
             branch = "└─" if index == len(relationships) - 1 else "├─"
             target = nodes.get(edge["target"], {"name": edge["target"]})
             print(f"{branch} {edge['type']} -> {target['name']}")
+            if details:
+                print(f"   observations: {edge.get('observation_count', edge.get('event_count', 0))}")
+                print(f"   lifecycle: {edge.get('lifecycle_state', 'unknown')}")
+                print(f"   first_seen: {edge.get('first_seen')}")
+                print(f"   last_seen: {edge.get('last_seen')}")
+                print(f"   trace_id: {edge.get('trace_id') or edge.get('first_trace_id') or '-'}")
+                print(f"   event_id: {edge.get('event_id') or edge.get('first_event_id') or '-'}")
         print()
+
+    if details:
+        validation = graph.get("validation", {})
+        print(f"Validation: {validation.get('status', 'UNKNOWN')}")
+        missing = validation.get("missing_provenance") or []
+        invalid = validation.get("invalid_relationships") or []
+        broken = validation.get("broken_references") or []
+        if missing or invalid or broken:
+            print(f"missing_provenance: {len(missing)}")
+            print(f"invalid_relationships: {len(invalid)}")
+            print(f"broken_references: {len(broken)}")
 
 
 def _print_doctor(report: dict[str, Any]) -> None:
@@ -333,7 +351,7 @@ async def _trace(args: argparse.Namespace) -> int:
 async def _graph(args: argparse.Namespace) -> int:
     async def run(db):
         graph = await get_graph(db)
-        _print_graph(graph)
+        _print_graph(graph, details=args.details)
 
     return await _with_db(run)
 
@@ -525,6 +543,7 @@ def build_parser() -> argparse.ArgumentParser:
     trace.set_defaults(func=_trace)
 
     graph = subparsers.add_parser("graph", help="Show OpenMesh graph relationships.")
+    graph.add_argument("--details", action="store_true", help="Show edge provenance and lifecycle metadata.")
     graph.set_defaults(func=_graph)
 
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")

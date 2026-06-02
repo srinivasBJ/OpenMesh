@@ -137,6 +137,18 @@ def network_lines(snapshot: TuiSnapshot, limit: int = 80) -> list[str]:
     return lines[:limit]
 
 
+def network_edges(snapshot: TuiSnapshot) -> list[dict[str, Any]]:
+    nodes, _ = _node_maps(snapshot)
+    return sorted(
+        snapshot.graph["edges"],
+        key=lambda edge: (
+            nodes.get(edge["source"], {}).get("name", edge["source"]),
+            edge["type"],
+            nodes.get(edge["target"], {}).get("name", edge["target"]),
+        ),
+    )
+
+
 def render_plain(snapshot: TuiSnapshot) -> str:
     health = snapshot.health
     lines = [
@@ -266,6 +278,35 @@ def trace_detail_rows(snapshot: TuiSnapshot, trace_id: str) -> list[str]:
     return rows
 
 
+def edge_detail_rows(snapshot: TuiSnapshot, edge_id: str) -> list[str]:
+    nodes, _ = _node_maps(snapshot)
+    edge = next((item for item in snapshot.graph["edges"] if item["id"] == edge_id), None)
+    if not edge:
+        return [f"Relationship {edge_id}", "No loaded relationship detail"]
+    source = nodes.get(edge["source"], {"name": edge["source"]})
+    target = nodes.get(edge["target"], {"name": edge["target"]})
+    rows = [
+        f"{_short(source['name'], 18)} {edge['type']} {_short(target['name'], 18)}",
+        f"state: {edge.get('lifecycle_state', 'unknown')}",
+        f"observations: {edge.get('observation_count', edge.get('event_count', 0))}",
+        f"first_seen: {_time(edge.get('first_seen'))}",
+        f"last_seen: {_time(edge.get('last_seen'))}",
+        "",
+        "Provenance",
+        f"trace: {_short(edge.get('trace_id') or edge.get('first_trace_id'), 28)}",
+        f"event: {_short(edge.get('event_id') or edge.get('first_event_id'), 28)}",
+        "",
+        "Recent observations",
+    ]
+    for observation in edge.get("observations", [])[-5:]:
+        rows.append(
+            f"  {_time(observation.get('timestamp'))} "
+            f"{_short(observation.get('event_type'), 18)} "
+            f"{_short(observation.get('event_id'), 18)}"
+        )
+    return rows
+
+
 def _compact_hierarchy(nodes: list[dict[str, Any]], prefix: str = "") -> list[str]:
     rows: list[str] = []
     for index, node in enumerate(nodes):
@@ -357,7 +398,7 @@ class OpenMeshTui(App):
         background: #211a14;
     }
 
-    #network-body, #event-body {
+    #network-table, #event-body {
         height: 1fr;
         color: #b8afa2;
         padding-top: 1;
@@ -387,6 +428,8 @@ class OpenMeshTui(App):
         self.selected_detail = "Enter inspects the focused row. Network stays visible."
         self.lower_right_mode = "events"
         self.selected_trace_id: str | None = None
+        self.selected_edge_id: str | None = None
+        self.network_edge_rows: list[dict[str, Any]] = []
 
     def compose(self) -> ComposeResult:
         yield Static("", id="topbar")
@@ -401,7 +444,7 @@ class OpenMeshTui(App):
             with Vertical(classes="column"):
                 with Panel("", id="network-panel", classes="panel"):
                     yield Static("NETWORK", classes="panel-title")
-                    yield Static("", id="network-body")
+                    yield DataTable(id="network-table")
                 with Panel("", id="events-panel", classes="panel"):
                     yield Static("EVENT STREAM", id="event-title", classes="panel-title")
                     yield Static("", id="event-body")
@@ -414,6 +457,9 @@ class OpenMeshTui(App):
         traces = self.query_one("#traces-table", DataTable)
         traces.add_columns("trace", "status", "events", "start")
         traces.cursor_type = "row"
+        network = self.query_one("#network-table", DataTable)
+        network.add_columns("source", "relationship", "target", "state", "obs")
+        network.cursor_type = "row"
         self.query_one("#agents-table", DataTable).focus()
         await self.refresh_data()
         self.set_interval(2.0, self.refresh_data)
@@ -466,7 +512,21 @@ class OpenMeshTui(App):
 
     def _refresh_network(self) -> None:
         assert self.snapshot is not None
-        self.query_one("#network-body", Static).update("\n".join(network_lines(self.snapshot, limit=60)))
+        table = self.query_one("#network-table", DataTable)
+        table.clear()
+        nodes, _ = _node_maps(self.snapshot)
+        self.network_edge_rows = network_edges(self.snapshot)
+        for edge in self.network_edge_rows:
+            source = nodes.get(edge["source"], {"name": edge["source"]})
+            target = nodes.get(edge["target"], {"name": edge["target"]})
+            table.add_row(
+                _short(source["name"], 20),
+                edge["type"],
+                _short(target["name"], 20),
+                edge.get("lifecycle_state", "unknown"),
+                str(edge.get("observation_count", edge.get("event_count", 0))),
+                key=edge["id"],
+            )
 
     def _refresh_events(self) -> None:
         assert self.snapshot is not None
@@ -482,6 +542,10 @@ class OpenMeshTui(App):
             self.query_one("#event-title", Static).update("TRACE DETAIL")
             self.query_one("#event-body", Static).update("\n".join(trace_detail_rows(self.snapshot, self.selected_trace_id)))
             return
+        if self.lower_right_mode == "edge" and self.selected_edge_id:
+            self.query_one("#event-title", Static).update("RELATIONSHIP DETAIL")
+            self.query_one("#event-body", Static).update("\n".join(edge_detail_rows(self.snapshot, self.selected_edge_id)))
+            return
         self.query_one("#event-title", Static).update("EVENT STREAM")
         self.query_one("#event-body", Static).update("\n".join(event_rows(self.snapshot, limit=50)))
 
@@ -489,7 +553,7 @@ class OpenMeshTui(App):
         target = {
             "agents": "#agents-table",
             "traces": "#traces-table",
-            "network": "#network-body",
+            "network": "#network-table",
             "events": "#event-body",
         }[panel]
         if panel == "events":
@@ -513,6 +577,12 @@ class OpenMeshTui(App):
             if focused.id == "traces-table" and self.snapshot and focused.cursor_row < len(self.snapshot.traces):
                 self.selected_trace_id = self.snapshot.traces[focused.cursor_row]["trace_id"]
                 self.lower_right_mode = "trace"
+                self._refresh_events()
+                self.query_one("#event-body", Widget).focus()
+                return
+            if focused.id == "network-table" and focused.cursor_row < len(self.network_edge_rows):
+                self.selected_edge_id = self.network_edge_rows[focused.cursor_row]["id"]
+                self.lower_right_mode = "edge"
                 self._refresh_events()
                 self.query_one("#event-body", Widget).focus()
                 return

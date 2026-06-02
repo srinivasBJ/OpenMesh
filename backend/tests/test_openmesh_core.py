@@ -12,6 +12,7 @@ from src.services.discovery import build_discovery
 from src.services.graph_state import reduce_graph_state
 from src.services.openmesh_collector import OpenMeshCollector
 from src.services.openmesh_queries import trace_summary
+from src.services.relationship_types import relationship_registry, relationship_type_for
 from src.services.trace_semantics import build_event_hierarchy, graph_edges_for_trace, validate_trace_semantics
 from src.shared.openmesh_events import agent_node, make_openmesh_event
 from src.cli.tui import TuiSnapshot, render_plain
@@ -159,8 +160,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         completed["target"] = command_node("python hello.py")
         records = [
             SimpleNamespace(
+                event_id=event["event_id"],
                 event_type=event["event_type"],
                 timestamp=datetime.utcnow(),
+                trace_id=event["trace_id"],
+                span_id=event.get("span_id"),
                 source_json=event["source"],
                 target_json=event["target"],
             )
@@ -171,9 +175,21 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
         edge_types = {edge["type"] for edge in graph["edges"]}
         node_types = {node["type"] for node in graph["nodes"]}
-        self.assertIn("spawned", edge_types)
-        self.assertIn("executed", edge_types)
+        self.assertIn("spawns", edge_types)
+        self.assertIn("executes", edge_types)
         self.assertIn("process", node_types)
+        self.assertEqual(graph["validation"]["status"], "OK")
+        self.assertTrue(all(edge["event_id"] for edge in graph["edges"]))
+        self.assertTrue(all(edge["trace_id"] == "trace_test" for edge in graph["edges"]))
+        self.assertTrue(all(edge["observation_count"] == 1 for edge in graph["edges"]))
+
+    def test_relationship_registry_maps_protocol_events_to_canonical_types(self):
+        relationship_types = {item["type"] for item in relationship_registry()}
+
+        self.assertIn("uses", relationship_types)
+        self.assertIn("spawns", relationship_types)
+        self.assertEqual(relationship_type_for("tool.call.started", source_type="agent", target_type="tool"), "uses")
+        self.assertEqual(relationship_type_for("process.started", source_type="service", target_type="process"), "spawns")
 
     def test_graph_reduction_langgraph_transition_edges(self):
         event = self.make_event("node.transition")
@@ -191,8 +207,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         }
         records = [
             SimpleNamespace(
+                event_id=event["event_id"],
                 event_type=event["event_type"],
                 timestamp=datetime.utcnow(),
+                trace_id=event["trace_id"],
+                span_id=event.get("span_id"),
                 source_json=event["source"],
                 target_json=event["target"],
             )
@@ -201,7 +220,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         graph = reduce_graph_state(records)
 
         self.assertEqual(graph["edges"][0]["type"], "transitions_to")
+        self.assertEqual(graph["edges"][0]["lifecycle_state"], "active")
         self.assertEqual(graph["nodes"][0]["runtime"], "langgraph")
+        self.assertIn("relationship_types", graph["metadata"])
 
     def test_discovery_registry_groups_observed_entities(self):
         tool_event = self.make_event("tool.call.completed")
@@ -231,8 +252,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         process_event["target"] = process_node("sess_test", "python hello.py")
         records = [
             SimpleNamespace(
+                event_id=event["event_id"],
                 event_type=event["event_type"],
                 timestamp=datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")).replace(tzinfo=None),
+                trace_id=event["trace_id"],
+                span_id=event.get("span_id"),
                 source_json=event["source"],
                 target_json=event.get("target"),
                 severity=event["severity"],
@@ -280,6 +304,7 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(hierarchy[0]["children"][0]["event_id"], task["event_id"])
         self.assertEqual(hierarchy[0]["children"][0]["children"][0]["event_id"], tool["event_id"])
         self.assertEqual(relationships[0]["event_id"], tool["event_id"])
+        self.assertEqual(relationships[0]["type"], "uses")
         self.assertEqual(validation["status"], "OK")
 
     async def test_session_creation_and_completion(self):

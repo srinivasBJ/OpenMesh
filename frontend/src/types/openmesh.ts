@@ -10,6 +10,8 @@ export type OpenMeshNodeType =
   | "service"
   | "runtime"
   | "process"
+  | "workflow"
+  | "capability"
   | "guild"
   | "wiki"
   | "post";

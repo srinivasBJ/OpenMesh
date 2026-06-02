@@ -100,6 +100,86 @@ class OpenMeshLangGraph:
         self._root_event_id = None
         self._last_node_context.set(None)
 
+    def complete(self, output: Any = None) -> dict[str, Any]:
+        """Mark the current LangGraph workflow span as completed."""
+        workflow_event = self._ensure_workflow_started()
+        event = self.client.emit(
+            "workflow.completed",
+            self._workflow_node(),
+            {
+                "graph": self.graph_name,
+                "runtime": {"framework": "langgraph", "graph": self.graph_name},
+                "output": _safe_payload(output) if output is not None else {},
+            },
+            trace_id=self.trace_id,
+            parent_event_id=workflow_event["event_id"],
+            root_event_id=self._root_event_id,
+            span_id=self._workflow_span_id,
+        )
+        self._remember_root(event)
+        return event
+
+    async def complete_async(self, output: Any = None) -> dict[str, Any]:
+        """Mark the current LangGraph workflow span as completed from async runners."""
+        workflow_event = await self._ensure_workflow_started_async()
+        event = await self.client.emit_async(
+            "workflow.completed",
+            self._workflow_node(),
+            {
+                "graph": self.graph_name,
+                "runtime": {"framework": "langgraph", "graph": self.graph_name},
+                "output": _safe_payload(output) if output is not None else {},
+            },
+            trace_id=self.trace_id,
+            parent_event_id=workflow_event["event_id"],
+            root_event_id=self._root_event_id,
+            span_id=self._workflow_span_id,
+        )
+        self._remember_root(event)
+        return event
+
+    def fail(self, exc: BaseException) -> dict[str, Any]:
+        """Mark the current LangGraph workflow span as failed."""
+        workflow_event = self._ensure_workflow_started()
+        event = self.client.emit(
+            "workflow.failed",
+            self._workflow_node(),
+            {
+                "graph": self.graph_name,
+                "runtime": {"framework": "langgraph", "graph": self.graph_name},
+                "error": str(exc),
+                "error_type": exc.__class__.__name__,
+            },
+            trace_id=self.trace_id,
+            parent_event_id=workflow_event["event_id"],
+            root_event_id=self._root_event_id,
+            span_id=self._workflow_span_id,
+            severity="error",
+        )
+        self._remember_root(event)
+        return event
+
+    async def fail_async(self, exc: BaseException) -> dict[str, Any]:
+        """Mark the current LangGraph workflow span as failed from async runners."""
+        workflow_event = await self._ensure_workflow_started_async()
+        event = await self.client.emit_async(
+            "workflow.failed",
+            self._workflow_node(),
+            {
+                "graph": self.graph_name,
+                "runtime": {"framework": "langgraph", "graph": self.graph_name},
+                "error": str(exc),
+                "error_type": exc.__class__.__name__,
+            },
+            trace_id=self.trace_id,
+            parent_event_id=workflow_event["event_id"],
+            root_event_id=self._root_event_id,
+            span_id=self._workflow_span_id,
+            severity="error",
+        )
+        self._remember_root(event)
+        return event
+
     def _node(self, name: str) -> OpenMeshNode:
         if name not in self._nodes:
             self._nodes[name] = {

@@ -56,7 +56,12 @@ def build_graph():
 
 def main() -> None:
     graph = build_graph()
-    result = graph.invoke({"topic": "agent observability", "notes": []})
+    try:
+        result = graph.invoke({"topic": "agent observability", "notes": []})
+    except Exception as exc:
+        mesh.fail(exc)
+        raise
+    mesh.complete(result)
     print("LangGraph result:")
     for note in result["notes"]:
         print(f"- {note}")

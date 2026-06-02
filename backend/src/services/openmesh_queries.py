@@ -50,12 +50,12 @@ async def get_events(db: AsyncSession, limit: int = 100) -> list[dict]:
 
 
 async def get_traces(db: AsyncSession, limit: int = 1000) -> list[dict]:
-    records = await list_openmesh_events(db, limit=limit)
+    records = await list_openmesh_events(db, limit=max(limit * 100, 1000))
     grouped: Dict[str, list[OpenMeshEventRecord]] = {}
     for record in records:
         grouped.setdefault(record.trace_id, []).append(record)
     summaries = [trace_summary(trace_id, trace_records) for trace_id, trace_records in grouped.items()]
-    return sorted(summaries, key=lambda t: t["started_at"] or "", reverse=True)
+    return sorted(summaries, key=lambda t: t["started_at"] or "", reverse=True)[:limit]
 
 
 async def get_trace(db: AsyncSession, trace_id: str) -> dict | None:

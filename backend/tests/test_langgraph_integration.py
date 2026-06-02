@@ -68,14 +68,24 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
             wrapped_b = mesh.node("Node B", node_b)
             state = wrapped_a({"topic": "observability"})
             wrapped_b(state)
+            mesh.complete(state)
 
         events = self.collect_events(action)
         event_types = [event["event_type"] for event in events]
         transition = [event for event in events if event["event_type"] == "node.transition"][0]
+        workflow_completed = [event for event in events if event["event_type"] == "workflow.completed"][0]
 
         self.assertEqual(
             event_types,
-            ["workflow.started", "node.started", "node.completed", "node.transition", "node.started", "node.completed"],
+            [
+                "workflow.started",
+                "node.started",
+                "node.completed",
+                "node.transition",
+                "node.started",
+                "node.completed",
+                "workflow.completed",
+            ],
         )
         workflow = events[0]
         node_starts = [event for event in events if event["event_type"] == "node.started"]
@@ -87,6 +97,8 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
         self.assertNotEqual(node_starts[0]["span_id"], node_starts[1]["span_id"])
         self.assertEqual(transition["span_id"], workflow["span_id"])
         self.assertEqual(transition["links"][0]["span_id"], node_starts[0]["span_id"])
+        self.assertEqual(workflow_completed["span_id"], workflow["span_id"])
+        self.assertEqual(workflow_completed["parent_event_id"], workflow["event_id"])
 
     def test_wrapped_node_failure_emits_failed_event(self):
         class ExpectedError(RuntimeError):
@@ -112,6 +124,30 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
         self.assertEqual(failed["severity"], "error")
         self.assertEqual(failed["payload"]["error_type"], "ExpectedError")
         self.assertEqual(failed["parent_span_id"], workflow["span_id"])
+
+    def test_workflow_failure_can_be_closed_explicitly(self):
+        class ExpectedError(RuntimeError):
+            pass
+
+        def action():
+            mesh = OpenMeshLangGraph(
+                client=OpenMeshClient(session_id="sess_langgraph", broadcast=False),
+                graph_name="Basic Flow",
+                trace_id="trace_langgraph",
+            )
+
+            try:
+                raise ExpectedError("workflow broke")
+            except ExpectedError as exc:
+                mesh.fail(exc)
+
+        events = self.collect_events(action)
+        workflow_started = [event for event in events if event["event_type"] == "workflow.started"][0]
+        workflow_failed = [event for event in events if event["event_type"] == "workflow.failed"][0]
+
+        self.assertEqual(workflow_failed["severity"], "error")
+        self.assertEqual(workflow_failed["span_id"], workflow_started["span_id"])
+        self.assertEqual(workflow_failed["parent_event_id"], workflow_started["event_id"])
 
     def test_registry_reports_langgraph_and_future_integrations(self):
         integrations = {item["key"]: item for item in list_integrations()}
@@ -181,18 +217,29 @@ class OpenMeshAsyncLangGraphIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
             state = await mesh.node("Node A", node_a)({"topic": "observability"})
             await mesh.node("Node B", node_b)(state)
+            await mesh.complete_async(state)
 
         events = await self.collect_events(action)
         event_types = [event["event_type"] for event in events]
 
         self.assertEqual(
             event_types,
-            ["workflow.started", "node.started", "node.completed", "node.transition", "node.started", "node.completed"],
+            [
+                "workflow.started",
+                "node.started",
+                "node.completed",
+                "node.transition",
+                "node.started",
+                "node.completed",
+                "workflow.completed",
+            ],
         )
         workflow = events[0]
         node_starts = [event for event in events if event["event_type"] == "node.started"]
+        workflow_completed = [event for event in events if event["event_type"] == "workflow.completed"][0]
         self.assertEqual(node_starts[0]["parent_span_id"], workflow["span_id"])
         self.assertNotEqual(node_starts[0]["span_id"], node_starts[1]["span_id"])
+        self.assertEqual(workflow_completed["span_id"], workflow["span_id"])
 
 
 if __name__ == "__main__":

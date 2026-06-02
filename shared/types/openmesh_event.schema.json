@@ -124,12 +124,29 @@
     "link": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["url"],
+      "anyOf": [
+        { "required": ["url"] },
+        { "required": ["trace_id"] },
+        { "required": ["span_id"] },
+        { "required": ["event_id"] }
+      ],
       "properties": {
         "url": {
           "type": "string"
         },
         "label": {
+          "type": "string"
+        },
+        "trace_id": {
+          "type": "string"
+        },
+        "span_id": {
+          "type": "string"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "relationship": {
           "type": "string"
         }
       }

@@ -83,7 +83,22 @@ def _print_trace_detail(trace: dict[str, Any]) -> None:
     print("Spans")
     for span in trace.get("spans", []):
         parent = span.get("parent_span_id") or "-"
-        print(f"- {span['span_id']} parent:{parent} events:{span['event_count']}")
+        duration = span.get("duration_ms")
+        duration_text = f"{duration}ms" if duration is not None else "-"
+        print(
+            f"- {span['span_id']} parent:{parent} status:{span.get('status', 'unknown')} "
+            f"events:{span['event_count']} duration:{duration_text}"
+        )
+        for link in span.get("links", []):
+            linked = link.get("trace_id") or link.get("span_id") or link.get("event_id") or link.get("url")
+            relationship = link.get("relationship") or "linked"
+            print(f"  link:{relationship} -> {linked}")
+    span_tree = trace.get("span_tree") or []
+    if span_tree:
+        print()
+        print("Span Tree")
+        for line in _span_tree_lines(span_tree):
+            print(line)
     print()
     print("Graph Relationships")
     relationships = trace.get("relationships", [])
@@ -106,6 +121,19 @@ def _hierarchy_lines(nodes: list[dict[str, Any]], prefix: str = "") -> list[str]
         lines.append(f"{prefix}{branch} {node['event_type']} [{source}{target_text}]")
         child_prefix = prefix + ("   " if index == len(nodes) - 1 else "│  ")
         lines.extend(_hierarchy_lines(node.get("children", []), child_prefix))
+    return lines
+
+
+def _span_tree_lines(nodes: list[dict[str, Any]], prefix: str = "") -> list[str]:
+    lines: list[str] = []
+    for index, node in enumerate(nodes):
+        branch = "└─" if index == len(nodes) - 1 else "├─"
+        lines.append(
+            f"{prefix}{branch} {node['span_id']} "
+            f"{node.get('status', 'unknown')} e:{node.get('event_count', 0)}"
+        )
+        child_prefix = prefix + ("   " if index == len(nodes) - 1 else "│  ")
+        lines.extend(_span_tree_lines(node.get("children", []), child_prefix))
     return lines
 
 

@@ -109,6 +109,34 @@ class OpenMeshSdkTests(unittest.TestCase):
         self.assertEqual(tool_events[0]["target"]["name"], "web_search")
         self.assertEqual(tool_events[0]["trace_id"], tool_events[1]["trace_id"])
 
+    def test_agent_emit_accepts_links(self):
+        def action():
+            client = OpenMeshClient(session_id="sess_sdk", broadcast=False)
+            agent = client.agent(id="research-agent", name="Research Agent")
+            agent.emit(
+                "message.sent",
+                {"message": "linked"},
+                links=[{"trace_id": "trace_external", "relationship": "follows_from"}],
+            )
+
+        events = self.collect_events(action)
+        linked = [event for event in events if event["event_type"] == "message.sent"][0]
+
+        self.assertEqual(linked["links"][0]["trace_id"], "trace_external")
+
+    def test_standalone_tool_completion_shares_started_root(self):
+        def action():
+            client = OpenMeshClient(session_id="sess_sdk", broadcast=False)
+            agent = client.agent(id="research-agent", name="Research Agent")
+            with agent.tool("web_search"):
+                pass
+
+        events = self.collect_events(action)
+        tool_events = [event for event in events if event["event_type"].startswith("tool.call.")]
+
+        self.assertEqual(tool_events[0]["root_event_id"], tool_events[1]["root_event_id"])
+        self.assertEqual(tool_events[0]["span_id"], tool_events[1]["span_id"])
+
 
 class OpenMeshAsyncSdkTests(unittest.IsolatedAsyncioTestCase):
     async def collect_events(self, action):

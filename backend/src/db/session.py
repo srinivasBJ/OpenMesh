@@ -67,6 +67,7 @@ def _ensure_openmesh_trace_columns(sync_connection):
         "parent_span_id": "VARCHAR(100)",
         "parent_event_id": "VARCHAR(100)",
         "root_event_id": "VARCHAR(100)",
+        "links_json": "JSON",
     }
     for name, column_type in required.items():
         if name not in columns:

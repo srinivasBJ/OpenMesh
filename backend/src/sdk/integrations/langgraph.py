@@ -36,10 +36,11 @@ class OpenMeshLangGraph:
         self.graph_name = graph_name
         self.trace_id = trace_id or f"trace_{uuid4().hex}"
         self._nodes: dict[str, OpenMeshNode] = {}
-        self._node_spans: dict[str, str] = {}
+        self._workflow_span_id = f"span_{uuid4().hex}"
+        self._workflow_event_id: Optional[str] = None
         self._root_event_id: Optional[str] = None
-        self._last_node_id: ContextVar[Optional[str]] = ContextVar(
-            f"openmesh_langgraph_last_node_id_{uuid4().hex}",
+        self._last_node_context: ContextVar[Optional[dict[str, str]]] = ContextVar(
+            f"openmesh_langgraph_last_node_context_{uuid4().hex}",
             default=None,
         )
         mark_integration_active("langgraph")
@@ -57,6 +58,7 @@ class OpenMeshLangGraph:
         """Emit an explicit graph transition for custom runners or tests."""
         self._validate_node_name(source)
         self._validate_node_name(target)
+        workflow_event = self._ensure_workflow_started()
         event = self.client.emit(
             "node.transition",
             self._node(source),
@@ -64,6 +66,8 @@ class OpenMeshLangGraph:
             target=self._node(target),
             trace_id=self.trace_id,
             root_event_id=self._root_event_id,
+            span_id=self._workflow_span_id,
+            parent_event_id=workflow_event["event_id"],
         )
         self._remember_root(event)
 
@@ -76,6 +80,7 @@ class OpenMeshLangGraph:
     async def transition_async(self, source: str, target: str) -> None:
         self._validate_node_name(source)
         self._validate_node_name(target)
+        workflow_event = await self._ensure_workflow_started_async()
         event = await self.client.emit_async(
             "node.transition",
             self._node(source),
@@ -83,12 +88,17 @@ class OpenMeshLangGraph:
             target=self._node(target),
             trace_id=self.trace_id,
             root_event_id=self._root_event_id,
+            span_id=self._workflow_span_id,
+            parent_event_id=workflow_event["event_id"],
         )
         self._remember_root(event)
 
     def reset(self) -> None:
         """Clear execution-order transition memory for a new workflow run."""
-        self._last_node_id.set(None)
+        self._workflow_span_id = f"span_{uuid4().hex}"
+        self._workflow_event_id = None
+        self._root_event_id = None
+        self._last_node_context.set(None)
 
     def _node(self, name: str) -> OpenMeshNode:
         if name not in self._nodes:
@@ -101,12 +111,46 @@ class OpenMeshLangGraph:
             }
         return self._nodes[name]
 
-    def _span_for(self, name: str) -> str:
-        return self._node_spans.setdefault(name, f"span_{uuid4().hex}")
+    def _workflow_node(self) -> OpenMeshNode:
+        return {
+            "node_id": f"workflow:{self.graph_name}",
+            "node_type": "workflow",
+            "name": self.graph_name,
+            "runtime": "langgraph",
+            "metadata": {"framework": "langgraph", "graph": self.graph_name},
+        }
 
     def _remember_root(self, event: dict[str, Any]) -> None:
         if self._root_event_id is None:
             self._root_event_id = event.get("root_event_id") or event["event_id"]
+
+    def _ensure_workflow_started(self) -> dict[str, Any]:
+        if self._workflow_event_id:
+            return {"event_id": self._workflow_event_id, "root_event_id": self._root_event_id}
+        event = self.client.emit(
+            "workflow.started",
+            self._workflow_node(),
+            {"graph": self.graph_name, "runtime": {"framework": "langgraph", "graph": self.graph_name}},
+            trace_id=self.trace_id,
+            span_id=self._workflow_span_id,
+        )
+        self._workflow_event_id = event["event_id"]
+        self._remember_root(event)
+        return event
+
+    async def _ensure_workflow_started_async(self) -> dict[str, Any]:
+        if self._workflow_event_id:
+            return {"event_id": self._workflow_event_id, "root_event_id": self._root_event_id}
+        event = await self.client.emit_async(
+            "workflow.started",
+            self._workflow_node(),
+            {"graph": self.graph_name, "runtime": {"framework": "langgraph", "graph": self.graph_name}},
+            trace_id=self.trace_id,
+            span_id=self._workflow_span_id,
+        )
+        self._workflow_event_id = event["event_id"]
+        self._remember_root(event)
+        return event
 
     def _validate_node_name(self, name: str) -> None:
         if not name.strip():
@@ -126,35 +170,53 @@ class OpenMeshLangGraph:
             "runtime": {"framework": "langgraph", "graph": self.graph_name},
         }
 
-    def _transition_from_previous(self, current_name: str) -> None:
-        previous_id = self._last_node_id.get()
+    def _transition_from_previous(self, current_name: str) -> dict[str, Any] | None:
+        previous = self._last_node_context.get()
         current = self._node(current_name)
-        if previous_id and previous_id != current["node_id"]:
-            previous = self._node_by_id(previous_id)
+        if previous and previous["node_id"] != current["node_id"]:
+            previous_node = self._node_by_id(previous["node_id"])
             event = self.client.emit(
                 "node.transition",
-                previous,
-                self._transition_payload(previous["name"], current_name),
+                previous_node,
+                self._transition_payload(previous_node["name"], current_name),
                 target=current,
                 trace_id=self.trace_id,
                 root_event_id=self._root_event_id,
+                span_id=self._workflow_span_id,
+                parent_event_id=previous.get("event_id") or self._workflow_event_id,
+                links=[self._node_span_link(previous, "follows_from")],
             )
             self._remember_root(event)
+            return event
+        return None
 
-    async def _transition_from_previous_async(self, current_name: str) -> None:
-        previous_id = self._last_node_id.get()
+    async def _transition_from_previous_async(self, current_name: str) -> dict[str, Any] | None:
+        previous = self._last_node_context.get()
         current = self._node(current_name)
-        if previous_id and previous_id != current["node_id"]:
-            previous = self._node_by_id(previous_id)
+        if previous and previous["node_id"] != current["node_id"]:
+            previous_node = self._node_by_id(previous["node_id"])
             event = await self.client.emit_async(
                 "node.transition",
-                previous,
-                self._transition_payload(previous["name"], current_name),
+                previous_node,
+                self._transition_payload(previous_node["name"], current_name),
                 target=current,
                 trace_id=self.trace_id,
                 root_event_id=self._root_event_id,
+                span_id=self._workflow_span_id,
+                parent_event_id=previous.get("event_id") or self._workflow_event_id,
+                links=[self._node_span_link(previous, "follows_from")],
             )
             self._remember_root(event)
+            return event
+        return None
+
+    def _node_span_link(self, node_context: dict[str, str], relationship: str) -> dict[str, str]:
+        return {
+            "trace_id": self.trace_id,
+            "span_id": node_context["span_id"],
+            "event_id": node_context["event_id"],
+            "relationship": relationship,
+        }
 
     def _node_by_id(self, node_id: str) -> OpenMeshNode:
         for node in self._nodes.values():
@@ -171,8 +233,9 @@ class OpenMeshLangGraph:
     def _wrap_sync(self, name: str, node: OpenMeshNode, fn: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(fn)
         def wrapped(*args: Any, **kwargs: Any) -> Any:
-            self._transition_from_previous(name)
-            span_id = self._span_for(name)
+            workflow_event = self._ensure_workflow_started()
+            transition_event = self._transition_from_previous(name)
+            span_id = f"span_{uuid4().hex}"
             started = self.client.emit(
                 "node.started",
                 node,
@@ -185,6 +248,8 @@ class OpenMeshLangGraph:
                 trace_id=self.trace_id,
                 root_event_id=self._root_event_id,
                 span_id=span_id,
+                parent_span_id=self._workflow_span_id,
+                parent_event_id=(transition_event or workflow_event)["event_id"],
             )
             self._remember_root(started)
             try:
@@ -204,10 +269,11 @@ class OpenMeshLangGraph:
                     parent_event_id=started["event_id"],
                     root_event_id=self._root_event_id,
                     span_id=span_id,
+                    parent_span_id=self._workflow_span_id,
                     severity="error",
                 )
                 raise
-            self.client.emit(
+            completed = self.client.emit(
                 "node.completed",
                 node,
                 {
@@ -220,8 +286,9 @@ class OpenMeshLangGraph:
                 parent_event_id=started["event_id"],
                 root_event_id=self._root_event_id,
                 span_id=span_id,
+                parent_span_id=self._workflow_span_id,
             )
-            self._last_node_id.set(node["node_id"])
+            self._last_node_context.set({"node_id": node["node_id"], "span_id": span_id, "event_id": completed["event_id"]})
             return result
 
         return wrapped
@@ -234,8 +301,9 @@ class OpenMeshLangGraph:
     ) -> Callable[..., Awaitable[Any]]:
         @wraps(fn)
         async def wrapped(*args: Any, **kwargs: Any) -> Any:
-            await self._transition_from_previous_async(name)
-            span_id = self._span_for(name)
+            workflow_event = await self._ensure_workflow_started_async()
+            transition_event = await self._transition_from_previous_async(name)
+            span_id = f"span_{uuid4().hex}"
             started = await self.client.emit_async(
                 "node.started",
                 node,
@@ -248,6 +316,8 @@ class OpenMeshLangGraph:
                 trace_id=self.trace_id,
                 root_event_id=self._root_event_id,
                 span_id=span_id,
+                parent_span_id=self._workflow_span_id,
+                parent_event_id=(transition_event or workflow_event)["event_id"],
             )
             self._remember_root(started)
             try:
@@ -267,10 +337,11 @@ class OpenMeshLangGraph:
                     parent_event_id=started["event_id"],
                     root_event_id=self._root_event_id,
                     span_id=span_id,
+                    parent_span_id=self._workflow_span_id,
                     severity="error",
                 )
                 raise
-            await self.client.emit_async(
+            completed = await self.client.emit_async(
                 "node.completed",
                 node,
                 {
@@ -283,8 +354,9 @@ class OpenMeshLangGraph:
                 parent_event_id=started["event_id"],
                 root_event_id=self._root_event_id,
                 span_id=span_id,
+                parent_span_id=self._workflow_span_id,
             )
-            self._last_node_id.set(node["node_id"])
+            self._last_node_context.set({"node_id": node["node_id"], "span_id": span_id, "event_id": completed["event_id"]})
             return result
 
         return wrapped

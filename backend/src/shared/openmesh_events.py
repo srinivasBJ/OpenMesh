@@ -51,7 +51,7 @@ class OpenMeshEvent(TypedDict, total=False):
     target: OpenMeshNode
     payload: Dict[str, Any]
     metrics: Dict[str, Any]
-    links: list[Dict[str, str]]
+    links: list[Dict[str, Any]]
     severity: OpenMeshSeverity
 
 
@@ -87,6 +87,7 @@ def make_openmesh_event(
     parent_span_id: Optional[str] = None,
     parent_event_id: Optional[str] = None,
     root_event_id: Optional[str] = None,
+    links: Optional[list[Dict[str, Any]]] = None,
 ) -> OpenMeshEvent:
     event_id = f"evt_{uuid4().hex}"
     event: OpenMeshEvent = {
@@ -101,7 +102,7 @@ def make_openmesh_event(
         "source": source,
         "payload": payload or {},
         "metrics": metrics or {},
-        "links": [],
+        "links": links or [],
         "severity": severity,
         "root_event_id": root_event_id or event_id,
     }

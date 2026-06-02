@@ -75,11 +75,18 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
 
         self.assertEqual(
             event_types,
-            ["node.started", "node.completed", "node.transition", "node.started", "node.completed"],
+            ["workflow.started", "node.started", "node.completed", "node.transition", "node.started", "node.completed"],
         )
+        workflow = events[0]
+        node_starts = [event for event in events if event["event_type"] == "node.started"]
         self.assertEqual(transition["source"]["name"], "Node A")
         self.assertEqual(transition["target"]["name"], "Node B")
         self.assertEqual(transition["trace_id"], "trace_langgraph")
+        self.assertEqual(node_starts[0]["parent_span_id"], workflow["span_id"])
+        self.assertEqual(node_starts[1]["parent_span_id"], workflow["span_id"])
+        self.assertNotEqual(node_starts[0]["span_id"], node_starts[1]["span_id"])
+        self.assertEqual(transition["span_id"], workflow["span_id"])
+        self.assertEqual(transition["links"][0]["span_id"], node_starts[0]["span_id"])
 
     def test_wrapped_node_failure_emits_failed_event(self):
         class ExpectedError(RuntimeError):
@@ -100,9 +107,11 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
 
         events = self.collect_events(action)
         failed = [event for event in events if event["event_type"] == "node.failed"][0]
+        workflow = [event for event in events if event["event_type"] == "workflow.started"][0]
 
         self.assertEqual(failed["severity"], "error")
         self.assertEqual(failed["payload"]["error_type"], "ExpectedError")
+        self.assertEqual(failed["parent_span_id"], workflow["span_id"])
 
     def test_registry_reports_langgraph_and_future_integrations(self):
         integrations = {item["key"]: item for item in list_integrations()}
@@ -133,10 +142,12 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
 
         events = self.collect_events(action)
         transitions = [event for event in events if event["event_type"] == "node.transition"]
+        workflow = [event for event in events if event["event_type"] == "workflow.started"][0]
 
         self.assertEqual(len(transitions), 1)
         self.assertEqual(transitions[0]["source"]["name"], "Node A")
         self.assertEqual(transitions[0]["target"]["name"], "Node B")
+        self.assertEqual(transitions[0]["span_id"], workflow["span_id"])
 
 
 class OpenMeshAsyncLangGraphIntegrationTests(unittest.IsolatedAsyncioTestCase):
@@ -176,8 +187,12 @@ class OpenMeshAsyncLangGraphIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             event_types,
-            ["node.started", "node.completed", "node.transition", "node.started", "node.completed"],
+            ["workflow.started", "node.started", "node.completed", "node.transition", "node.started", "node.completed"],
         )
+        workflow = events[0]
+        node_starts = [event for event in events if event["event_type"] == "node.started"]
+        self.assertEqual(node_starts[0]["parent_span_id"], workflow["span_id"])
+        self.assertNotEqual(node_starts[0]["span_id"], node_starts[1]["span_id"])
 
 
 if __name__ == "__main__":

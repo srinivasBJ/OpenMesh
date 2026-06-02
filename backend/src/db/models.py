@@ -183,6 +183,7 @@ class OpenMeshEventRecord(Base):
     target_json = Column(JSON, nullable=True)
     payload_json = Column(JSON, nullable=False, default=dict)
     metrics_json = Column(JSON, nullable=False, default=dict)
+    links_json = Column(JSON, nullable=False, default=list)
     severity = Column(String(20), nullable=False, default="info")
     created_at = Column(DateTime, server_default=func.now())
 

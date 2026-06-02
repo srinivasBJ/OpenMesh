@@ -12,6 +12,7 @@ from ..websocket.manager import manager
 
 
 REQUIRED_NODE_FIELDS = {"node_id", "node_type", "name"}
+LINK_IDENTITY_FIELDS = {"url", "trace_id", "span_id", "event_id"}
 
 
 class OpenMeshCollector:
@@ -34,6 +35,19 @@ class OpenMeshCollector:
             raise HTTPException(status_code=422, detail="Invalid OpenMesh payload: expected object")
         if event.get("severity") and event["severity"] not in {"debug", "info", "warning", "error"}:
             raise HTTPException(status_code=422, detail="Invalid OpenMesh severity")
+        links = event.get("links", [])
+        if links is None:
+            links = []
+        if not isinstance(links, list):
+            raise HTTPException(status_code=422, detail="Invalid OpenMesh links: expected list")
+        for index, link in enumerate(links):
+            if not isinstance(link, dict):
+                raise HTTPException(status_code=422, detail=f"Invalid OpenMesh link at index {index}: expected object")
+            if not any(link.get(field) for field in LINK_IDENTITY_FIELDS):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid OpenMesh link at index {index}: expected url, trace_id, span_id, or event_id",
+                )
 
         for node_key in ("source", "target"):
             node = event.get(node_key)

@@ -42,6 +42,14 @@ export interface OpenMeshEvent {
   target?: OpenMeshNode;
   payload: Record<string, unknown>;
   metrics?: Record<string, unknown>;
-  links?: Array<{ url: string; label?: string }>;
+  links?: Array<{
+    url?: string;
+    label?: string;
+    trace_id?: string;
+    span_id?: string;
+    event_id?: string;
+    relationship?: string;
+    [key: string]: unknown;
+  }>;
   severity?: OpenMeshSeverity;
 }

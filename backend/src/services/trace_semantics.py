@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from .graph_state import edge_type_for
@@ -49,15 +50,60 @@ def build_span_summary(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "parent_span_id": event.get("parent_span_id"),
                 "trace_id": event["trace_id"],
                 "first_seen_index": index,
+                "started_at": event.get("timestamp"),
+                "ended_at": event.get("timestamp"),
+                "duration_ms": None,
+                "status": "active",
                 "event_count": 0,
                 "events": [],
+                "event_types": [],
+                "links": [],
+                "child_span_ids": [],
+                "first_event_id": event["event_id"],
+                "last_event_id": event["event_id"],
             },
         )
         span["event_count"] += 1
         span["events"].append(event["event_id"])
+        span["event_types"].append(event["event_type"])
+        span["ended_at"] = event.get("timestamp")
+        span["last_event_id"] = event["event_id"]
         if not span.get("parent_span_id") and event.get("parent_span_id"):
             span["parent_span_id"] = event["parent_span_id"]
+        for link in event.get("links", []):
+            if link not in span["links"]:
+                span["links"].append(link)
+        span["status"] = _span_status(span["event_types"], event)
+        span["duration_ms"] = _duration_ms(span.get("started_at"), span.get("ended_at"))
+    for span in spans.values():
+        parent_span_id = span.get("parent_span_id")
+        if parent_span_id and parent_span_id in spans and span["span_id"] not in spans[parent_span_id]["child_span_ids"]:
+            spans[parent_span_id]["child_span_ids"].append(span["span_id"])
     return sorted(spans.values(), key=lambda span: span["first_seen_index"])
+
+
+def build_span_tree(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    summaries = build_span_summary(events)
+    nodes = {
+        span["span_id"]: {
+            key: value
+            for key, value in span.items()
+            if key != "child_span_ids"
+        }
+        for span in summaries
+    }
+    for node in nodes.values():
+        node["children"] = []
+
+    roots: list[dict[str, Any]] = []
+    for span in summaries:
+        node = nodes[span["span_id"]]
+        parent_span_id = span.get("parent_span_id")
+        if parent_span_id and parent_span_id in nodes and parent_span_id != span["span_id"]:
+            nodes[parent_span_id]["children"].append(node)
+        else:
+            roots.append(node)
+    return roots
 
 
 def validate_trace_semantics(events: list[dict[str, Any]]) -> dict[str, Any]:
@@ -80,7 +126,30 @@ def validate_trace_semantics(events: list[dict[str, Any]]) -> dict[str, Any]:
         for event in events
         if event.get("parent_span_id") and event["parent_span_id"] not in span_ids
     ]
-    warnings = missing_parent_events or missing_parent_spans or missing_root_events or len(trace_ids) > 1
+    malformed_links = [
+        event["event_id"]
+        for event in events
+        for link in event.get("links", [])
+        if not isinstance(link, dict) or not any(link.get(key) for key in ("url", "trace_id", "span_id", "event_id"))
+    ]
+    cross_trace_links = [
+        {
+            "event_id": event["event_id"],
+            "trace_id": event.get("trace_id"),
+            "linked_trace_id": link.get("trace_id"),
+            "relationship": link.get("relationship"),
+        }
+        for event in events
+        for link in event.get("links", [])
+        if isinstance(link, dict) and link.get("trace_id") and link.get("trace_id") != event.get("trace_id")
+    ]
+    warnings = (
+        missing_parent_events
+        or missing_parent_spans
+        or missing_root_events
+        or malformed_links
+        or len(trace_ids) > 1
+    )
     return {
         "status": "OK" if not warnings else "WARNING",
         "trace_ids": sorted(trace_ids),
@@ -88,6 +157,8 @@ def validate_trace_semantics(events: list[dict[str, Any]]) -> dict[str, Any]:
         "missing_parent_events": missing_parent_events,
         "missing_parent_spans": missing_parent_spans,
         "missing_root_events": missing_root_events,
+        "malformed_links": malformed_links,
+        "cross_trace_links": cross_trace_links,
     }
 
 
@@ -116,3 +187,32 @@ def graph_edges_for_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return edges
+
+
+def _span_status(event_types: list[str], latest_event: dict[str, Any]) -> str:
+    if latest_event.get("severity") == "error" or latest_event.get("event_type", "").endswith(".failed"):
+        return "failed"
+    if any(event_type.endswith(".failed") for event_type in event_types):
+        return "failed"
+    if any(event_type.endswith(".completed") for event_type in event_types):
+        return "completed"
+    if any(event_type.endswith(".started") for event_type in event_types):
+        return "active"
+    return "observed"
+
+
+def _duration_ms(started_at: str | None, ended_at: str | None) -> int | None:
+    if not started_at or not ended_at:
+        return None
+    start = _parse_time(started_at)
+    end = _parse_time(ended_at)
+    if not start or not end:
+        return None
+    return max(0, int((end - start).total_seconds() * 1000))
+
+
+def _parse_time(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None

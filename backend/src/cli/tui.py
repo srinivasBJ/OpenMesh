@@ -13,7 +13,7 @@ from textual.widgets import DataTable, Footer, Static
 from ..db.session import AsyncSessionLocal
 from ..services.discovery import get_discovery
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_sessions, get_traces
-from ..services.trace_semantics import build_event_hierarchy, build_span_summary, graph_edges_for_trace
+from ..services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace
 from ..sdk.integrations import list_integrations
 
 
@@ -267,7 +267,16 @@ def trace_detail_rows(snapshot: TuiSnapshot, trace_id: str) -> list[str]:
     rows.append("")
     rows.append("Spans")
     for span in build_span_summary(events)[:8]:
-        rows.append(f"  {_short(span['span_id'], 18)} e:{span['event_count']}")
+        rows.append(
+            f"  {_short(span['span_id'], 14)} "
+            f"{_short(span.get('status'), 9):<9} "
+            f"e:{span['event_count']} c:{len(span.get('child_span_ids', []))}"
+        )
+    span_tree = build_span_tree(events)
+    if span_tree:
+        rows.append("")
+        rows.append("Span Tree")
+        rows.extend(_compact_span_tree(span_tree)[:8])
     rows.append("")
     rows.append("Relationships")
     relationships = graph_edges_for_trace(events)
@@ -313,6 +322,15 @@ def _compact_hierarchy(nodes: list[dict[str, Any]], prefix: str = "") -> list[st
         branch = "└─" if index == len(nodes) - 1 else "├─"
         rows.append(f"{prefix}{branch} {_short(node['event_type'], 22)}")
         rows.extend(_compact_hierarchy(node.get("children", []), prefix + ("   " if index == len(nodes) - 1 else "│  ")))
+    return rows
+
+
+def _compact_span_tree(nodes: list[dict[str, Any]], prefix: str = "") -> list[str]:
+    rows: list[str] = []
+    for index, node in enumerate(nodes):
+        branch = "└─" if index == len(nodes) - 1 else "├─"
+        rows.append(f"{prefix}{branch} {_short(node['span_id'], 16)} {node.get('status', 'unknown')}")
+        rows.extend(_compact_span_tree(node.get("children", []), prefix + ("   " if index == len(nodes) - 1 else "│  ")))
     return rows
 
 

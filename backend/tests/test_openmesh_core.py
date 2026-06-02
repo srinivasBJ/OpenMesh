@@ -13,7 +13,7 @@ from src.services.graph_state import reduce_graph_state
 from src.services.openmesh_collector import OpenMeshCollector
 from src.services.openmesh_queries import trace_summary
 from src.services.relationship_types import relationship_registry, relationship_type_for
-from src.services.trace_semantics import build_event_hierarchy, graph_edges_for_trace, validate_trace_semantics
+from src.services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace, validate_trace_semantics
 from src.shared.openmesh_events import agent_node, make_openmesh_event
 from src.cli.tui import TuiSnapshot, render_plain
 
@@ -124,6 +124,33 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored["event_type"], "process.stdout")
         self.assertEqual(restored["trace_id"], "trace_test")
         self.assertEqual(restored["source"]["name"], "Research Agent")
+
+    async def test_event_persistence_round_trips_links(self):
+        db = FakeAsyncSession()
+        event = make_openmesh_event(
+            "message.sent",
+            agent_node("agent-a", "Research Agent", "researcher"),
+            {"message": "linked"},
+            session_id="sess_test",
+            trace_id="trace_test",
+            links=[{"trace_id": "trace_parent", "span_id": "span_parent", "relationship": "follows_from"}],
+        )
+
+        record = await create_openmesh_event(db, event)
+        restored = record_to_event(record)
+
+        self.assertEqual(restored["links"], event["links"])
+
+    async def test_collector_rejects_invalid_links(self):
+        collector = OpenMeshCollector()
+        event = self.make_event()
+        event["links"] = ["bad-link"]
+
+        with self.assertRaises(HTTPException) as err:
+            await collector.accept(FakeAsyncSession(), event, broadcast=False)
+
+        self.assertEqual(err.exception.status_code, 422)
+        self.assertIn("link", err.exception.detail)
 
     def test_trace_reconstruction_groups_agents_and_status(self):
         event_a = self.make_event("process.started")
@@ -306,6 +333,45 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(relationships[0]["event_id"], tool["event_id"])
         self.assertEqual(relationships[0]["type"], "uses")
         self.assertEqual(validation["status"], "OK")
+
+    def test_span_semantics_build_lifecycle_tree_and_links(self):
+        root = self.make_event("task.started")
+        linked = make_openmesh_event(
+            "tool.call.started",
+            root["source"],
+            {"tool": "web_search"},
+            target={"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"},
+            session_id=root["session_id"],
+            trace_id=root["trace_id"],
+            parent_event_id=root["event_id"],
+            root_event_id=root["event_id"],
+            parent_span_id=root["span_id"],
+            links=[{"trace_id": "trace_external", "relationship": "follows_from"}],
+        )
+        completed = make_openmesh_event(
+            "tool.call.completed",
+            root["source"],
+            {"tool": "web_search"},
+            target={"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"},
+            session_id=root["session_id"],
+            trace_id=root["trace_id"],
+            span_id=linked["span_id"],
+            parent_span_id=root["span_id"],
+            parent_event_id=linked["event_id"],
+            root_event_id=root["event_id"],
+        )
+        events = [root, linked, completed]
+
+        spans = build_span_summary(events)
+        span_tree = build_span_tree(events)
+        validation = validate_trace_semantics(events)
+
+        child_span = next(span for span in spans if span["span_id"] == linked["span_id"])
+        self.assertEqual(child_span["status"], "completed")
+        self.assertEqual(child_span["event_count"], 2)
+        self.assertEqual(child_span["links"][0]["trace_id"], "trace_external")
+        self.assertEqual(span_tree[0]["children"][0]["span_id"], linked["span_id"])
+        self.assertEqual(validation["cross_trace_links"][0]["linked_trace_id"], "trace_external")
 
     async def test_session_creation_and_completion(self):
         db = FakeSessionStore()

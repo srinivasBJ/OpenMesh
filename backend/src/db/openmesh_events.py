@@ -33,6 +33,7 @@ async def create_openmesh_event(
         target_json=event.get("target"),
         payload_json=event.get("payload", {}),
         metrics_json=event.get("metrics", {}),
+        links_json=event.get("links", []),
         severity=event.get("severity", "info"),
     )
     db.add(record)
@@ -72,7 +73,7 @@ def record_to_event(record: OpenMeshEventRecord) -> Dict[str, Any]:
         "source": record.source_json,
         "payload": record.payload_json or {},
         "metrics": record.metrics_json or {},
-        "links": [],
+        "links": getattr(record, "links_json", None) or [],
         "severity": record.severity,
     }
     if record.target_json:

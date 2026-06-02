@@ -183,11 +183,19 @@ def _print_doctor(report: dict[str, Any]) -> None:
     print("OpenMesh Doctor")
     print()
     for check in report["checks"]:
-        print(f"{check['name']}: {check['status']}")
+        severity = check.get("severity", check["status"])
+        print(f"{check['name']}: {severity}")
         detail = check.get("detail")
         if isinstance(detail, dict):
             for key, value in detail.items():
-                print(f"  {key}: {value}")
+                if isinstance(value, list):
+                    print(f"  {key}: {len(value)}")
+                    for item in value[:5]:
+                        print(f"    - {item}")
+                    if len(value) > 5:
+                        print(f"    ... {len(value) - 5} more")
+                else:
+                    print(f"  {key}: {value}")
         elif detail:
             print(f"  {detail}")
     print()
@@ -388,7 +396,7 @@ async def _doctor(args: argparse.Namespace) -> int:
     async def run(db):
         report = await run_doctor(db)
         _print_doctor(report)
-        return 0 if report["status"] == "OK" else 1
+        return 1 if report["status"] == "ERROR" else 0
 
     return await _with_db(run)
 

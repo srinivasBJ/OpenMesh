@@ -10,6 +10,7 @@ from src.db.openmesh_events import create_openmesh_event, record_to_event
 from src.db.openmesh_sessions import complete_openmesh_session, create_openmesh_session, session_to_dict
 from src.services.discovery import build_discovery
 from src.services.graph_state import reduce_graph_state
+from src.services.openmesh_doctor import build_graph_diagnostics, build_trace_diagnostics
 from src.services.openmesh_collector import OpenMeshCollector
 from src.services.openmesh_queries import trace_summary
 from src.services.relationship_types import relationship_registry, relationship_type_for
@@ -42,6 +43,28 @@ def command_node(command: str) -> dict:
         "name": command,
         "runtime": "shell",
     }
+
+
+def record_from_event(event: dict, **overrides):
+    values = {
+        "event_id": event["event_id"],
+        "event_type": event["event_type"],
+        "timestamp": datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")).replace(tzinfo=None),
+        "trace_id": event["trace_id"],
+        "session_id": event["session_id"],
+        "span_id": event.get("span_id"),
+        "parent_span_id": event.get("parent_span_id"),
+        "parent_event_id": event.get("parent_event_id"),
+        "root_event_id": event.get("root_event_id"),
+        "source_json": event["source"],
+        "target_json": event.get("target"),
+        "payload_json": event.get("payload", {}),
+        "metrics_json": event.get("metrics", {}),
+        "links_json": event.get("links", []),
+        "severity": event.get("severity", "info"),
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
 
 
 class FakeAsyncSession:
@@ -372,6 +395,112 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(child_span["links"][0]["trace_id"], "trace_external")
         self.assertEqual(span_tree[0]["children"][0]["span_id"], linked["span_id"])
         self.assertEqual(validation["cross_trace_links"][0]["linked_trace_id"], "trace_external")
+
+    def test_doctor_trace_diagnostics_find_broken_parent_span_and_orphan_span(self):
+        root = self.make_event("task.started")
+        child = make_openmesh_event(
+            "tool.call.started",
+            root["source"],
+            {"tool": "web_search"},
+            target={"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"},
+            session_id=root["session_id"],
+            trace_id=root["trace_id"],
+            parent_span_id="span_missing",
+            parent_event_id=root["event_id"],
+            root_event_id=root["event_id"],
+        )
+
+        diagnostics = build_trace_diagnostics([record_from_event(root), record_from_event(child)])
+        trace_check = diagnostics[0]
+
+        self.assertEqual(trace_check["severity"], "ERROR")
+        self.assertEqual(len(trace_check["detail"]["broken_parent_span_events"]), 1)
+        self.assertEqual(len(trace_check["detail"]["orphan_spans"]), 1)
+
+    def test_doctor_trace_diagnostics_find_missing_and_broken_root_event_ids(self):
+        missing = self.make_event("task.started")
+        broken = self.make_event("tool.call.started")
+
+        diagnostics = build_trace_diagnostics([
+            record_from_event(missing, root_event_id=None),
+            record_from_event(broken, root_event_id="evt_missing_root"),
+        ])
+        detail = diagnostics[0]["detail"]
+
+        self.assertEqual(diagnostics[0]["severity"], "ERROR")
+        self.assertEqual(len(detail["missing_root_event_events"]), 1)
+        self.assertEqual(len(detail["broken_root_event_events"]), 1)
+
+    def test_doctor_trace_diagnostics_find_malformed_and_invalid_cross_trace_links(self):
+        local = self.make_event("message.sent")
+        local["links"] = [{"trace_id": "trace_missing", "span_id": "span_missing", "relationship": "follows_from"}]
+        malformed = self.make_event("message.sent")
+        malformed["links"] = [{"relationship": "empty"}]
+
+        diagnostics = build_trace_diagnostics([record_from_event(local), record_from_event(malformed)])
+        detail = diagnostics[0]["detail"]
+
+        self.assertEqual(diagnostics[0]["severity"], "ERROR")
+        self.assertEqual(len(detail["malformed_link_events"]), 1)
+        self.assertEqual(len(detail["invalid_cross_trace_links"]), 1)
+
+    def test_doctor_trace_diagnostics_count_valid_cross_trace_links(self):
+        parent = self.make_event("task.started")
+        parent["trace_id"] = "trace_parent"
+        child = self.make_event("task.started")
+        child["trace_id"] = "trace_child"
+        child["links"] = [{
+            "trace_id": parent["trace_id"],
+            "span_id": parent["span_id"],
+            "event_id": parent["event_id"],
+            "relationship": "follows_from",
+        }]
+
+        diagnostics = build_trace_diagnostics([record_from_event(parent), record_from_event(child)])
+
+        self.assertEqual(diagnostics[0]["severity"], "INFO")
+        self.assertEqual(diagnostics[0]["detail"]["valid_cross_trace_links"], 1)
+
+    def test_doctor_workflow_diagnostics_find_incomplete_and_long_running_spans(self):
+        workflow = make_openmesh_event(
+            "workflow.started",
+            {"node_id": "workflow:test", "node_type": "workflow", "name": "Test Workflow"},
+            {"workflow": "test"},
+            session_id="sess_test",
+            trace_id="trace_workflow",
+        )
+        record = record_from_event(workflow, timestamp=datetime(2026, 1, 1, 0, 0, 0))
+
+        diagnostics = build_trace_diagnostics([record], now=datetime(2026, 1, 1, 2, 0, 0))
+        trace_check, workflow_check = diagnostics
+
+        self.assertEqual(trace_check["severity"], "WARNING")
+        self.assertEqual(workflow_check["severity"], "WARNING")
+        self.assertEqual(len(trace_check["detail"]["long_running_active_spans"]), 1)
+        self.assertEqual(len(workflow_check["detail"]["incomplete_workflow_spans"]), 1)
+
+    def test_doctor_graph_diagnostics_find_missing_provenance_invalid_and_stale_edges(self):
+        stale = self.make_event("message.sent")
+        stale["source"] = agent_node("agent-a", "Research Agent", "researcher")
+        stale["target"] = agent_node("agent-b", "Coding Agent", "engineer")
+        invalid = self.make_event("node.transition")
+        invalid["source"] = agent_node("agent-a", "Research Agent", "researcher")
+        invalid["target"] = {"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"}
+        missing = self.make_event("message.sent")
+        missing["source"] = agent_node("agent-c", "Planning Agent", "planner")
+        missing["target"] = agent_node("agent-d", "Review Agent", "reviewer")
+
+        diagnostics = build_graph_diagnostics([
+            record_from_event(stale, timestamp=datetime(2026, 1, 1, 0, 0, 0)),
+            record_from_event(invalid),
+            record_from_event(missing, trace_id=None),
+        ])
+
+        detail = diagnostics["detail"]
+        self.assertEqual(diagnostics["severity"], "ERROR")
+        self.assertGreaterEqual(len(detail["missing_provenance"]), 1)
+        self.assertGreaterEqual(len(detail["invalid_relationships"]), 1)
+        self.assertGreaterEqual(len(detail["stale_relationships"]), 1)
 
     async def test_session_creation_and_completion(self):
         db = FakeSessionStore()

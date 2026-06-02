@@ -71,6 +71,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - WebSocket live activity stream using OpenMesh events
 - OpenMesh APIs for events, traces, graph state, and sessions
 - OpenMesh CLI for health, events, traces, graph, doctor, and observed process execution
+- `openmesh doctor` diagnostics for trace, span, workflow, link, and graph integrity; see [docs/DOCTOR.md](docs/DOCTOR.md)
 - `openmesh tui` terminal UI with a rust-industrial control-room layout
 - `openmesh run -- <command>` process observation with process lifecycle events
 - Python SDK v0.1 for external programs to register agents and emit task/tool events through the collector

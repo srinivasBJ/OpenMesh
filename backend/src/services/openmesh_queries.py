@@ -9,6 +9,7 @@ from ..db.models import OpenMeshEventRecord
 from ..db.openmesh_events import list_openmesh_events, record_to_event, records_to_events
 from ..db.openmesh_sessions import get_openmesh_session, list_openmesh_sessions, session_to_dict
 from .graph_state import reduce_graph_state
+from .trace_semantics import build_event_hierarchy, build_span_summary, graph_edges_for_trace, validate_trace_semantics
 
 
 def trace_status(events: list[dict]) -> str:
@@ -62,9 +63,14 @@ async def get_trace(db: AsyncSession, trace_id: str) -> dict | None:
     if not records:
         return None
     ordered = sorted(records, key=lambda r: r.timestamp)
+    events = records_to_events(ordered)
     return {
         **trace_summary(trace_id, ordered),
-        "events": records_to_events(ordered),
+        "events": events,
+        "hierarchy": build_event_hierarchy(events),
+        "spans": build_span_summary(events),
+        "relationships": graph_edges_for_trace(events),
+        "validation": validate_trace_semantics(events),
     }
 
 

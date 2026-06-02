@@ -43,6 +43,8 @@ class OpenMeshEvent(TypedDict, total=False):
     trace_id: str
     span_id: str
     parent_span_id: str
+    parent_event_id: str
+    root_event_id: str
     source: OpenMeshNode
     target: OpenMeshNode
     payload: Dict[str, Any]
@@ -79,21 +81,32 @@ def make_openmesh_event(
     workspace_id: str = "local",
     session_id: Optional[str] = None,
     trace_id: Optional[str] = None,
+    span_id: Optional[str] = None,
+    parent_span_id: Optional[str] = None,
+    parent_event_id: Optional[str] = None,
+    root_event_id: Optional[str] = None,
 ) -> OpenMeshEvent:
+    event_id = f"evt_{uuid4().hex}"
     event: OpenMeshEvent = {
         "spec_version": "0.1",
-        "event_id": f"evt_{uuid4().hex}",
+        "event_id": event_id,
         "event_type": event_type,
         "timestamp": _utc_now(),
         "workspace_id": workspace_id,
         "session_id": session_id or f"sess_{uuid4().hex}",
         "trace_id": trace_id or f"trace_{uuid4().hex}",
+        "span_id": span_id or f"span_{uuid4().hex}",
         "source": source,
         "payload": payload or {},
         "metrics": metrics or {},
         "links": [],
         "severity": severity,
+        "root_event_id": root_event_id or event_id,
     }
+    if parent_span_id:
+        event["parent_span_id"] = parent_span_id
+    if parent_event_id:
+        event["parent_event_id"] = parent_event_id
     if target:
         event["target"] = target
     return event

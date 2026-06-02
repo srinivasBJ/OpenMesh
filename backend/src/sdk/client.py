@@ -18,6 +18,9 @@ from src.shared.openmesh_events import OpenMeshEvent, OpenMeshNode, OpenMeshSeve
 
 
 _current_trace_id: ContextVar[Optional[str]] = ContextVar("openmesh_trace_id", default=None)
+_current_event_id: ContextVar[Optional[str]] = ContextVar("openmesh_event_id", default=None)
+_root_event_id: ContextVar[Optional[str]] = ContextVar("openmesh_root_event_id", default=None)
+_current_span_id: ContextVar[Optional[str]] = ContextVar("openmesh_span_id", default=None)
 
 
 def _agent_node(agent_id: str, name: str, role: Optional[str], metadata: Optional[dict[str, Any]]) -> OpenMeshNode:
@@ -86,6 +89,10 @@ class OpenMeshClient:
         *,
         target: Optional[OpenMeshNode] = None,
         trace_id: Optional[str] = None,
+        parent_event_id: Optional[str] = None,
+        root_event_id: Optional[str] = None,
+        span_id: Optional[str] = None,
+        parent_span_id: Optional[str] = None,
         severity: OpenMeshSeverity = "info",
     ) -> OpenMeshEvent:
         if not self._has_running_loop():
@@ -96,6 +103,10 @@ class OpenMeshClient:
                     payload,
                     target=target,
                     trace_id=trace_id,
+                    parent_event_id=parent_event_id,
+                    root_event_id=root_event_id,
+                    span_id=span_id,
+                    parent_span_id=parent_span_id,
                     severity=severity,
                 )
             )
@@ -109,6 +120,10 @@ class OpenMeshClient:
         *,
         target: Optional[OpenMeshNode] = None,
         trace_id: Optional[str] = None,
+        parent_event_id: Optional[str] = None,
+        root_event_id: Optional[str] = None,
+        span_id: Optional[str] = None,
+        parent_span_id: Optional[str] = None,
         severity: OpenMeshSeverity = "info",
     ) -> OpenMeshEvent:
         event = make_openmesh_event(
@@ -120,6 +135,10 @@ class OpenMeshClient:
             workspace_id=self.workspace_id,
             session_id=self.session_id,
             trace_id=trace_id or _current_trace_id.get(),
+            parent_event_id=parent_event_id if parent_event_id is not None else _current_event_id.get(),
+            root_event_id=root_event_id or _root_event_id.get(),
+            span_id=span_id or _current_span_id.get(),
+            parent_span_id=parent_span_id,
         )
         async with AsyncSessionLocal() as db:
             await collector.accept(db, event, broadcast=self.broadcast)
@@ -146,6 +165,7 @@ class AgentHandle:
         self.node = node
         self._registration_payload = registration_payload
         self._registered = False
+        self._registration_event: Optional[OpenMeshEvent] = None
 
     @property
     def id(self) -> str:
@@ -162,6 +182,10 @@ class AgentHandle:
         *,
         target: Optional[OpenMeshNode] = None,
         trace_id: Optional[str] = None,
+        parent_event_id: Optional[str] = None,
+        root_event_id: Optional[str] = None,
+        span_id: Optional[str] = None,
+        parent_span_id: Optional[str] = None,
         severity: OpenMeshSeverity = "info",
     ) -> OpenMeshEvent:
         self.ensure_registered()
@@ -171,6 +195,10 @@ class AgentHandle:
             payload or {},
             target=target,
             trace_id=trace_id,
+            parent_event_id=parent_event_id,
+            root_event_id=root_event_id,
+            span_id=span_id,
+            parent_span_id=parent_span_id,
             severity=severity,
         )
 
@@ -181,6 +209,10 @@ class AgentHandle:
         *,
         target: Optional[OpenMeshNode] = None,
         trace_id: Optional[str] = None,
+        parent_event_id: Optional[str] = None,
+        root_event_id: Optional[str] = None,
+        span_id: Optional[str] = None,
+        parent_span_id: Optional[str] = None,
         severity: OpenMeshSeverity = "info",
     ) -> OpenMeshEvent:
         await self.ensure_registered_async()
@@ -190,6 +222,10 @@ class AgentHandle:
             payload or {},
             target=target,
             trace_id=trace_id,
+            parent_event_id=parent_event_id,
+            root_event_id=root_event_id,
+            span_id=span_id,
+            parent_span_id=parent_span_id,
             severity=severity,
         )
 
@@ -199,29 +235,63 @@ class AgentHandle:
     def tool(self, name: str) -> "ToolContext":
         return ToolContext(self, name)
 
-    def ensure_registered(self) -> None:
+    def ensure_registered(self) -> Optional[OpenMeshEvent]:
         if self._registered or not self._registration_payload:
-            return
-        self.client.emit("agent.registered", self.node, self._registration_payload)
+            return self._registration_event
+        event = self.client.emit("agent.registered", self.node, self._registration_payload)
         self._registered = True
+        self._registration_event = event
+        return event
 
-    async def ensure_registered_async(self) -> None:
+    async def ensure_registered_async(self) -> Optional[OpenMeshEvent]:
         if self._registered or not self._registration_payload:
-            return
-        await self.client.emit_async("agent.registered", self.node, self._registration_payload)
+            return self._registration_event
+        event = await self.client.emit_async("agent.registered", self.node, self._registration_payload)
         self._registered = True
+        self._registration_event = event
+        return event
 
 
 class TaskContext:
     def __init__(self, agent: AgentHandle, name: str, *, trace_id: Optional[str] = None) -> None:
         self.agent = agent
         self.name = name
-        self.trace_id = trace_id or _current_trace_id.get() or f"trace_{uuid4().hex}"
+        registration_trace_id = (agent._registration_event or {}).get("trace_id")
+        self.trace_id = trace_id or _current_trace_id.get() or registration_trace_id or f"trace_{uuid4().hex}"
         self._token = None
+        self._event_token = None
+        self._root_token = None
+        self._span_token = None
+        self.span_id = f"span_{uuid4().hex}"
+        self.parent_event_id: Optional[str] = None
+        self.parent_span_id: Optional[str] = None
+        self.root_event_id: Optional[str] = None
+        self.start_event_id: Optional[str] = None
 
     def __enter__(self) -> "TaskContext":
         self._token = _current_trace_id.set(self.trace_id)
-        self.agent.emit("task.started", {"task": self.name}, trace_id=self.trace_id)
+        registration = self.agent.ensure_registered()
+        self.parent_event_id = _current_event_id.get()
+        self.parent_span_id = _current_span_id.get()
+        self.root_event_id = _root_event_id.get()
+        if registration and registration.get("trace_id") == self.trace_id:
+            self.parent_event_id = registration["event_id"]
+            self.parent_span_id = registration.get("span_id")
+            self.root_event_id = registration.get("root_event_id")
+        event = self.agent.emit(
+            "task.started",
+            {"task": self.name},
+            trace_id=self.trace_id,
+            parent_event_id=self.parent_event_id,
+            root_event_id=self.root_event_id,
+            span_id=self.span_id,
+            parent_span_id=self.parent_span_id,
+        )
+        self.start_event_id = event["event_id"]
+        self.root_event_id = event["root_event_id"]
+        self._event_token = _current_event_id.set(event["event_id"])
+        self._root_token = _root_event_id.set(event["root_event_id"])
+        self._span_token = _current_span_id.set(self.span_id)
         return self
 
     def __exit__(
@@ -232,14 +302,44 @@ class TaskContext:
     ) -> bool:
         try:
             event_type, payload, severity = self._completion_event(exc)
-            self.agent.emit(event_type, payload, trace_id=self.trace_id, severity=severity)
+            self.agent.emit(
+                event_type,
+                payload,
+                trace_id=self.trace_id,
+                parent_event_id=self.start_event_id,
+                root_event_id=self.root_event_id,
+                span_id=self.span_id,
+                parent_span_id=self.parent_span_id,
+                severity=severity,
+            )
         finally:
             self._reset_trace()
         return False
 
     async def __aenter__(self) -> "TaskContext":
         self._token = _current_trace_id.set(self.trace_id)
-        await self.agent.emit_async("task.started", {"task": self.name}, trace_id=self.trace_id)
+        registration = await self.agent.ensure_registered_async()
+        self.parent_event_id = _current_event_id.get()
+        self.parent_span_id = _current_span_id.get()
+        self.root_event_id = _root_event_id.get()
+        if registration and registration.get("trace_id") == self.trace_id:
+            self.parent_event_id = registration["event_id"]
+            self.parent_span_id = registration.get("span_id")
+            self.root_event_id = registration.get("root_event_id")
+        event = await self.agent.emit_async(
+            "task.started",
+            {"task": self.name},
+            trace_id=self.trace_id,
+            parent_event_id=self.parent_event_id,
+            root_event_id=self.root_event_id,
+            span_id=self.span_id,
+            parent_span_id=self.parent_span_id,
+        )
+        self.start_event_id = event["event_id"]
+        self.root_event_id = event["root_event_id"]
+        self._event_token = _current_event_id.set(event["event_id"])
+        self._root_token = _root_event_id.set(event["root_event_id"])
+        self._span_token = _current_span_id.set(self.span_id)
         return self
 
     async def __aexit__(
@@ -250,7 +350,16 @@ class TaskContext:
     ) -> bool:
         try:
             event_type, payload, severity = self._completion_event(exc)
-            await self.agent.emit_async(event_type, payload, trace_id=self.trace_id, severity=severity)
+            await self.agent.emit_async(
+                event_type,
+                payload,
+                trace_id=self.trace_id,
+                parent_event_id=self.start_event_id,
+                root_event_id=self.root_event_id,
+                span_id=self.span_id,
+                parent_span_id=self.parent_span_id,
+                severity=severity,
+            )
         finally:
             self._reset_trace()
         return False
@@ -268,6 +377,15 @@ class TaskContext:
         if self._token is not None:
             _current_trace_id.reset(self._token)
             self._token = None
+        if self._event_token is not None:
+            _current_event_id.reset(self._event_token)
+            self._event_token = None
+        if self._root_token is not None:
+            _root_event_id.reset(self._root_token)
+            self._root_token = None
+        if self._span_token is not None:
+            _current_span_id.reset(self._span_token)
+            self._span_token = None
 
 
 class ToolContext:
@@ -276,9 +394,31 @@ class ToolContext:
         self.name = name
         self.node = _tool_node(name)
         self.trace_id = _current_trace_id.get() or f"trace_{uuid4().hex}"
+        self.span_id = f"span_{uuid4().hex}"
+        self.parent_event_id: Optional[str] = None
+        self.parent_span_id: Optional[str] = None
+        self.root_event_id: Optional[str] = None
+        self.start_event_id: Optional[str] = None
+        self._event_token = None
+        self._span_token = None
 
     def __enter__(self) -> "ToolContext":
-        self.agent.emit("tool.call.started", {"tool": self.name}, target=self.node, trace_id=self.trace_id)
+        self.parent_event_id = _current_event_id.get()
+        self.parent_span_id = _current_span_id.get()
+        self.root_event_id = _root_event_id.get()
+        event = self.agent.emit(
+            "tool.call.started",
+            {"tool": self.name},
+            target=self.node,
+            trace_id=self.trace_id,
+            parent_event_id=self.parent_event_id,
+            root_event_id=self.root_event_id,
+            span_id=self.span_id,
+            parent_span_id=self.parent_span_id,
+        )
+        self.start_event_id = event["event_id"]
+        self._event_token = _current_event_id.set(event["event_id"])
+        self._span_token = _current_span_id.set(self.span_id)
         return self
 
     def __exit__(
@@ -288,11 +428,37 @@ class ToolContext:
         traceback: Optional[TracebackType],
     ) -> bool:
         event_type, payload, severity = self._completion_event(exc)
-        self.agent.emit(event_type, payload, target=self.node, trace_id=self.trace_id, severity=severity)
+        self.agent.emit(
+            event_type,
+            payload,
+            target=self.node,
+            trace_id=self.trace_id,
+            parent_event_id=self.start_event_id,
+            root_event_id=self.root_event_id,
+            span_id=self.span_id,
+            parent_span_id=self.parent_span_id,
+            severity=severity,
+        )
+        self._reset_context()
         return False
 
     async def __aenter__(self) -> "ToolContext":
-        await self.agent.emit_async("tool.call.started", {"tool": self.name}, target=self.node, trace_id=self.trace_id)
+        self.parent_event_id = _current_event_id.get()
+        self.parent_span_id = _current_span_id.get()
+        self.root_event_id = _root_event_id.get()
+        event = await self.agent.emit_async(
+            "tool.call.started",
+            {"tool": self.name},
+            target=self.node,
+            trace_id=self.trace_id,
+            parent_event_id=self.parent_event_id,
+            root_event_id=self.root_event_id,
+            span_id=self.span_id,
+            parent_span_id=self.parent_span_id,
+        )
+        self.start_event_id = event["event_id"]
+        self._event_token = _current_event_id.set(event["event_id"])
+        self._span_token = _current_span_id.set(self.span_id)
         return self
 
     async def __aexit__(
@@ -302,7 +468,18 @@ class ToolContext:
         traceback: Optional[TracebackType],
     ) -> bool:
         event_type, payload, severity = self._completion_event(exc)
-        await self.agent.emit_async(event_type, payload, target=self.node, trace_id=self.trace_id, severity=severity)
+        await self.agent.emit_async(
+            event_type,
+            payload,
+            target=self.node,
+            trace_id=self.trace_id,
+            parent_event_id=self.start_event_id,
+            root_event_id=self.root_event_id,
+            span_id=self.span_id,
+            parent_span_id=self.parent_span_id,
+            severity=severity,
+        )
+        self._reset_context()
         return False
 
     def _completion_event(self, exc: Optional[BaseException]) -> tuple[str, dict[str, Any], OpenMeshSeverity]:
@@ -313,3 +490,11 @@ class ToolContext:
             payload["error"] = str(exc)
             payload["error_type"] = exc.__class__.__name__
         return event_type, payload, severity
+
+    def _reset_context(self) -> None:
+        if self._event_token is not None:
+            _current_event_id.reset(self._event_token)
+            self._event_token = None
+        if self._span_token is not None:
+            _current_span_id.reset(self._span_token)
+            self._span_token = None

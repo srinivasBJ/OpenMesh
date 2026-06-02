@@ -31,7 +31,7 @@ def _node_from_json(node: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     }
 
 
-def _edge_type_for(event_type: str, target_type: Optional[str]) -> Optional[str]:
+def edge_type_for(event_type: str, target_type: Optional[str]) -> Optional[str]:
     if event_type in EDGE_TYPES:
         return EDGE_TYPES[event_type]
     if target_type == "tool":
@@ -39,6 +39,10 @@ def _edge_type_for(event_type: str, target_type: Optional[str]) -> Optional[str]
     if target_type == "agent":
         return "communicates_with"
     return None
+
+
+def _edge_type_for(event_type: str, target_type: Optional[str]) -> Optional[str]:
+    return edge_type_for(event_type, target_type)
 
 
 def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, list[Dict[str, Any]]]:
@@ -60,6 +64,7 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, list
         if source and target:
             edge_type = _edge_type_for(record.event_type, target["type"])
             if edge_type:
+                event_id = getattr(record, "event_id", f"{record.event_type}:{record.timestamp.isoformat()}")
                 edge_id = f"{source['id']}:{edge_type}:{target['id']}"
                 edge = edges.get(edge_id, {
                     "id": edge_id,
@@ -68,9 +73,18 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, list
                     "type": edge_type,
                     "event_count": 0,
                     "last_seen": None,
+                    "trace_ids": [],
+                    "event_ids": [],
+                    "last_event_id": None,
                 })
                 edge["event_count"] += 1
                 edge["last_seen"] = record.timestamp.isoformat() + "Z"
+                edge["last_event_id"] = event_id
+                trace_id = getattr(record, "trace_id", None)
+                if trace_id and trace_id not in edge["trace_ids"]:
+                    edge["trace_ids"].append(trace_id)
+                if event_id not in edge["event_ids"]:
+                    edge["event_ids"].append(event_id)
                 edges[edge_id] = edge
 
     return {

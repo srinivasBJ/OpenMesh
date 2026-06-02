@@ -34,6 +34,8 @@ export interface OpenMeshEvent {
   trace_id?: string;
   span_id?: string;
   parent_span_id?: string;
+  parent_event_id?: string;
+  root_event_id?: string;
   source: OpenMeshNode;
   target?: OpenMeshNode;
   payload: Record<string, unknown>;

@@ -13,6 +13,7 @@ from textual.widgets import DataTable, Footer, Static
 from ..db.session import AsyncSessionLocal
 from ..services.discovery import get_discovery
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_sessions, get_traces
+from ..services.trace_semantics import build_event_hierarchy, build_span_summary, graph_edges_for_trace
 from ..sdk.integrations import list_integrations
 
 
@@ -242,6 +243,38 @@ def discovery_rows(snapshot: TuiSnapshot) -> list[str]:
     return rows
 
 
+def trace_detail_rows(snapshot: TuiSnapshot, trace_id: str) -> list[str]:
+    events = sorted(
+        [event for event in snapshot.events if event.get("trace_id") == trace_id],
+        key=lambda event: event["timestamp"],
+    )
+    if not events:
+        return [f"Trace {trace_id}", "No loaded events for trace"]
+    rows = [f"Trace {_short(trace_id, 24)}", "Hierarchy"]
+    rows.extend(_compact_hierarchy(build_event_hierarchy(events)))
+    rows.append("")
+    rows.append("Spans")
+    for span in build_span_summary(events)[:8]:
+        rows.append(f"  {_short(span['span_id'], 18)} e:{span['event_count']}")
+    rows.append("")
+    rows.append("Relationships")
+    relationships = graph_edges_for_trace(events)
+    if not relationships:
+        rows.append("  none")
+    for edge in relationships[:8]:
+        rows.append(f"  {_short(edge['source'], 10)} {edge['type']} {_short(edge['target'], 10)}")
+    return rows
+
+
+def _compact_hierarchy(nodes: list[dict[str, Any]], prefix: str = "") -> list[str]:
+    rows: list[str] = []
+    for index, node in enumerate(nodes):
+        branch = "└─" if index == len(nodes) - 1 else "├─"
+        rows.append(f"{prefix}{branch} {_short(node['event_type'], 22)}")
+        rows.extend(_compact_hierarchy(node.get("children", []), prefix + ("   " if index == len(nodes) - 1 else "│  ")))
+    return rows
+
+
 class Panel(Static):
     pass
 
@@ -353,6 +386,7 @@ class OpenMeshTui(App):
         self.snapshot: TuiSnapshot | None = None
         self.selected_detail = "Enter inspects the focused row. Network stays visible."
         self.lower_right_mode = "events"
+        self.selected_trace_id: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Static("", id="topbar")
@@ -444,6 +478,10 @@ class OpenMeshTui(App):
             self.query_one("#event-title", Static).update("DISCOVERY")
             self.query_one("#event-body", Static).update("\n".join(discovery_rows(self.snapshot)))
             return
+        if self.lower_right_mode == "trace" and self.selected_trace_id:
+            self.query_one("#event-title", Static).update("TRACE DETAIL")
+            self.query_one("#event-body", Static).update("\n".join(trace_detail_rows(self.snapshot, self.selected_trace_id)))
+            return
         self.query_one("#event-title", Static).update("EVENT STREAM")
         self.query_one("#event-body", Static).update("\n".join(event_rows(self.snapshot, limit=50)))
 
@@ -472,6 +510,12 @@ class OpenMeshTui(App):
     def action_inspect_selected(self) -> None:
         focused = self.focused
         if isinstance(focused, DataTable) and focused.cursor_row >= 0:
+            if focused.id == "traces-table" and self.snapshot and focused.cursor_row < len(self.snapshot.traces):
+                self.selected_trace_id = self.snapshot.traces[focused.cursor_row]["trace_id"]
+                self.lower_right_mode = "trace"
+                self._refresh_events()
+                self.query_one("#event-body", Widget).focus()
+                return
             row = focused.get_row_at(focused.cursor_row)
             self.notify(" | ".join(str(cell) for cell in row), timeout=4)
         else:

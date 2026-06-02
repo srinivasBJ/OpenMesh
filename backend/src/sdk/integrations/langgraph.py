@@ -36,6 +36,8 @@ class OpenMeshLangGraph:
         self.graph_name = graph_name
         self.trace_id = trace_id or f"trace_{uuid4().hex}"
         self._nodes: dict[str, OpenMeshNode] = {}
+        self._node_spans: dict[str, str] = {}
+        self._root_event_id: Optional[str] = None
         self._last_node_id: ContextVar[Optional[str]] = ContextVar(
             f"openmesh_langgraph_last_node_id_{uuid4().hex}",
             default=None,
@@ -55,13 +57,15 @@ class OpenMeshLangGraph:
         """Emit an explicit graph transition for custom runners or tests."""
         self._validate_node_name(source)
         self._validate_node_name(target)
-        self.client.emit(
+        event = self.client.emit(
             "node.transition",
             self._node(source),
             self._transition_payload(source, target),
             target=self._node(target),
             trace_id=self.trace_id,
+            root_event_id=self._root_event_id,
         )
+        self._remember_root(event)
 
     def add_edge(self, workflow: Any, source: str, target: str) -> None:
         """Add a LangGraph edge and emit an OpenMesh transition for runtime graph views."""
@@ -72,13 +76,15 @@ class OpenMeshLangGraph:
     async def transition_async(self, source: str, target: str) -> None:
         self._validate_node_name(source)
         self._validate_node_name(target)
-        await self.client.emit_async(
+        event = await self.client.emit_async(
             "node.transition",
             self._node(source),
             self._transition_payload(source, target),
             target=self._node(target),
             trace_id=self.trace_id,
+            root_event_id=self._root_event_id,
         )
+        self._remember_root(event)
 
     def reset(self) -> None:
         """Clear execution-order transition memory for a new workflow run."""
@@ -94,6 +100,13 @@ class OpenMeshLangGraph:
                 "metadata": {"framework": "langgraph", "graph": self.graph_name},
             }
         return self._nodes[name]
+
+    def _span_for(self, name: str) -> str:
+        return self._node_spans.setdefault(name, f"span_{uuid4().hex}")
+
+    def _remember_root(self, event: dict[str, Any]) -> None:
+        if self._root_event_id is None:
+            self._root_event_id = event.get("root_event_id") or event["event_id"]
 
     def _validate_node_name(self, name: str) -> None:
         if not name.strip():
@@ -118,26 +131,30 @@ class OpenMeshLangGraph:
         current = self._node(current_name)
         if previous_id and previous_id != current["node_id"]:
             previous = self._node_by_id(previous_id)
-            self.client.emit(
+            event = self.client.emit(
                 "node.transition",
                 previous,
                 self._transition_payload(previous["name"], current_name),
                 target=current,
                 trace_id=self.trace_id,
+                root_event_id=self._root_event_id,
             )
+            self._remember_root(event)
 
     async def _transition_from_previous_async(self, current_name: str) -> None:
         previous_id = self._last_node_id.get()
         current = self._node(current_name)
         if previous_id and previous_id != current["node_id"]:
             previous = self._node_by_id(previous_id)
-            await self.client.emit_async(
+            event = await self.client.emit_async(
                 "node.transition",
                 previous,
                 self._transition_payload(previous["name"], current_name),
                 target=current,
                 trace_id=self.trace_id,
+                root_event_id=self._root_event_id,
             )
+            self._remember_root(event)
 
     def _node_by_id(self, node_id: str) -> OpenMeshNode:
         for node in self._nodes.values():
@@ -155,7 +172,8 @@ class OpenMeshLangGraph:
         @wraps(fn)
         def wrapped(*args: Any, **kwargs: Any) -> Any:
             self._transition_from_previous(name)
-            self.client.emit(
+            span_id = self._span_for(name)
+            started = self.client.emit(
                 "node.started",
                 node,
                 {
@@ -165,7 +183,10 @@ class OpenMeshLangGraph:
                     "input": _safe_payload(args[0] if args else kwargs),
                 },
                 trace_id=self.trace_id,
+                root_event_id=self._root_event_id,
+                span_id=span_id,
             )
+            self._remember_root(started)
             try:
                 result = fn(*args, **kwargs)
             except Exception as exc:
@@ -180,6 +201,9 @@ class OpenMeshLangGraph:
                         "error_type": exc.__class__.__name__,
                     },
                     trace_id=self.trace_id,
+                    parent_event_id=started["event_id"],
+                    root_event_id=self._root_event_id,
+                    span_id=span_id,
                     severity="error",
                 )
                 raise
@@ -193,6 +217,9 @@ class OpenMeshLangGraph:
                     "output": _safe_payload(result),
                 },
                 trace_id=self.trace_id,
+                parent_event_id=started["event_id"],
+                root_event_id=self._root_event_id,
+                span_id=span_id,
             )
             self._last_node_id.set(node["node_id"])
             return result
@@ -208,7 +235,8 @@ class OpenMeshLangGraph:
         @wraps(fn)
         async def wrapped(*args: Any, **kwargs: Any) -> Any:
             await self._transition_from_previous_async(name)
-            await self.client.emit_async(
+            span_id = self._span_for(name)
+            started = await self.client.emit_async(
                 "node.started",
                 node,
                 {
@@ -218,7 +246,10 @@ class OpenMeshLangGraph:
                     "input": _safe_payload(args[0] if args else kwargs),
                 },
                 trace_id=self.trace_id,
+                root_event_id=self._root_event_id,
+                span_id=span_id,
             )
+            self._remember_root(started)
             try:
                 result = await fn(*args, **kwargs)
             except Exception as exc:
@@ -233,6 +264,9 @@ class OpenMeshLangGraph:
                         "error_type": exc.__class__.__name__,
                     },
                     trace_id=self.trace_id,
+                    parent_event_id=started["event_id"],
+                    root_event_id=self._root_event_id,
+                    span_id=span_id,
                     severity="error",
                 )
                 raise
@@ -246,6 +280,9 @@ class OpenMeshLangGraph:
                     "output": _safe_payload(result),
                 },
                 trace_id=self.trace_id,
+                parent_event_id=started["event_id"],
+                root_event_id=self._root_event_id,
+                span_id=span_id,
             )
             self._last_node_id.set(node["node_id"])
             return result

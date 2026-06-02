@@ -50,6 +50,12 @@
     "parent_span_id": {
       "type": "string"
     },
+    "parent_event_id": {
+      "type": "string"
+    },
+    "root_event_id": {
+      "type": "string"
+    },
     "source": {
       "$ref": "#/$defs/node"
     },

@@ -13,7 +13,7 @@ from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_se
 from ..services.openmesh_collector import collector
 from ..services.discovery import get_discovery
 from ..services.openmesh_doctor import run_doctor
-from ..services.openmesh_queries import get_events, get_graph, get_health, get_traces
+from ..services.openmesh_queries import get_events, get_graph, get_health, get_trace, get_traces
 from ..shared.openmesh_events import make_openmesh_event
 from ..sdk.integrations import list_integrations
 from .tui import run_tui
@@ -69,6 +69,44 @@ def _print_traces(traces: list[dict[str, Any]]) -> None:
             f"{trace['status']:<10} "
             f"{trace['started_at']}"
         )
+
+
+def _print_trace_detail(trace: dict[str, Any]) -> None:
+    print(f"Trace {trace['trace_id']}")
+    print(f"Status: {trace['status']}")
+    print(f"Events: {trace['event_count']}")
+    print()
+    print("Hierarchy")
+    for line in _hierarchy_lines(trace.get("hierarchy", [])):
+        print(line)
+    print()
+    print("Spans")
+    for span in trace.get("spans", []):
+        parent = span.get("parent_span_id") or "-"
+        print(f"- {span['span_id']} parent:{parent} events:{span['event_count']}")
+    print()
+    print("Graph Relationships")
+    relationships = trace.get("relationships", [])
+    if not relationships:
+        print("- none")
+    for edge in relationships:
+        print(f"- {edge['source']} --{edge['type']}--> {edge['target']} event:{edge['event_id']}")
+    print()
+    validation = trace.get("validation", {})
+    print(f"Validation: {validation.get('status', 'UNKNOWN')}")
+
+
+def _hierarchy_lines(nodes: list[dict[str, Any]], prefix: str = "") -> list[str]:
+    lines: list[str] = []
+    for index, node in enumerate(nodes):
+        branch = "└─" if index == len(nodes) - 1 else "├─"
+        source = _node_name(node.get("source"))
+        target = _node_name(node.get("target")) if node.get("target") else None
+        target_text = f" -> {target}" if target else ""
+        lines.append(f"{prefix}{branch} {node['event_type']} [{source}{target_text}]")
+        child_prefix = prefix + ("   " if index == len(nodes) - 1 else "│  ")
+        lines.extend(_hierarchy_lines(node.get("children", []), child_prefix))
+    return lines
 
 
 def _print_graph(graph: dict[str, list[dict[str, Any]]]) -> None:
@@ -185,6 +223,10 @@ async def _emit_process_event(
     payload: dict[str, Any],
     target: dict[str, Any] | None = None,
     severity: str = "info",
+    span_id: str | None = None,
+    parent_span_id: str | None = None,
+    parent_event_id: str | None = None,
+    root_event_id: str | None = None,
 ) -> dict[str, Any]:
     event = make_openmesh_event(
         event_type,
@@ -194,6 +236,10 @@ async def _emit_process_event(
         severity=severity,
         session_id=session_id,
         trace_id=trace_id,
+        span_id=span_id,
+        parent_span_id=parent_span_id,
+        parent_event_id=parent_event_id,
+        root_event_id=root_event_id,
     )
     await collector.accept(db, event)
     return event
@@ -210,6 +256,9 @@ async def _stream_output(
     command: str,
     severity: str,
     emit_lock: asyncio.Lock,
+    span_id: str,
+    parent_event_id: str,
+    root_event_id: str,
 ) -> None:
     while True:
         line = await stream.readline()
@@ -226,6 +275,9 @@ async def _stream_output(
                 source=process,
                 payload={"command": command, "line": text},
                 severity=severity,
+                span_id=span_id,
+                parent_event_id=parent_event_id,
+                root_event_id=root_event_id,
             )
 
 
@@ -263,6 +315,17 @@ async def _traces(args: argparse.Namespace) -> int:
     async def run(db):
         traces = await get_traces(db, limit=args.limit)
         _print_traces(traces[: args.limit])
+
+    return await _with_db(run)
+
+
+async def _trace(args: argparse.Namespace) -> int:
+    async def run(db):
+        trace = await get_trace(db, args.trace_id)
+        if not trace:
+            print(f"Trace not found: {args.trace_id}")
+            return 1
+        _print_trace_detail(trace)
 
     return await _with_db(run)
 
@@ -308,13 +371,14 @@ async def _run_command(args: argparse.Namespace) -> int:
     command = shell_join(command_parts)
     session_id = f"sess_{uuid4().hex}"
     trace_id = f"trace_{uuid4().hex}"
+    span_id = f"span_{uuid4().hex}"
     process = _process_node(session_id, command)
     command_target = _command_node(command)
 
     async def run(db) -> int:
         started_at = _utc_now()
         await create_openmesh_session(db, session_id=session_id, command=command, started_at=started_at)
-        await _emit_process_event(
+        started_event = await _emit_process_event(
             db,
             "process.started",
             session_id=session_id,
@@ -322,7 +386,9 @@ async def _run_command(args: argparse.Namespace) -> int:
             source=CLI_NODE,
             target=process,
             payload={"command": command, "argv": command_parts, "started_at": started_at.isoformat() + "Z"},
+            span_id=span_id,
         )
+        root_event_id = started_event["root_event_id"]
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -346,6 +412,9 @@ async def _run_command(args: argparse.Namespace) -> int:
                     "ended_at": ended_at.isoformat() + "Z",
                 },
                 severity="error",
+                span_id=span_id,
+                parent_event_id=started_event["event_id"],
+                root_event_id=root_event_id,
             )
             await complete_openmesh_session(
                 db,
@@ -369,6 +438,9 @@ async def _run_command(args: argparse.Namespace) -> int:
                 command=command,
                 severity="info",
                 emit_lock=emit_lock,
+                span_id=span_id,
+                parent_event_id=started_event["event_id"],
+                root_event_id=root_event_id,
             ),
             _stream_output(
                 db,
@@ -380,6 +452,9 @@ async def _run_command(args: argparse.Namespace) -> int:
                 command=command,
                 severity="warning",
                 emit_lock=emit_lock,
+                span_id=span_id,
+                parent_event_id=started_event["event_id"],
+                root_event_id=root_event_id,
             ),
         )
         exit_code = await proc.wait()
@@ -400,6 +475,9 @@ async def _run_command(args: argparse.Namespace) -> int:
                 "ended_at": ended_at.isoformat() + "Z",
             },
             severity="info" if exit_code == 0 else "error",
+            span_id=span_id,
+            parent_event_id=started_event["event_id"],
+            root_event_id=root_event_id,
         )
         await complete_openmesh_session(
             db,
@@ -441,6 +519,10 @@ def build_parser() -> argparse.ArgumentParser:
     traces = subparsers.add_parser("traces", help="Show OpenMesh traces.")
     traces.add_argument("--limit", type=int, default=20, help="Maximum traces to show.")
     traces.set_defaults(func=_traces)
+
+    trace = subparsers.add_parser("trace", help="Inspect one OpenMesh trace.")
+    trace.add_argument("trace_id", help="Trace id to inspect.")
+    trace.set_defaults(func=_trace)
 
     graph = subparsers.add_parser("graph", help="Show OpenMesh graph relationships.")
     graph.set_defaults(func=_graph)

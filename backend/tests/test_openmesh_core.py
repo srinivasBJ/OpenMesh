@@ -12,6 +12,7 @@ from src.services.discovery import build_discovery
 from src.services.graph_state import reduce_graph_state
 from src.services.openmesh_collector import OpenMeshCollector
 from src.services.openmesh_queries import trace_summary
+from src.services.trace_semantics import build_event_hierarchy, graph_edges_for_trace, validate_trace_semantics
 from src.shared.openmesh_events import agent_node, make_openmesh_event
 from src.cli.tui import TuiSnapshot, render_plain
 
@@ -245,6 +246,41 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(discovery["tools"][0]["name"], "web_search")
         self.assertTrue(any(entry["name"] == "python hello.py" for entry in discovery["processes"]))
         self.assertTrue(any(entry["name"] == "Research Agent" for entry in discovery["agents"]))
+
+    def test_trace_semantics_reconstruct_parent_child_tree_and_provenance(self):
+        root = self.make_event("agent.registered")
+        root.pop("target", None)
+        task = make_openmesh_event(
+            "task.started",
+            root["source"],
+            {"task": "Research"},
+            session_id=root["session_id"],
+            trace_id=root["trace_id"],
+            parent_event_id=root["event_id"],
+            root_event_id=root["event_id"],
+            parent_span_id=root["span_id"],
+        )
+        tool = make_openmesh_event(
+            "tool.call.started",
+            root["source"],
+            {"tool": "web_search"},
+            target={"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"},
+            session_id=root["session_id"],
+            trace_id=root["trace_id"],
+            parent_event_id=task["event_id"],
+            root_event_id=root["event_id"],
+            parent_span_id=task["span_id"],
+        )
+        events = [root, task, tool]
+
+        hierarchy = build_event_hierarchy(events)
+        relationships = graph_edges_for_trace(events)
+        validation = validate_trace_semantics(events)
+
+        self.assertEqual(hierarchy[0]["children"][0]["event_id"], task["event_id"])
+        self.assertEqual(hierarchy[0]["children"][0]["children"][0]["event_id"], tool["event_id"])
+        self.assertEqual(relationships[0]["event_id"], tool["event_id"])
+        self.assertEqual(validation["status"], "OK")
 
     async def test_session_creation_and_completion(self):
         db = FakeSessionStore()

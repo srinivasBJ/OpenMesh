@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 import importlib.util
 import os
 
@@ -56,4 +56,18 @@ async def init_db():
     from .models import Base
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_ensure_openmesh_trace_columns)
     print(f"✅ Database tables created ({DATABASE_URL})")
+
+
+def _ensure_openmesh_trace_columns(sync_connection):
+    columns = {column["name"] for column in inspect(sync_connection).get_columns("openmesh_events")}
+    required = {
+        "span_id": "VARCHAR(100)",
+        "parent_span_id": "VARCHAR(100)",
+        "parent_event_id": "VARCHAR(100)",
+        "root_event_id": "VARCHAR(100)",
+    }
+    for name, column_type in required.items():
+        if name not in columns:
+            sync_connection.execute(text(f"ALTER TABLE openmesh_events ADD COLUMN {name} {column_type}"))

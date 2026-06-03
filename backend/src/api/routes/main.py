@@ -37,6 +37,8 @@ from ...services.openmesh_queries import get_events as get_openmesh_event_list
 from ...services.openmesh_queries import (
     get_graph,
     inspect_node,
+    inspect_workflow,
+    list_workflows,
     get_session,
     get_sessions,
     get_trace,
@@ -45,7 +47,6 @@ from ...services.openmesh_queries import (
 from ...services.node_types import node_type_registry, node_type_validation_metadata
 from ...services.registry_status import build_registry_status
 from ...services.relationship_types import relationship_registry
-from ...services.workflow_registry import get_workflow_registry
 from ...sdk.integrations import list_integrations
 
 router = APIRouter()
@@ -672,7 +673,19 @@ async def get_openmesh_workflows(
     limit: int = Query(5000, le=10000),
     db: AsyncSession = Depends(get_db),
 ):
-    return {"workflows": await get_workflow_registry(db, limit=limit)}
+    return {"workflows": await list_workflows(db, limit=limit)}
+
+
+@router.get("/openmesh/workflows/{workflow_id}")
+async def inspect_openmesh_workflow(
+    workflow_id: str,
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    workflow = await inspect_workflow(db, workflow_id, limit=limit)
+    if not workflow:
+        raise HTTPException(404, "OpenMesh workflow not found")
+    return workflow
 
 
 @router.get("/openmesh/ecosystem")

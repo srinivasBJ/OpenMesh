@@ -24,6 +24,8 @@ from ..services.openmesh_queries import (
     get_sessions,
     get_traces,
     inspect_graph_node,
+    inspect_graph_workflow,
+    list_workflows,
 )
 from ..services.registry_status import build_registry_status
 from ..services.trace_semantics import (
@@ -32,7 +34,6 @@ from ..services.trace_semantics import (
     build_span_tree,
     graph_edges_for_trace,
 )
-from ..services.workflow_registry import get_workflow_registry
 from ..sdk.integrations import list_integrations
 
 
@@ -78,7 +79,7 @@ async def load_snapshot() -> TuiSnapshot:
             mcp_servers=await get_mcp_registry(db, limit=5000),
             mcp_configs=await get_mcp_config_registry(db, limit=5000),
             capabilities=await get_capability_registry(db, limit=5000),
-            workflows=await get_workflow_registry(db, limit=5000),
+            workflows=await list_workflows(db, limit=5000),
             ecosystem=await get_ecosystem_registry(db, limit=5000),
             registry_status=build_registry_status(registry_records),
             loaded_at=datetime.utcnow(),
@@ -382,14 +383,15 @@ def capability_rows(snapshot: TuiSnapshot) -> list[str]:
 def workflow_rows(snapshot: TuiSnapshot) -> list[str]:
     if not snapshot.workflows:
         return ["No workflows discovered"]
-    rows = ["Workflows"]
+    rows = ["Workflows", "Select a workflow in Agents / Processes and press Enter."]
     for workflow in snapshot.workflows[:12]:
         rows.append(
             f"  {_short(workflow.get('workflow'), 18):<18} "
-            f"{_short(workflow.get('framework') or '-', 10):<10}"
+            f"{_short(workflow.get('workflow_type') or workflow.get('framework') or '-', 10):<10} "
+            f"{_short(workflow.get('status') or 'observed', 10)}"
         )
-        rows.append(f"    source {_short(workflow.get('source') or '-', 24)}")
-        rows.append(f"    last {_time(workflow.get('last_seen'))}")
+        rows.append(f"    id {_short(workflow.get('workflow_id'), 32)}")
+        rows.append(f"    start {_time(workflow.get('started_at'))}")
     return rows
 
 
@@ -515,6 +517,10 @@ def node_detail_rows(snapshot: TuiSnapshot, node_id: str) -> list[str]:
     if not inspection:
         return [f"Node {node_id}", "No loaded node detail"]
     node = inspection["node"]
+    if node.get("type") == "workflow":
+        workflow = inspect_graph_workflow(snapshot.graph, node_id)
+        if workflow:
+            return workflow_detail_rows(workflow)
     definition = node.get("type_definition") or {}
     provenance = inspection.get("provenance", {})
     rows = [
@@ -568,6 +574,54 @@ def node_detail_rows(snapshot: TuiSnapshot, node_id: str) -> list[str]:
         ]
     )
     return rows
+
+
+def workflow_detail_rows(workflow: dict[str, Any]) -> list[str]:
+    rows = [
+        workflow["workflow"],
+        f"id: {_short(workflow.get('workflow_id'), 42)}",
+        f"type: {workflow.get('workflow_type') or '-'}",
+        f"runtime: {workflow.get('runtime') or '-'}",
+        f"status: {workflow.get('status') or 'observed'}",
+        f"started: {_time(workflow.get('started_at'))}",
+        f"ended: {_time(workflow.get('ended_at'))}",
+        f"events: {workflow.get('event_count', 0)} relationships: {workflow.get('relationship_count', 0)}",
+        f"traces: {_short(_join_values(workflow.get('trace_ids', [])), 42)}",
+        f"sessions: {_short(_join_values(workflow.get('session_ids', [])), 42)}",
+        "",
+        "Agents",
+    ]
+    rows.extend(_participant_rows(workflow.get("participating_agents", [])))
+    rows.append("")
+    rows.append("Tools")
+    rows.extend(_participant_rows(workflow.get("participating_tools", [])))
+    rows.append("")
+    rows.append("MCP Servers")
+    rows.extend(_participant_rows(workflow.get("participating_mcp_servers", [])))
+    rows.append("")
+    rows.append("Services")
+    rows.extend(_participant_rows(workflow.get("participating_services", [])))
+    provenance = workflow.get("provenance", {})
+    rows.extend(
+        [
+            "",
+            "Workflow Provenance",
+            f"events: {_short(_join_values(provenance.get('event_ids', [])), 42)}",
+            f"window: {_time(provenance.get('first_seen'))} -> {_time(provenance.get('last_seen'))}",
+            f"first_event: {_short(provenance.get('first_event_id'), 28)}",
+            f"last_event: {_short(provenance.get('last_event_id'), 28)}",
+        ]
+    )
+    return rows
+
+
+def _participant_rows(participants: list[dict[str, Any]]) -> list[str]:
+    if not participants:
+        return ["  none"]
+    return [
+        f"  {_short(item.get('name'), 24)} {item.get('relationship_type')} {item.get('direction')}"
+        for item in participants[:8]
+    ]
 
 
 def _compact_hierarchy(nodes: list[dict[str, Any]], prefix: str = "") -> list[str]:
@@ -782,7 +836,7 @@ class OpenMeshTui(App):
         self.agent_node_rows = [
             node
             for node in nodes.values()
-            if node["type"] in {"agent", "process", "service"}
+            if node["type"] in {"agent", "process", "service", "workflow"}
         ]
         self.agent_node_rows.sort(key=lambda node: (node["type"], node["name"]))
         for node in self.agent_node_rows:

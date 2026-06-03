@@ -75,7 +75,11 @@ from src.services.registry_compatibility import (
 )
 from src.services.registry_status import build_registry_status
 from src.services.openmesh_collector import OpenMeshCollector
-from src.services.openmesh_queries import inspect_graph_node, trace_summary
+from src.services.openmesh_queries import (
+    inspect_graph_node,
+    inspect_graph_workflow,
+    trace_summary,
+)
 from src.services.relationship_types import (
     relationship_definition,
     relationship_registry,
@@ -104,6 +108,7 @@ from src.cli.openmesh import (
     _print_ecosystem,
     _print_mcp,
     _print_mcp_config,
+    _print_workflow_inspection,
     _print_workflows,
 )
 from src.cli.tui import (
@@ -116,6 +121,7 @@ from src.cli.tui import (
     registry_rows,
     render_plain,
     ecosystem_rows,
+    workflow_detail_rows,
     workflow_rows,
 )
 
@@ -976,6 +982,120 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             all(edge["validation_status"] == "valid" for edge in graph["edges"])
         )
+
+    def test_workflow_inspection_reports_participants_and_provenance(self):
+        agent = agent_node("agent:research", "Research Agent", "researcher")
+        workflow = workflow_node(
+            WorkflowEntry(
+                workflow="Research Flow",
+                framework="LangGraph",
+                version="0.1.0",
+                source="examples/langgraph_basic.py",
+            )
+        )
+        tool = {
+            "node_id": "tool:web_search",
+            "node_type": "tool",
+            "name": "web_search",
+            "runtime": "mcp",
+        }
+        mcp = mcp_server_node(
+            name="Search MCP", transport="http", endpoint="http://localhost:8765/mcp"
+        )
+        service = {
+            "node_id": "service:vector-db",
+            "node_type": "service",
+            "name": "Vector DB",
+            "runtime": "http",
+        }
+        events = [
+            make_openmesh_event(
+                "workflow.started",
+                workflow,
+                {"workflow": "Research Flow"},
+                session_id="sess_workflow",
+                trace_id="trace_workflow",
+            ),
+            make_openmesh_event(
+                "workflow.registered",
+                agent,
+                {
+                    "workflow": "Research Flow",
+                    "framework": "LangGraph",
+                    "version": "0.1.0",
+                    "source": "examples/langgraph_basic.py",
+                },
+                target=workflow,
+                session_id="sess_workflow",
+                trace_id="trace_workflow",
+            ),
+            make_openmesh_event(
+                "workflow.tool.used",
+                workflow,
+                {"workflow": "Research Flow", "tool": "web_search"},
+                target=tool,
+                session_id="sess_workflow",
+                trace_id="trace_workflow",
+            ),
+            make_openmesh_event(
+                "workflow.mcp.connected",
+                workflow,
+                {"workflow": "Research Flow", "server": "Search MCP"},
+                target=mcp,
+                session_id="sess_workflow",
+                trace_id="trace_workflow",
+            ),
+            make_openmesh_event(
+                "workflow.service.connected",
+                workflow,
+                {"workflow": "Research Flow", "service": "Vector DB"},
+                target=service,
+                session_id="sess_workflow",
+                trace_id="trace_workflow",
+            ),
+            make_openmesh_event(
+                "workflow.completed",
+                workflow,
+                {"workflow": "Research Flow"},
+                session_id="sess_workflow",
+                trace_id="trace_workflow",
+            ),
+        ]
+        records = [
+            record_from_event(event, timestamp=datetime(2026, 6, 3, 10, index, 0))
+            for index, event in enumerate(events)
+        ]
+        graph = reduce_graph_state(records)
+
+        inspection = inspect_graph_workflow(graph, "research-flow")
+
+        self.assertIsNotNone(inspection)
+        assert inspection is not None
+        self.assertEqual(inspection["workflow"], "Research Flow")
+        self.assertEqual(inspection["workflow_type"], "LangGraph")
+        self.assertEqual(inspection["runtime"], "LangGraph")
+        self.assertEqual(inspection["status"], "completed")
+        self.assertEqual(inspection["started_at"], "2026-06-03T10:00:00Z")
+        self.assertEqual(inspection["ended_at"], "2026-06-03T10:05:00Z")
+        self.assertEqual(
+            [item["name"] for item in inspection["participating_agents"]],
+            ["Research Agent"],
+        )
+        self.assertEqual(
+            [item["name"] for item in inspection["participating_tools"]],
+            ["web_search"],
+        )
+        self.assertEqual(
+            [item["name"] for item in inspection["participating_mcp_servers"]],
+            ["Search MCP"],
+        )
+        self.assertEqual(
+            [item["name"] for item in inspection["participating_services"]],
+            ["Vector DB"],
+        )
+        self.assertEqual(inspection["trace_ids"], ["trace_workflow"])
+        self.assertEqual(inspection["session_ids"], ["sess_workflow"])
+        self.assertEqual(len(inspection["provenance"]["event_ids"]), 6)
 
     def test_workflow_validation_detects_duplicates_and_missing_metadata(self):
         validation = validate_workflow_entries(
@@ -1859,6 +1979,30 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         workflow_output = "\n".join(workflow_rows(snapshot))
         self.assertIn("Research Flow", workflow_output)
         self.assertIn("LangGraph", workflow_output)
+        workflow_detail = "\n".join(
+            workflow_detail_rows(
+                {
+                    "workflow_id": "workflow:langgraph:research-flow",
+                    "workflow": "Research Flow",
+                    "workflow_type": "LangGraph",
+                    "runtime": "LangGraph",
+                    "status": "completed",
+                    "started_at": "2026-06-03T10:00:00Z",
+                    "ended_at": "2026-06-03T10:05:00Z",
+                    "event_count": 6,
+                    "relationship_count": 4,
+                    "participating_agents": [{"name": "Research Agent"}],
+                    "participating_tools": [{"name": "web_search"}],
+                    "participating_mcp_servers": [{"name": "Search MCP"}],
+                    "participating_services": [{"name": "Vector DB"}],
+                    "trace_ids": ["trace_workflow"],
+                    "session_ids": ["sess_workflow"],
+                    "provenance": {"event_ids": ["evt_workflow"]},
+                }
+            )
+        )
+        self.assertIn("Workflow Provenance", workflow_detail)
+        self.assertIn("Research Agent", workflow_detail)
         ecosystem_output = "\n".join(ecosystem_rows(snapshot))
         self.assertIn("Ecosystem", ecosystem_output)
         self.assertIn("Research Flow", ecosystem_output)
@@ -1926,9 +2070,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             _print_workflows(
                 [
                     {
+                        "workflow_id": "workflow:langgraph:research-flow",
                         "workflow": "Research Flow",
-                        "framework": "LangGraph",
-                        "last_seen": "2026-06-03T10:00:00Z",
+                        "workflow_type": "LangGraph",
+                        "status": "completed",
+                        "started_at": "2026-06-03T10:00:00Z",
                     }
                 ]
             )
@@ -1938,6 +2084,52 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("Research Flow", printed)
         self.assertIn("LangGraph", printed)
+        self.assertIn("completed", printed)
+
+    def test_cli_workflow_inspection_printer_displays_participants(self):
+        with patch("builtins.print") as printer:
+            _print_workflow_inspection(
+                {
+                    "workflow_id": "workflow:langgraph:research-flow",
+                    "workflow": "Research Flow",
+                    "workflow_type": "LangGraph",
+                    "runtime": "LangGraph",
+                    "status": "completed",
+                    "started_at": "2026-06-03T10:00:00Z",
+                    "ended_at": "2026-06-03T10:05:00Z",
+                    "event_count": 6,
+                    "relationship_count": 4,
+                    "participating_agents": [
+                        {
+                            "name": "Research Agent",
+                            "type": "agent",
+                            "relationship_type": "runs",
+                            "direction": "incoming",
+                            "event_count": 1,
+                        }
+                    ],
+                    "participating_tools": [],
+                    "participating_mcp_servers": [],
+                    "participating_services": [],
+                    "trace_ids": ["trace_workflow"],
+                    "session_ids": ["sess_workflow"],
+                    "provenance": {
+                        "event_ids": ["evt_workflow"],
+                        "first_seen": "2026-06-03T10:00:00Z",
+                        "last_seen": "2026-06-03T10:05:00Z",
+                        "first_event_id": "evt_start",
+                        "last_event_id": "evt_end",
+                    },
+                }
+            )
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("Research Flow", printed)
+        self.assertIn("Participating Agents", printed)
+        self.assertIn("Research Agent", printed)
+        self.assertIn("Workflow Provenance", printed)
 
     def test_cli_ecosystem_printer_displays_grouped_inventory(self):
         with patch("builtins.print") as printer:

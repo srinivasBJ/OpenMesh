@@ -29,9 +29,10 @@ from ..services.openmesh_queries import (
     get_trace,
     get_traces,
     inspect_node,
+    inspect_workflow,
+    list_workflows,
 )
 from ..services.registry_status import build_registry_status
-from ..services.workflow_registry import get_workflow_registry
 from ..shared.openmesh_events import make_openmesh_event
 from ..sdk.integrations import list_integrations
 from .tui import run_tui
@@ -503,12 +504,65 @@ def _print_workflows(workflows: list[dict[str, Any]]) -> None:
     if not workflows:
         print("No workflows discovered.")
         return
-    print(f"{'workflow':<30} {'framework':<16} last_seen")
+    print(f"{'workflow_id':<34} {'workflow':<24} {'type':<14} {'status':<12} started")
     for workflow in workflows:
         print(
-            f"{_short(workflow.get('workflow'), 30):<30} "
-            f"{_short(workflow.get('framework') or '-', 16):<16} "
-            f"{workflow.get('last_seen') or '-'}"
+            f"{_short(workflow.get('workflow_id') or workflow.get('id'), 34):<34} "
+            f"{_short(workflow.get('workflow') or workflow.get('name'), 24):<24} "
+            f"{_short(workflow.get('workflow_type') or workflow.get('framework') or '-', 14):<14} "
+            f"{_short(workflow.get('status') or 'observed', 12):<12} "
+            f"{workflow.get('started_at') or workflow.get('last_seen') or '-'}"
+        )
+
+
+def _print_workflow_inspection(workflow: dict[str, Any]) -> None:
+    print(workflow["workflow"])
+    print()
+    print(f"workflow_id: {workflow['workflow_id']}")
+    print(f"workflow_type: {workflow.get('workflow_type') or '-'}")
+    print(f"runtime: {workflow.get('runtime') or '-'}")
+    print(f"status: {workflow.get('status') or 'observed'}")
+    print(f"started_at: {workflow.get('started_at') or '-'}")
+    print(f"ended_at: {workflow.get('ended_at') or '-'}")
+    print(f"event_count: {workflow.get('event_count', 0)}")
+    print(f"relationship_count: {workflow.get('relationship_count', 0)}")
+    print()
+    print("Participating Agents")
+    _print_participants(workflow.get("participating_agents", []))
+    print()
+    print("Participating Tools")
+    _print_participants(workflow.get("participating_tools", []))
+    print()
+    print("Participating MCP Servers")
+    _print_participants(workflow.get("participating_mcp_servers", []))
+    print()
+    print("Participating Services")
+    _print_participants(workflow.get("participating_services", []))
+    print()
+    print("Traces")
+    print(f"  {_join_short(workflow.get('trace_ids', []), limit=5)}")
+    print("Sessions")
+    print(f"  {_join_short(workflow.get('session_ids', []), limit=5)}")
+    provenance = workflow.get("provenance", {})
+    print()
+    print("Workflow Provenance")
+    print(f"  events: {_join_short(provenance.get('event_ids', []), limit=5)}")
+    print(
+        f"  window: {provenance.get('first_seen') or '-'} -> {provenance.get('last_seen') or '-'}"
+    )
+    print(f"  first_event: {provenance.get('first_event_id') or '-'}")
+    print(f"  last_event: {provenance.get('last_event_id') or '-'}")
+
+
+def _print_participants(participants: list[dict[str, Any]]) -> None:
+    if not participants:
+        print("  none")
+        return
+    for participant in participants:
+        print(
+            f"  {participant['name']} "
+            f"({participant['type']}, {participant['relationship_type']}, "
+            f"{participant['direction']}, events:{participant.get('event_count', 0)})"
         )
 
 
@@ -779,8 +833,28 @@ async def _capabilities(args: argparse.Namespace) -> int:
 
 async def _workflows(args: argparse.Namespace) -> int:
     async def run(db):
-        workflows = await get_workflow_registry(db, limit=args.limit)
+        workflows = await list_workflows(db, limit=args.limit)
         _print_workflows(workflows)
+
+    return await _with_db(run)
+
+
+async def _workflow_list(args: argparse.Namespace) -> int:
+    async def run(db):
+        workflows = await list_workflows(db, limit=args.limit)
+        _print_workflows(workflows)
+
+    return await _with_db(run)
+
+
+async def _workflow_inspect(args: argparse.Namespace) -> int:
+    async def run(db):
+        workflow = await inspect_workflow(db, args.workflow_id, limit=args.limit)
+        if not workflow:
+            print(f"OpenMesh workflow not found: {args.workflow_id}")
+            return 1
+        _print_workflow_inspection(workflow)
+        return 0
 
     return await _with_db(run)
 
@@ -1073,6 +1147,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum events to derive workflow registry from.",
     )
     workflows.set_defaults(func=_workflows)
+
+    workflow = subparsers.add_parser("workflow", help="Inspect OpenMesh workflows.")
+    workflow_subparsers = workflow.add_subparsers(
+        dest="workflow_command", required=True
+    )
+    workflow_list = workflow_subparsers.add_parser(
+        "list", help="List discovered workflows."
+    )
+    workflow_list.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive workflow registry from.",
+    )
+    workflow_list.set_defaults(func=_workflow_list)
+    workflow_inspect = workflow_subparsers.add_parser(
+        "inspect", help="Inspect one workflow."
+    )
+    workflow_inspect.add_argument(
+        "workflow_id", help="Workflow id, workflow name, or normalized workflow alias."
+    )
+    workflow_inspect.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive workflow inspection from.",
+    )
+    workflow_inspect.set_defaults(func=_workflow_inspect)
 
     ecosystem = subparsers.add_parser(
         "ecosystem", help="Show unified OpenMesh ecosystem inventory."

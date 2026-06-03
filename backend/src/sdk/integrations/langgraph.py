@@ -110,6 +110,7 @@ class OpenMeshLangGraph:
             self._workflow_node(),
             {
                 "graph": self.graph_name,
+                "source": "langgraph",
                 "runtime": {"framework": "langgraph", "graph": self.graph_name},
                 "output": _safe_payload(output) if output is not None else {},
             },
@@ -129,6 +130,7 @@ class OpenMeshLangGraph:
             self._workflow_node(),
             {
                 "graph": self.graph_name,
+                "source": "langgraph",
                 "runtime": {"framework": "langgraph", "graph": self.graph_name},
                 "output": _safe_payload(output) if output is not None else {},
             },
@@ -148,6 +150,7 @@ class OpenMeshLangGraph:
             self._workflow_node(),
             {
                 "graph": self.graph_name,
+                "source": "langgraph",
                 "runtime": {"framework": "langgraph", "graph": self.graph_name},
                 "error": str(exc),
                 "error_type": exc.__class__.__name__,
@@ -169,6 +172,7 @@ class OpenMeshLangGraph:
             self._workflow_node(),
             {
                 "graph": self.graph_name,
+                "source": "langgraph",
                 "runtime": {"framework": "langgraph", "graph": self.graph_name},
                 "error": str(exc),
                 "error_type": exc.__class__.__name__,
@@ -199,7 +203,11 @@ class OpenMeshLangGraph:
             "node_type": "workflow",
             "name": self.graph_name,
             "runtime": "langgraph",
-            "metadata": {"framework": "langgraph", "graph": self.graph_name},
+            "metadata": {
+                "framework": "langgraph",
+                "graph": self.graph_name,
+                "source": "langgraph",
+            },
         }
 
     def _remember_root(self, event: dict[str, Any]) -> None:
@@ -217,6 +225,7 @@ class OpenMeshLangGraph:
             self._workflow_node(),
             {
                 "graph": self.graph_name,
+                "source": "langgraph",
                 "runtime": {"framework": "langgraph", "graph": self.graph_name},
             },
             trace_id=self.trace_id,
@@ -237,6 +246,7 @@ class OpenMeshLangGraph:
             self._workflow_node(),
             {
                 "graph": self.graph_name,
+                "source": "langgraph",
                 "runtime": {"framework": "langgraph", "graph": self.graph_name},
             },
             trace_id=self.trace_id,

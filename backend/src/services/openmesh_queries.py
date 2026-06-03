@@ -24,6 +24,7 @@ from .trace_semantics import (
     graph_edges_for_trace,
     validate_trace_semantics,
 )
+from .workflow_registry import build_workflow_registry
 
 
 def trace_status(events: list[dict]) -> str:
@@ -107,6 +108,31 @@ async def inspect_node(
 ) -> dict | None:
     graph = await get_graph(db, limit=limit)
     return inspect_graph_node(graph, node_id)
+
+
+async def list_workflows(db: AsyncSession, limit: int = 5000) -> list[dict[str, Any]]:
+    records = await list_openmesh_events(db, limit=limit)
+    graph = reduce_graph_state(records)
+    registry = build_workflow_registry(records)
+    registry_by_id = {entry["id"]: entry for entry in registry}
+    workflows = [
+        inspect_graph_workflow(graph, node["id"], registry_by_id=registry_by_id)
+        for node in graph.get("nodes", [])
+        if node.get("type") == "workflow"
+    ]
+    return sorted(
+        [workflow for workflow in workflows if workflow is not None],
+        key=lambda item: (str(item.get("name")).lower(), item["workflow_id"]),
+    )
+
+
+async def inspect_workflow(
+    db: AsyncSession, workflow_id: str, limit: int = 5000
+) -> dict | None:
+    records = await list_openmesh_events(db, limit=limit)
+    graph = reduce_graph_state(records)
+    registry_by_id = {entry["id"]: entry for entry in build_workflow_registry(records)}
+    return inspect_graph_workflow(graph, workflow_id, registry_by_id=registry_by_id)
 
 
 def inspect_graph_node(graph: dict[str, Any], node_ref: str) -> dict | None:
@@ -196,6 +222,63 @@ def inspect_graph_node(graph: dict[str, Any], node_ref: str) -> dict | None:
     }
 
 
+def inspect_graph_workflow(
+    graph: dict[str, Any],
+    workflow_ref: str,
+    *,
+    registry_by_id: dict[str, dict[str, Any]] | None = None,
+) -> dict | None:
+    node = _find_graph_node(
+        [item for item in graph.get("nodes", []) if item.get("type") == "workflow"],
+        workflow_ref,
+    )
+    if not node:
+        return None
+    inspection = inspect_graph_node(graph, node["id"])
+    if not inspection:
+        return None
+
+    metadata = node.get("metadata") or {}
+    registry_entry = (registry_by_id or {}).get(node["id"], {})
+    observations = inspection.get("provenance", {}).get("observations", [])
+    status = _workflow_status(observations)
+    started_at = _workflow_started_at(observations) or inspection.get("first_seen")
+    ended_at = _workflow_ended_at(observations)
+    participants = _workflow_participants(graph, node["id"])
+    workflow_type = (
+        metadata.get("workflow_type")
+        or registry_entry.get("framework")
+        or metadata.get("framework")
+        or node.get("runtime")
+        or "workflow"
+    )
+    return {
+        "workflow_id": node["id"],
+        "workflow": node["name"],
+        "name": node["name"],
+        "workflow_type": workflow_type,
+        "runtime": node.get("runtime"),
+        "status": status,
+        "started_at": started_at,
+        "ended_at": ended_at,
+        "participating_agents": participants["agents"],
+        "participating_tools": participants["tools"],
+        "participating_mcp_servers": participants["mcp_servers"],
+        "participating_services": participants["services"],
+        "trace_ids": inspection.get("trace_ids", []),
+        "session_ids": inspection.get("session_ids", []),
+        "incoming_relationships": inspection.get("incoming_relationships", []),
+        "outgoing_relationships": inspection.get("outgoing_relationships", []),
+        "relationship_count": inspection.get("relationship_count", 0),
+        "event_count": inspection.get("event_count", 0),
+        "first_seen": inspection.get("first_seen"),
+        "last_seen": inspection.get("last_seen"),
+        "provenance": inspection.get("provenance", {}),
+        "metadata": metadata,
+        "registry": registry_entry,
+    }
+
+
 async def get_sessions(db: AsyncSession, limit: int = 100) -> list[dict]:
     records = await list_openmesh_sessions(db, limit=limit)
     return [session_to_dict(record) for record in records]
@@ -266,3 +349,72 @@ def _dedupe(values: list[Any]) -> list[Any]:
         if value and value not in result:
             result.append(value)
     return result
+
+
+def _workflow_participants(
+    graph: dict[str, Any], workflow_id: str
+) -> dict[str, list[dict[str, Any]]]:
+    nodes = {node["id"]: node for node in graph.get("nodes", [])}
+    groups = {"agents": [], "tools": [], "mcp_servers": [], "services": []}
+    for edge in graph.get("edges", []):
+        if workflow_id not in {edge.get("source"), edge.get("target")}:
+            continue
+        other_id = edge["target"] if edge["source"] == workflow_id else edge["source"]
+        other = nodes.get(other_id)
+        if not other:
+            continue
+        group = {
+            "agent": "agents",
+            "tool": "tools",
+            "mcp_server": "mcp_servers",
+            "service": "services",
+        }.get(other.get("type"))
+        if not group:
+            continue
+        summary = {
+            "node_id": other["id"],
+            "name": other["name"],
+            "type": other["type"],
+            "relationship_type": edge["type"],
+            "direction": "outgoing" if edge["source"] == workflow_id else "incoming",
+            "event_count": edge.get("event_count", 0),
+            "trace_ids": edge.get("provenance", {}).get("trace_ids", []),
+        }
+        if summary not in groups[group]:
+            groups[group].append(summary)
+    for values in groups.values():
+        values.sort(key=lambda item: (item["name"], item["node_id"]))
+    return groups
+
+
+def _workflow_status(observations: list[dict[str, Any]]) -> str:
+    event_types = [str(item.get("event_type", "")) for item in observations]
+    if any(event_type.endswith(".failed") for event_type in event_types):
+        return "failed"
+    if any(event_type.endswith(".completed") for event_type in event_types):
+        return "completed"
+    if any(event_type.endswith(".started") for event_type in event_types):
+        return "active"
+    if any(event_type == "workflow.registered" for event_type in event_types):
+        return "registered"
+    return "observed"
+
+
+def _workflow_started_at(observations: list[dict[str, Any]]) -> str | None:
+    started = [
+        item.get("timestamp")
+        for item in observations
+        if str(item.get("event_type", "")).endswith(".started")
+    ]
+    return (
+        sorted(timestamp for timestamp in started if timestamp)[0] if started else None
+    )
+
+
+def _workflow_ended_at(observations: list[dict[str, Any]]) -> str | None:
+    ended = [
+        item.get("timestamp")
+        for item in observations
+        if str(item.get("event_type", "")).endswith((".completed", ".failed"))
+    ]
+    return sorted(timestamp for timestamp in ended if timestamp)[-1] if ended else None

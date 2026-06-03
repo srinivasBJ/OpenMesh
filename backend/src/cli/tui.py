@@ -13,6 +13,7 @@ from textual.widgets import DataTable, Footer, Static
 from ..db.openmesh_events import list_openmesh_events
 from ..db.session import AsyncSessionLocal
 from ..services.discovery import get_discovery
+from ..services.mcp_discovery import get_mcp_registry
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_sessions, get_traces
 from ..services.registry_status import build_registry_status
 from ..services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace
@@ -38,6 +39,7 @@ class TuiSnapshot:
     sessions: list[dict[str, Any]]
     integrations: list[dict[str, Any]]
     discovery: dict[str, list[dict[str, Any]]]
+    mcp_servers: list[dict[str, Any]]
     registry_status: dict[str, Any]
     loaded_at: datetime
 
@@ -53,6 +55,7 @@ async def load_snapshot() -> TuiSnapshot:
             sessions=await get_sessions(db, limit=1000),
             integrations=list_integrations(),
             discovery=await get_discovery(db, limit=5000),
+            mcp_servers=await get_mcp_registry(db, limit=5000),
             registry_status=build_registry_status(registry_records),
             loaded_at=datetime.utcnow(),
         )
@@ -286,6 +289,21 @@ def registry_rows(snapshot: TuiSnapshot) -> list[str]:
     return rows
 
 
+def mcp_rows(snapshot: TuiSnapshot) -> list[str]:
+    if not snapshot.mcp_servers:
+        return ["No MCP servers discovered"]
+    rows = ["MCP Servers"]
+    for server in snapshot.mcp_servers[:12]:
+        rows.append(
+            f"  {_short(server.get('server'), 18):<18} "
+            f"{_short(server.get('version') or '-', 8):<8} "
+            f"{_short(server.get('transport') or '-', 10):<10}"
+        )
+        rows.append(f"    {_short(server.get('endpoint'), 34)}")
+        rows.append(f"    last {_time(server.get('last_seen'))}")
+    return rows
+
+
 def trace_detail_rows(snapshot: TuiSnapshot, trace_id: str) -> list[str]:
     events = sorted(
         [event for event in snapshot.events if event.get("trace_id") == trace_id],
@@ -507,6 +525,7 @@ class OpenMeshTui(App):
         ("5", "show_integrations", "Integrations"),
         ("6", "show_discovery", "Discovery"),
         ("7", "show_registry", "Registry"),
+        ("8", "show_mcp", "MCP"),
         ("enter", "inspect_selected", "Inspect"),
         ("q", "quit", "Quit"),
     ]
@@ -563,7 +582,7 @@ class OpenMeshTui(App):
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -633,6 +652,10 @@ class OpenMeshTui(App):
             self.query_one("#event-title", Static).update("REGISTRY")
             self.query_one("#event-body", Static).update("\n".join(registry_rows(self.snapshot)))
             return
+        if self.lower_right_mode == "mcp":
+            self.query_one("#event-title", Static).update("MCP")
+            self.query_one("#event-body", Static).update("\n".join(mcp_rows(self.snapshot)))
+            return
         if self.lower_right_mode == "trace" and self.selected_trace_id:
             self.query_one("#event-title", Static).update("TRACE DETAIL")
             self.query_one("#event-body", Static).update("\n".join(trace_detail_rows(self.snapshot, self.selected_trace_id)))
@@ -672,6 +695,11 @@ class OpenMeshTui(App):
 
     def action_show_registry(self) -> None:
         self.lower_right_mode = "registry"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_show_mcp(self) -> None:
+        self.lower_right_mode = "mcp"
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
 

@@ -18,6 +18,7 @@ from src.services.node_types import (
     node_type_validation_metadata,
     validate_node,
 )
+from src.services.mcp_discovery import build_mcp_registry, mcp_server_node, register_mcp_server
 from src.services.openmesh_doctor import (
     build_graph_diagnostics,
     build_node_diagnostics,
@@ -45,7 +46,8 @@ from src.services.relationship_types import (
 )
 from src.services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace, validate_trace_semantics
 from src.shared.openmesh_events import agent_node, make_openmesh_event
-from src.cli.tui import TuiSnapshot, edge_detail_rows, node_detail_rows, registry_rows, render_plain
+from src.cli.openmesh import _print_mcp
+from src.cli.tui import TuiSnapshot, edge_detail_rows, mcp_rows, node_detail_rows, registry_rows, render_plain
 
 
 CLI_NODE = {
@@ -290,10 +292,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
     def test_relationship_registry_validates_types_and_pairs(self):
         valid = validate_relationship("uses", "agent", "tool")
+        mcp_connection = validate_relationship("connects_to", "agent", "mcp_server")
         invalid_type = validate_relationship("unknown", "agent", "tool")
         invalid_pair = validate_relationship("uses", "tool", "service")
 
         self.assertEqual(valid["status"], "valid")
+        self.assertEqual(mcp_connection["status"], "valid")
         self.assertEqual(invalid_type["errors"][0]["code"], "invalid_relationship_type")
         self.assertEqual(
             {error["code"] for error in invalid_pair["errors"]},
@@ -374,6 +378,51 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(len(status["node_definitions"]), 0)
         self.assertGreater(len(status["relationship_definitions"]), 0)
         self.assertIn("additive_changes", status["rules"])
+
+    async def test_mcp_registration_uses_collector_and_metadata_only(self):
+        db = FakeAsyncSession()
+
+        event = await register_mcp_server(
+            db,
+            name="Filesystem MCP",
+            transport="stdio",
+            endpoint="stdio://filesystem",
+            version="1.0.0",
+            broadcast=False,
+        )
+
+        self.assertEqual(event["event_type"], "mcp.server.discovered")
+        self.assertEqual(event["target"]["node_type"], "mcp_server")
+        self.assertEqual(event["target"]["metadata"]["transport"], "stdio")
+        self.assertEqual(event["target"]["metadata"]["endpoint"], "stdio://filesystem")
+        self.assertEqual(len(db.added), 1)
+
+    def test_mcp_registry_graph_and_discovery_are_event_derived(self):
+        mcp_node = mcp_server_node(
+            name="Filesystem MCP",
+            transport="stdio",
+            endpoint="stdio://filesystem",
+            version="1.0.0",
+        )
+        event = make_openmesh_event(
+            "mcp.server.discovered",
+            agent_node("agent-a", "Research Agent", "researcher"),
+            {"server": "Filesystem MCP"},
+            target=mcp_node,
+            session_id="sess_mcp",
+            trace_id="trace_mcp",
+        )
+        record = record_from_event(event)
+
+        registry = build_mcp_registry([record])
+        discovery = build_discovery([record])
+        graph = reduce_graph_state([record])
+
+        self.assertEqual(registry[0]["server"], "Filesystem MCP")
+        self.assertEqual(registry[0]["transport"], "stdio")
+        self.assertTrue(any(entry["type"] == "mcp_server" for entry in discovery["services"]))
+        self.assertEqual(graph["edges"][0]["type"], "connects_to")
+        self.assertEqual(graph["edges"][0]["validation_status"], "valid")
 
     def test_graph_validation_distinguishes_relationship_integrity_errors(self):
         nodes = {
@@ -784,6 +833,7 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             sessions=[],
             integrations=[],
             discovery={"frameworks": [], "agents": [], "tools": [], "processes": [], "services": []},
+            mcp_servers=[],
             registry_status=build_registry_status([]),
             loaded_at=datetime.utcnow(),
         )
@@ -802,6 +852,44 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         registry_detail = "\n".join(registry_rows(snapshot))
         self.assertIn("Compatibility: INFO", registry_detail)
         self.assertIn("node_registry", registry_detail)
+
+    def test_tui_mcp_rows_display_discovered_servers(self):
+        snapshot = TuiSnapshot(
+            health={"events": 1, "traces": 1, "nodes": 1, "edges": 0},
+            graph={"nodes": [], "edges": []},
+            traces=[],
+            events=[],
+            sessions=[],
+            integrations=[],
+            discovery={"frameworks": [], "agents": [], "tools": [], "processes": [], "services": []},
+            mcp_servers=[{
+                "server": "Filesystem MCP",
+                "version": "1.0.0",
+                "transport": "stdio",
+                "endpoint": "stdio://filesystem",
+                "last_seen": "2026-06-03T10:00:00Z",
+            }],
+            registry_status=build_registry_status([]),
+            loaded_at=datetime.utcnow(),
+        )
+
+        output = "\n".join(mcp_rows(snapshot))
+
+        self.assertIn("Filesystem MCP", output)
+        self.assertIn("stdio", output)
+
+    def test_cli_mcp_printer_displays_metadata(self):
+        with patch("builtins.print") as printer:
+            _print_mcp([{
+                "server": "Filesystem MCP",
+                "version": "1.0.0",
+                "transport": "stdio",
+                "last_seen": "2026-06-03T10:00:00Z",
+            }])
+
+        printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
+        self.assertIn("Filesystem MCP", printed)
+        self.assertIn("stdio", printed)
 
 
 if __name__ == "__main__":

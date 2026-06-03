@@ -51,9 +51,9 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
     "connects_to": RelationshipType(
         type="connects_to",
         label="connects_to",
-        description="A tool connects to a service.",
-        source_types=("tool",),
-        target_types=("service",),
+        description="An agent, tool, or service connects to a service or MCP server.",
+        source_types=("agent", "tool", "service"),
+        target_types=("service", "mcp_server"),
     ),
     "exposes": RelationshipType(
         type="exposes",
@@ -114,7 +114,7 @@ def relationship_type_for(
         return "runs"
     if target_type == "process":
         return "spawns"
-    if source_type == "tool" and target_type == "service":
+    if source_type in {"agent", "tool", "service"} and target_type in {"service", "mcp_server"}:
         return "connects_to"
     if source_type == "service" and target_type == "capability":
         return "exposes"

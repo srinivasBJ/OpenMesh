@@ -13,6 +13,7 @@ from ..db.openmesh_events import list_openmesh_events
 from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_session
 from ..services.openmesh_collector import collector
 from ..services.discovery import get_discovery
+from ..services.mcp_discovery import get_mcp_registry
 from ..services.openmesh_doctor import run_doctor
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_trace, get_traces
 from ..services.registry_status import build_registry_status
@@ -33,6 +34,13 @@ def _node_name(node: dict[str, Any] | None) -> str:
     if not node:
         return "None"
     return node.get("name") or node.get("node_id") or "Unknown"
+
+
+def _short(value: Any, width: int) -> str:
+    if value is None:
+        return "-"
+    text = str(value)
+    return text if len(text) <= width else text[: width - 1] + "…"
 
 
 def _print_health(status: dict[str, Any]) -> None:
@@ -308,6 +316,22 @@ def _print_discovery(discovery: dict[str, list[dict[str, Any]]]) -> None:
         print()
 
 
+def _print_mcp(servers: list[dict[str, Any]]) -> None:
+    print("MCP Servers")
+    print()
+    if not servers:
+        print("No MCP servers discovered.")
+        return
+    print(f"{'server':<28} {'version':<12} {'transport':<12} last_seen")
+    for server in servers:
+        print(
+            f"{_short(server.get('server'), 28):<28} "
+            f"{_short(server.get('version') or '-', 12):<12} "
+            f"{_short(server.get('transport') or '-', 12):<12} "
+            f"{server.get('last_seen') or '-'}"
+        )
+
+
 def _utc_now() -> datetime:
     return datetime.utcnow()
 
@@ -497,6 +521,14 @@ async def _discover(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _mcp(args: argparse.Namespace) -> int:
+    async def run(db):
+        servers = await get_mcp_registry(db, limit=args.limit)
+        _print_mcp(servers)
+
+    return await _with_db(run)
+
+
 async def _run_command(args: argparse.Namespace) -> int:
     command_parts = args.command
     if command_parts and command_parts[0] == "--":
@@ -681,6 +713,10 @@ def build_parser() -> argparse.ArgumentParser:
     discover = subparsers.add_parser("discover", help="Show observed OpenMesh ecosystem registry.")
     discover.add_argument("--limit", type=int, default=5000, help="Maximum events to derive discovery from.")
     discover.set_defaults(func=_discover)
+
+    mcp = subparsers.add_parser("mcp", help="Show discovered MCP server metadata.")
+    mcp.add_argument("--limit", type=int, default=5000, help="Maximum events to derive MCP registry from.")
+    mcp.set_defaults(func=_mcp)
 
     tui = subparsers.add_parser("tui", help="Launch the OpenMesh terminal UI.")
     tui.add_argument("--once", action="store_true", help="Render one terminal capture and exit.")

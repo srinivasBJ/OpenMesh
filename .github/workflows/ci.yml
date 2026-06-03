@@ -37,3 +37,34 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
+
+  release-validation:
+    runs-on: ubuntu-latest
+    env:
+      OPENMESH_DB_MODE: sqlite
+      OPENMESH_SQLITE_PATH: /tmp/openmesh-release-validation.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install package editable
+        run: python -m pip install -e .
+      - name: Initialize SQLite database
+        run: python -c "import asyncio; from src.db.session import init_db; asyncio.run(init_db())"
+      - name: Validate installed CLI
+        run: |
+          openmesh doctor
+          openmesh discover
+          openmesh ecosystem
+      - name: Build wheel
+        run: |
+          python -m pip install build
+          python -m build --wheel
+      - name: Validate wheel install
+        run: |
+          python -m venv /tmp/openmesh-wheel-smoke
+          /tmp/openmesh-wheel-smoke/bin/python -m pip install dist/openmesh-*.whl
+          OPENMESH_SQLITE_PATH=/tmp/openmesh-wheel-smoke.db /tmp/openmesh-wheel-smoke/bin/python -c "import asyncio; from src.db.session import init_db; asyncio.run(init_db())"
+          OPENMESH_SQLITE_PATH=/tmp/openmesh-wheel-smoke.db /tmp/openmesh-wheel-smoke/bin/openmesh doctor
+          OPENMESH_SQLITE_PATH=/tmp/openmesh-wheel-smoke.db /tmp/openmesh-wheel-smoke/bin/openmesh discover
+          OPENMESH_SQLITE_PATH=/tmp/openmesh-wheel-smoke.db /tmp/openmesh-wheel-smoke/bin/openmesh ecosystem

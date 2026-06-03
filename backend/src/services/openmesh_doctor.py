@@ -12,6 +12,7 @@ from ..db.openmesh_events import list_openmesh_events, records_to_events
 from ..db.session import ASYNC_URL, DATABASE_URL
 from ..sdk.integrations import list_integrations
 from .graph_state import reduce_graph_state
+from .mcp_capabilities import build_capability_registry, validate_capability_entries
 from .mcp_config_discovery import build_mcp_config_registry, discover_mcp_configs, validate_mcp_config_entries
 from .openmesh_collector import collector
 from .registry_status import build_registry_status
@@ -90,6 +91,7 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
         checks.append(build_node_diagnostics(records))
         checks.append(build_relationship_diagnostics(records))
         checks.append(build_registry_compatibility_diagnostics(records))
+        checks.append(build_capability_diagnostics(records))
         checks.append(build_mcp_config_diagnostics(records, discovered=discover_mcp_configs()))
     except Exception as exc:
         checks.append({"name": "OpenMesh Diagnostics", "status": "ERROR", "severity": "ERROR", "detail": str(exc)})
@@ -368,6 +370,25 @@ def build_mcp_config_diagnostics(
     warnings = detail["duplicate_definitions"]
     return {
         "name": "MCP Configuration Integrity",
+        "status": "ERROR" if errors else "WARNING" if warnings else "OK",
+        "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
+        "detail": detail,
+    }
+
+
+def build_capability_diagnostics(records: list[Any]) -> dict[str, Any]:
+    capabilities = build_capability_registry(records)
+    validation = validate_capability_entries(capabilities)
+    detail = {
+        "capabilities_checked": len(capabilities),
+        "duplicate_capabilities": validation["duplicates"],
+        "malformed_metadata": validation["malformed_metadata"],
+        "missing_required_metadata": validation["missing_required_metadata"],
+    }
+    errors = detail["malformed_metadata"] or detail["missing_required_metadata"]
+    warnings = detail["duplicate_capabilities"]
+    return {
+        "name": "Capability Integrity",
         "status": "ERROR" if errors else "WARNING" if warnings else "OK",
         "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
         "detail": detail,

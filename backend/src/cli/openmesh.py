@@ -18,6 +18,7 @@ from ..services.mcp_config_discovery import (
     get_mcp_config_registry,
     register_discovered_mcp_configs,
 )
+from ..services.mcp_capabilities import get_capability_registry
 from ..services.mcp_discovery import get_mcp_registry
 from ..services.openmesh_doctor import run_doctor
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_trace, get_traces
@@ -305,6 +306,7 @@ def _print_discovery(discovery: dict[str, list[dict[str, Any]]]) -> None:
         ("Frameworks", "frameworks"),
         ("Agents", "agents"),
         ("Tools", "tools"),
+        ("Capabilities", "capabilities"),
         ("Processes", "processes"),
         ("Services", "services"),
     ]
@@ -356,6 +358,22 @@ def _print_mcp_config(configs: list[dict[str, Any]], *, issues: list[dict[str, A
             f"{_short(config.get('server'), 24):<24} "
             f"{_short(config.get('transport') or '-', 12):<12} "
             f"{config.get('config_path') or '-'}"
+        )
+
+
+def _print_capabilities(capabilities: list[dict[str, Any]]) -> None:
+    print("MCP Capabilities")
+    print()
+    if not capabilities:
+        print("No MCP capabilities discovered.")
+        return
+    print(f"{'server':<24} {'capability':<28} {'category':<14} version")
+    for capability in capabilities:
+        print(
+            f"{_short(capability.get('server'), 24):<24} "
+            f"{_short(capability.get('capability'), 28):<28} "
+            f"{_short(capability.get('category') or '-', 14):<14} "
+            f"{capability.get('version') or '-'}"
         )
 
 
@@ -572,6 +590,14 @@ async def _mcp_config(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _capabilities(args: argparse.Namespace) -> int:
+    async def run(db):
+        capabilities = await get_capability_registry(db, limit=args.limit)
+        _print_capabilities(capabilities)
+
+    return await _with_db(run)
+
+
 def _paths_by_source(raw_paths: list[str] | None) -> dict[str, list[Path]]:
     paths: dict[str, list[Path]] = {}
     for raw in raw_paths or []:
@@ -780,6 +806,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override scan path as SOURCE=/path/to/config. May be repeated.",
     )
     mcp_config.set_defaults(func=_mcp_config)
+
+    capabilities = subparsers.add_parser("capabilities", help="Show discovered MCP capability metadata.")
+    capabilities.add_argument("--limit", type=int, default=5000, help="Maximum events to derive capability registry from.")
+    capabilities.set_defaults(func=_capabilities)
 
     tui = subparsers.add_parser("tui", help="Launch the OpenMesh terminal UI.")
     tui.add_argument("--once", action="store_true", help="Render one terminal capture and exit.")

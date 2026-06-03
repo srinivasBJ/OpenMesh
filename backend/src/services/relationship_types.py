@@ -65,8 +65,8 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
     "exposes": RelationshipType(
         type="exposes",
         label="exposes",
-        description="A service exposes a capability.",
-        source_types=("service",),
+        description="A service or MCP server exposes a capability.",
+        source_types=("service", "mcp_server"),
         target_types=("capability",),
     ),
     "communicates_with": RelationshipType(
@@ -104,6 +104,7 @@ EVENT_RELATIONSHIPS = {
     "delegation.created": "delegates_to",
     "node.transition": "transitions_to",
     "mcp.config.discovered": "defines",
+    "mcp.capability.discovered": "exposes",
 }
 
 
@@ -124,7 +125,7 @@ def relationship_type_for(
         return "spawns"
     if source_type in {"agent", "tool", "service"} and target_type in {"service", "mcp_server"}:
         return "connects_to"
-    if source_type == "service" and target_type == "capability":
+    if source_type in {"service", "mcp_server"} and target_type == "capability":
         return "exposes"
     if target_type in {"agent", "service", "process"}:
         return "communicates_with"

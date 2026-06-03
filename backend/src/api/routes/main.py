@@ -21,6 +21,7 @@ from ...core.security import protect_write
 from ...shared.openmesh_events import agent_node, make_openmesh_event
 from ...services.openmesh_collector import collector
 from ...services.discovery import get_discovery
+from ...services.mcp_capabilities import get_capability_registry
 from ...services.mcp_config_discovery import get_mcp_config_registry
 from ...services.mcp_discovery import get_mcp_registry
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
@@ -543,6 +544,14 @@ async def get_openmesh_mcp_config(
     db: AsyncSession = Depends(get_db),
 ):
     return {"configs": await get_mcp_config_registry(db, limit=limit)}
+
+
+@router.get("/openmesh/capabilities")
+async def get_openmesh_capabilities(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"capabilities": await get_capability_registry(db, limit=limit)}
 
 
 # ── STATS ─────────────────────────────────────────────────────────────────────

@@ -31,7 +31,15 @@ from src.services.mcp_config_discovery import (
     register_mcp_config_entry,
     validate_mcp_config_entries,
 )
+from src.services.mcp_capabilities import (
+    MCPCapabilityEntry,
+    build_capability_registry,
+    capability_node,
+    register_mcp_capability,
+    validate_capability_entries,
+)
 from src.services.openmesh_doctor import (
+    build_capability_diagnostics,
     build_graph_diagnostics,
     build_mcp_config_diagnostics,
     build_node_diagnostics,
@@ -59,8 +67,17 @@ from src.services.relationship_types import (
 )
 from src.services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace, validate_trace_semantics
 from src.shared.openmesh_events import agent_node, make_openmesh_event
-from src.cli.openmesh import _print_mcp, _print_mcp_config
-from src.cli.tui import TuiSnapshot, edge_detail_rows, mcp_config_rows, mcp_rows, node_detail_rows, registry_rows, render_plain
+from src.cli.openmesh import _print_capabilities, _print_mcp, _print_mcp_config
+from src.cli.tui import (
+    TuiSnapshot,
+    capability_rows,
+    edge_detail_rows,
+    mcp_config_rows,
+    mcp_rows,
+    node_detail_rows,
+    registry_rows,
+    render_plain,
+)
 
 
 CLI_NODE = {
@@ -306,11 +323,13 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
     def test_relationship_registry_validates_types_and_pairs(self):
         valid = validate_relationship("uses", "agent", "tool")
         mcp_connection = validate_relationship("connects_to", "agent", "mcp_server")
+        mcp_capability = validate_relationship("exposes", "mcp_server", "capability")
         invalid_type = validate_relationship("unknown", "agent", "tool")
         invalid_pair = validate_relationship("uses", "tool", "service")
 
         self.assertEqual(valid["status"], "valid")
         self.assertEqual(mcp_connection["status"], "valid")
+        self.assertEqual(mcp_capability["status"], "valid")
         self.assertEqual(invalid_type["errors"][0]["code"], "invalid_relationship_type")
         self.assertEqual(
             {error["code"] for error in invalid_pair["errors"]},
@@ -544,6 +563,109 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(diagnostics["name"], "MCP Configuration Integrity")
         self.assertEqual(diagnostics["severity"], "ERROR")
         self.assertEqual(len(diagnostics["detail"]["malformed_configs"]), 1)
+        self.assertEqual(len(diagnostics["detail"]["missing_required_metadata"]), 1)
+
+    async def test_mcp_capability_registration_uses_collector_and_metadata_only(self):
+        db = FakeAsyncSession()
+        entry = MCPCapabilityEntry(
+            server="Filesystem MCP",
+            capability="read_file",
+            description="Read file metadata",
+            category="filesystem",
+            version="1.0.0",
+        )
+
+        event = await register_mcp_capability(db, entry, broadcast=False)
+
+        self.assertEqual(event["event_type"], "mcp.capability.discovered")
+        self.assertEqual(event["source"]["node_type"], "mcp_server")
+        self.assertEqual(event["target"]["node_type"], "capability")
+        self.assertEqual(event["target"]["metadata"]["server"], "Filesystem MCP")
+        self.assertEqual(event["target"]["metadata"]["category"], "filesystem")
+        self.assertEqual(len(db.added), 1)
+
+    def test_mcp_capability_registry_graph_and_discovery_are_event_derived(self):
+        source = mcp_server_node(
+            name="Filesystem MCP",
+            transport="stdio",
+            endpoint="stdio://filesystem",
+            version="1.0.0",
+        )
+        target = capability_node(MCPCapabilityEntry(
+            server="Filesystem MCP",
+            capability="read_file",
+            description="Read file metadata",
+            category="filesystem",
+            version="1.0.0",
+        ))
+        event = make_openmesh_event(
+            "mcp.capability.discovered",
+            source,
+            {
+                "server": "Filesystem MCP",
+                "capability": "read_file",
+                "description": "Read file metadata",
+                "category": "filesystem",
+                "version": "1.0.0",
+            },
+            target=target,
+            session_id="sess_capability",
+            trace_id="trace_capability",
+        )
+        record = record_from_event(event)
+
+        registry = build_capability_registry([record])
+        discovery = build_discovery([record])
+        graph = reduce_graph_state([record])
+
+        self.assertEqual(registry[0]["server"], "Filesystem MCP")
+        self.assertEqual(registry[0]["capability"], "read_file")
+        self.assertTrue(any(entry["type"] == "capability" for entry in discovery["capabilities"]))
+        self.assertEqual(graph["edges"][0]["type"], "exposes")
+        self.assertEqual(graph["edges"][0]["validation_status"], "valid")
+
+    def test_mcp_capability_validation_detects_duplicates_and_missing_metadata(self):
+        validation = validate_capability_entries([
+            {
+                "server": "Filesystem MCP",
+                "capability": "read_file",
+                "category": "filesystem",
+                "metadata": {},
+            },
+            {
+                "server": "Filesystem MCP",
+                "capability": "read_file",
+                "category": "filesystem",
+                "metadata": {},
+            },
+            {
+                "server": "Search MCP",
+                "capability": "",
+                "metadata": [],
+            },
+        ])
+
+        self.assertEqual(len(validation["duplicates"]), 1)
+        self.assertEqual(len(validation["missing_required_metadata"]), 1)
+        self.assertEqual(len(validation["malformed_metadata"]), 1)
+
+    def test_doctor_capability_diagnostics_reports_integrity_issues(self):
+        target = capability_node({
+            "server": "Search MCP",
+            "capability": "broken_search",
+            "metadata": {},
+        })
+        event = make_openmesh_event(
+            "mcp.capability.discovered",
+            mcp_server_node(name="Search MCP", transport="http", endpoint="http://localhost:8765/mcp"),
+            {"server": "Search MCP", "capability": "broken_search"},
+            target=target,
+        )
+
+        diagnostics = build_capability_diagnostics([record_from_event(event)])
+
+        self.assertEqual(diagnostics["name"], "Capability Integrity")
+        self.assertEqual(diagnostics["severity"], "ERROR")
         self.assertEqual(len(diagnostics["detail"]["missing_required_metadata"]), 1)
 
     def test_graph_validation_distinguishes_relationship_integrity_errors(self):
@@ -954,9 +1076,10 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             }],
             sessions=[],
             integrations=[],
-            discovery={"frameworks": [], "agents": [], "tools": [], "processes": [], "services": []},
+            discovery={"frameworks": [], "agents": [], "tools": [], "capabilities": [], "processes": [], "services": []},
             mcp_servers=[],
             mcp_configs=[],
+            capabilities=[],
             registry_status=build_registry_status([]),
             loaded_at=datetime.utcnow(),
         )
@@ -984,7 +1107,7 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             events=[],
             sessions=[],
             integrations=[],
-            discovery={"frameworks": [], "agents": [], "tools": [], "processes": [], "services": []},
+            discovery={"frameworks": [], "agents": [], "tools": [], "capabilities": [], "processes": [], "services": []},
             mcp_servers=[{
                 "server": "Filesystem MCP",
                 "version": "1.0.0",
@@ -998,6 +1121,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "transport": "http",
                 "config_path": "/tmp/config.toml",
             }],
+            capabilities=[{
+                "server": "Filesystem MCP",
+                "capability": "read_file",
+                "category": "filesystem",
+                "description": "Read file metadata",
+            }],
             registry_status=build_registry_status([]),
             loaded_at=datetime.utcnow(),
         )
@@ -1009,6 +1138,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         config_output = "\n".join(mcp_config_rows(snapshot))
         self.assertIn("Codex", config_output)
         self.assertIn("search", config_output)
+        capability_output = "\n".join(capability_rows(snapshot))
+        self.assertIn("read_file", capability_output)
+        self.assertIn("filesystem", capability_output)
 
     def test_cli_mcp_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
@@ -1035,6 +1167,20 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
         self.assertIn("Codex", printed)
         self.assertIn("search", printed)
+
+    def test_cli_capability_printer_displays_metadata(self):
+        with patch("builtins.print") as printer:
+            _print_capabilities([{
+                "server": "Filesystem MCP",
+                "capability": "read_file",
+                "category": "filesystem",
+                "version": "1.0.0",
+            }])
+
+        printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
+        self.assertIn("Filesystem MCP", printed)
+        self.assertIn("read_file", printed)
+        self.assertIn("filesystem", printed)
 
 
 if __name__ == "__main__":

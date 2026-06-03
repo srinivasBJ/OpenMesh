@@ -55,13 +55,14 @@ async def get_db():
             await session.close()
 
 
-async def init_db():
+async def init_db(*, announce: bool = True):
     from .models import Base
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_openmesh_trace_columns)
-    print(f"✅ Database tables created ({DATABASE_URL})")
+    if announce:
+        print(f"✅ Database tables created ({DATABASE_URL})")
 
 
 def _ensure_openmesh_trace_columns(sync_connection):

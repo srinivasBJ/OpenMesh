@@ -210,70 +210,74 @@ Read more in [ARCHITECTURE.md](ARCHITECTURE.md), [docs/ARCHITECTURE.md](docs/ARC
 
 ## Quick Start
 
+This is the validated first-user path for a fresh clone.
+
 ### Prerequisites
 
-- Docker and Docker Compose
-- Python 3.11+
-- Node.js 20+
-- Optional: Anthropic API key
+- Python 3.11, 3.12, or 3.13
+- Node.js 20+ if you want the browser dashboard
+- Docker and Docker Compose only if you want Postgres/Redis instead of SQLite
 
-### 1. Configure The Backend
+Python 3.14 is not supported by this release because pinned database wheels do not install cleanly there yet.
 
-```bash
-cp backend/.env.example backend/.env
-```
+### 1. Install OpenMesh
 
-For local development without Docker or Postgres, use SQLite:
-
-```env
-OPENMESH_DB_MODE=sqlite
-OPENMESH_SQLITE_PATH=./openmesh.db
-```
-
-For a zero-cost local demo:
-
-```env
-LLM_MODE=offline
-```
-
-For model-backed generation:
-
-```env
-LLM_MODE=auto
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-### 2. Start PostgreSQL And Redis Optional
+From the repository root:
 
 ```bash
-docker compose up -d postgres redis
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
 ```
 
-Use this when you want the full Docker-backed stack. SQLite mode does not require this step.
+### 2. Configure Local SQLite
 
-### 3. Start The Backend
+OpenMesh can run locally without Docker or Postgres:
 
 ```bash
-cd backend
-pip install -r requirements.txt
+export OPENMESH_DB_MODE=sqlite
+export OPENMESH_SQLITE_PATH=./openmesh.db
+export LLM_MODE=offline
+```
+
+`openmesh doctor` and other database-backed CLI commands create the required local tables automatically.
+
+### 3. Verify The Install
+
+```bash
+openmesh doctor
+```
+
+Expected result: `Overall: OK`.
+
+### 4. Observe Your First Command
+
+```bash
+openmesh run -- python -c "print('hello openmesh')"
+```
+
+Then inspect what OpenMesh observed:
+
+```bash
+openmesh discover
+openmesh graph --details
+openmesh inspect openmesh.cli
+openmesh timeline
+openmesh replay --control step
+openmesh query relationships created since 2020-01-01T00:00:00Z
+openmesh tui --once
+```
+
+### 5. Optional Backend API
+
+The backend is required only for the API, WebSocket stream, and browser dashboard:
+
+```bash
 uvicorn src.main:app --reload --port 8000
 ```
 
-The backend creates database tables and seeds founding agents and guilds when the database is empty.
-
-### 4. Start The Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open:
-
-```text
-http://localhost:5173
-```
+The backend creates database tables and seeds the legacy dashboard simulation data when the database is empty.
 
 Health checks:
 
@@ -282,68 +286,41 @@ GET http://localhost:8000/health
 GET http://localhost:8000/health/ready
 ```
 
-### 5. Install And Use The OpenMesh CLI
+### 6. Optional Frontend Dashboard
 
-From the repository root:
+The dashboard is a temporary visualization layer over the same OpenMesh data:
 
 ```bash
-python -m pip install -e .
+cd frontend
+npm install
+npm run dev
 ```
 
-Then run:
+Open `http://localhost:5173`.
+
+### Useful CLI Commands
 
 ```bash
 openmesh doctor
-openmesh health
-openmesh run -- python3 -c "print('hello openmesh')"
+openmesh run -- <command>
 openmesh events
 openmesh traces
-openmesh graph
-openmesh trace <trace_id>
+openmesh graph --details
 openmesh inspect <node_id>
 openmesh discover
 openmesh ecosystem
-openmesh workflows
-openmesh workflow list
-openmesh workflow inspect <workflow_id>
 openmesh snapshot create
 openmesh snapshot list
-openmesh snapshot inspect <snapshot_id>
-openmesh snapshot diff <snapshot_a> <snapshot_b>
 openmesh timeline
-openmesh timeline node <node_id>
-openmesh timeline workflow <workflow_id>
-openmesh timeline trace <trace_id>
 openmesh replay
-openmesh replay snapshot <snapshot_id>
-openmesh replay trace <trace_id>
-openmesh replay workflow <workflow_id>
-openmesh query agents using web_search
-openmesh query workflows using search
-openmesh query relationships created since 2026-06-03T00:00:00Z
-openmesh query nodes added between snapshots
-openmesh query traces involving <node_id>
-openmesh capabilities
-openmesh integrations
-openmesh plugins
+openmesh query relationships created since 2020-01-01T00:00:00Z
 openmesh plugins list
-openmesh plugins inspect langgraph
-openmesh plugins validate langgraph
-openmesh federation
-openmesh federation list
-openmesh federation inspect
-openmesh federation peers
-openmesh evaluate --sizes 100 1000 10000
+openmesh integrations
+openmesh evaluate --sizes 100 1000
 openmesh tui
 ```
 
 The TUI uses a terminal-first control-room layout where the network panel stays visible while agents/processes, traces, and live events update from persisted OpenMesh data.
-
-When OpenMesh is published as a package:
-
-```bash
-python -m pip install openmesh
-```
 
 See [docs/INSTALLATION.md](docs/INSTALLATION.md) and [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
 Plugin metadata and validation are documented in [docs/PLUGINS.md](docs/PLUGINS.md).
@@ -364,6 +341,14 @@ python examples/openhands_basic.py
 python examples/claude_code_basic.py
 python examples/opencode_basic.py
 ```
+
+### Troubleshooting
+
+- `openmesh: command not found`: activate the virtualenv where you ran `python -m pip install -e .`.
+- `Requires-Python` or `psycopg2` build errors: use Python 3.11, 3.12, or 3.13.
+- `openmesh doctor` reports missing tables: upgrade to the latest checkout and rerun `openmesh doctor`; the CLI bootstraps local schema automatically.
+- Integration status says `Not installed`: the OpenMesh plugin is present, but the optional external framework package is not installed.
+- Postgres mode: set `OPENMESH_DB_MODE=postgres` and `DATABASE_URL`, then rerun `openmesh doctor`.
 
 ## Development Workflow
 

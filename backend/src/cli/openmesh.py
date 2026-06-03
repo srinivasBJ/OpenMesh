@@ -9,7 +9,7 @@ from shlex import join as shell_join
 from typing import Any, Callable
 from uuid import uuid4
 
-from ..db.session import AsyncSessionLocal
+from ..db.session import AsyncSessionLocal, init_db
 from ..db.openmesh_events import list_openmesh_events
 from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_session
 from ..services.openmesh_collector import collector
@@ -1317,6 +1317,7 @@ async def _stream_output(
 
 async def _with_db(handler: Callable[..., Any], *args: Any) -> int:
     try:
+        await init_db(announce=False)
         async with AsyncSessionLocal() as db:
             result = await handler(db, *args)
             return result if isinstance(result, int) else 0

@@ -7,7 +7,7 @@ name = "openmesh"
 version = "0.1.0"
 description = "Terminal-first observability and ecosystem registry for AI agents."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 license = { text = "MIT" }
 authors = [
   { name = "OpenMesh Contributors" }

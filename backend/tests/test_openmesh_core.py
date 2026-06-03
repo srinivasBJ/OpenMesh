@@ -158,6 +158,7 @@ from src.cli.openmesh import (
     _print_timeline,
     _print_workflow_inspection,
     _print_workflows,
+    _with_db,
 )
 from src.cli.tui import (
     TuiSnapshot,
@@ -312,6 +313,42 @@ class FakeSessionStore(FakeAsyncSession):
 
 
 class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cli_db_commands_bootstrap_schema_quietly(self):
+        calls = []
+
+        class SessionContext:
+            async def __aenter__(self):
+                calls.append(("session", "enter"))
+                return "db"
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                calls.append(("session", "exit"))
+                return False
+
+        async def fake_init_db(*, announce=True):
+            calls.append(("init", announce))
+
+        async def handler(db):
+            calls.append(("handler", db))
+            return 0
+
+        with (
+            patch("src.cli.openmesh.init_db", fake_init_db),
+            patch("src.cli.openmesh.AsyncSessionLocal", lambda: SessionContext()),
+        ):
+            result = await _with_db(handler)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            calls,
+            [
+                ("init", False),
+                ("session", "enter"),
+                ("handler", "db"),
+                ("session", "exit"),
+            ],
+        )
+
     def make_event(self, event_type="message.sent"):
         return make_openmesh_event(
             event_type,

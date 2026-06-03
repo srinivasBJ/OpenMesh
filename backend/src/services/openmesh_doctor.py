@@ -85,6 +85,7 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
         records = await list_openmesh_events(db, limit=5000)
         checks.extend(build_trace_diagnostics(records))
         checks.append(build_graph_diagnostics(records))
+        checks.append(build_node_diagnostics(records))
         checks.append(build_relationship_diagnostics(records))
     except Exception as exc:
         checks.append({"name": "OpenMesh Diagnostics", "status": "ERROR", "severity": "ERROR", "detail": str(exc)})
@@ -280,6 +281,32 @@ def build_relationship_diagnostics(records: list[Any]) -> dict[str, Any]:
         "name": "Relationship Integrity",
         "status": "ERROR" if errors else "OK",
         "severity": "ERROR" if errors else "INFO",
+        "detail": detail,
+    }
+
+
+def build_node_diagnostics(records: list[Any]) -> dict[str, Any]:
+    graph = reduce_graph_state(records)
+    validation = graph.get("validation", {})
+    detail = {
+        "nodes_checked": len(graph.get("nodes", [])),
+        "unknown_node_types": validation.get("unknown_node_types", []),
+        "invalid_node_metadata": validation.get("invalid_node_metadata", []),
+        "missing_required_identifiers": validation.get("missing_required_identifiers", []),
+        "invalid_node_categories": validation.get("invalid_node_categories", []),
+        "invalid_relationship_endpoints": validation.get("invalid_relationship_endpoints", []),
+    }
+    errors = (
+        detail["unknown_node_types"]
+        or detail["missing_required_identifiers"]
+        or detail["invalid_node_categories"]
+        or detail["invalid_relationship_endpoints"]
+    )
+    warnings = detail["invalid_node_metadata"]
+    return {
+        "name": "Node Integrity",
+        "status": "ERROR" if errors else "WARNING" if warnings else "OK",
+        "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
         "detail": detail,
     }
 

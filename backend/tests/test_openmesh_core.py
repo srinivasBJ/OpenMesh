@@ -10,7 +10,8 @@ from src.db.openmesh_events import create_openmesh_event, record_to_event
 from src.db.openmesh_sessions import complete_openmesh_session, create_openmesh_session, session_to_dict
 from src.services.discovery import build_discovery
 from src.services.graph_state import reduce_graph_state, validate_graph_state
-from src.services.openmesh_doctor import build_graph_diagnostics, build_relationship_diagnostics, build_trace_diagnostics
+from src.services.node_types import node_type_definition, node_type_registry, node_type_validation_metadata, validate_node
+from src.services.openmesh_doctor import build_graph_diagnostics, build_node_diagnostics, build_relationship_diagnostics, build_trace_diagnostics
 from src.services.openmesh_collector import OpenMeshCollector
 from src.services.openmesh_queries import trace_summary
 from src.services.relationship_types import (
@@ -21,7 +22,7 @@ from src.services.relationship_types import (
 )
 from src.services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace, validate_trace_semantics
 from src.shared.openmesh_events import agent_node, make_openmesh_event
-from src.cli.tui import TuiSnapshot, edge_detail_rows, render_plain
+from src.cli.tui import TuiSnapshot, edge_detail_rows, node_detail_rows, render_plain
 
 
 CLI_NODE = {
@@ -180,6 +181,21 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(err.exception.status_code, 422)
         self.assertIn("link", err.exception.detail)
 
+    async def test_collector_rejects_unknown_node_types_and_invalid_metadata(self):
+        collector = OpenMeshCollector()
+        unknown = self.make_event()
+        unknown["source"] = {"node_id": "unknown:a", "node_type": "unknown", "name": "Unknown A"}
+        invalid_metadata = self.make_event()
+        invalid_metadata["source"]["metadata"] = []
+
+        with self.assertRaises(HTTPException) as unknown_error:
+            await collector.accept(FakeAsyncSession(), unknown, broadcast=False)
+        with self.assertRaises(HTTPException) as metadata_error:
+            await collector.accept(FakeAsyncSession(), invalid_metadata, broadcast=False)
+
+        self.assertIn("Unknown node type", unknown_error.exception.detail)
+        self.assertIn("metadata must be an object", metadata_error.exception.detail)
+
     def test_trace_reconstruction_groups_agents_and_status(self):
         event_a = self.make_event("process.started")
         event_b = self.make_event("process.completed")
@@ -261,11 +277,25 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             {"invalid_source_type", "invalid_target_type"},
         )
 
+    def test_node_type_registry_validates_known_and_unknown_nodes(self):
+        valid = validate_node({"node_id": "agent:a", "node_type": "agent", "name": "Agent A", "metadata": {"role": "researcher"}})
+        unknown = validate_node({"node_id": "thing:a", "node_type": "thing", "name": "Thing A"})
+        missing = validate_node({"node_type": "agent", "name": ""})
+        invalid_metadata = validate_node({"node_id": "agent:b", "node_type": "agent", "name": "Agent B", "metadata": []})
+
+        self.assertEqual(node_type_definition("agent")["display_name"], "Agent")
+        self.assertIn("mcp_server", {item["type"] for item in node_type_registry()})
+        self.assertEqual(node_type_validation_metadata()["required_identifiers"], ("node_id", "node_type", "name"))
+        self.assertEqual(valid["status"], "valid")
+        self.assertEqual(unknown["errors"][0]["code"], "unknown_node_type")
+        self.assertEqual(missing["errors"][0]["code"], "missing_required_identifiers")
+        self.assertEqual(invalid_metadata["errors"][0]["code"], "invalid_node_metadata")
+
     def test_graph_validation_distinguishes_relationship_integrity_errors(self):
         nodes = {
-            "agent:a": {"id": "agent:a", "type": "agent"},
-            "tool:a": {"id": "tool:a", "type": "tool"},
-            "service:a": {"id": "service:a", "type": "service"},
+            "agent:a": {"id": "agent:a", "type": "agent", "name": "Agent A", "category": "agents"},
+            "tool:a": {"id": "tool:a", "type": "tool", "name": "Tool A", "category": "tools"},
+            "service:a": {"id": "service:a", "type": "service", "name": "Service A", "category": "services"},
         }
         edge_base = {
             "trace_id": "trace_test",
@@ -284,6 +314,30 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(validation["invalid_relationship_types"]), 1)
         self.assertEqual(len(validation["invalid_source_types"]), 1)
         self.assertEqual(len(validation["invalid_target_types"]), 1)
+
+    def test_graph_validation_detects_unknown_node_types_and_categories(self):
+        nodes = {
+            "unknown:a": {"id": "unknown:a", "type": "unknown", "name": "Unknown A", "category": "unknown"},
+            "agent:a": {"id": "agent:a", "type": "agent", "name": "Agent A", "category": "tools"},
+        }
+        edges = {
+            "edge:a": {
+                "id": "edge:a",
+                "source": "unknown:a",
+                "target": "agent:a",
+                "type": "communicates_with",
+                "trace_id": "trace_test",
+                "event_id": "evt_test",
+                "first_seen": "2026-06-03T00:00:00Z",
+                "last_seen": "2026-06-03T00:00:00Z",
+            }
+        }
+
+        validation = validate_graph_state(nodes, edges)
+
+        self.assertEqual(len(validation["unknown_node_types"]), 1)
+        self.assertEqual(len(validation["invalid_node_categories"]), 1)
+        self.assertEqual(len(validation["invalid_relationship_endpoints"]), 1)
 
     def test_graph_reduction_langgraph_transition_edges(self):
         event = self.make_event("node.transition")
@@ -364,6 +418,8 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(discovery["tools"][0]["name"], "web_search")
         self.assertTrue(any(entry["name"] == "python hello.py" for entry in discovery["processes"]))
         self.assertTrue(any(entry["name"] == "Research Agent" for entry in discovery["agents"]))
+        self.assertEqual(discovery["tools"][0]["type_definition"]["display_name"], "Tool")
+        self.assertEqual(discovery["tools"][0]["validation_status"], "valid")
 
     def test_trace_semantics_reconstruct_parent_child_tree_and_provenance(self):
         root = self.make_event("agent.registered")
@@ -558,6 +614,16 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(diagnostics["detail"]["invalid_source_types"]), 1)
         self.assertEqual(len(diagnostics["detail"]["invalid_target_types"]), 1)
 
+    def test_doctor_node_diagnostics_find_unknown_node_types(self):
+        event = self.make_event("message.sent")
+        event["source"] = {"node_id": "unknown:a", "node_type": "unknown", "name": "Unknown A"}
+
+        diagnostics = build_node_diagnostics([record_from_event(event)])
+
+        self.assertEqual(diagnostics["name"], "Node Integrity")
+        self.assertEqual(diagnostics["severity"], "ERROR")
+        self.assertEqual(len(diagnostics["detail"]["unknown_node_types"]), 1)
+
     async def test_session_creation_and_completion(self):
         db = FakeSessionStore()
         started = datetime.utcnow()
@@ -645,6 +711,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         detail = "\n".join(edge_detail_rows(snapshot, "edge-1"))
         self.assertIn("validation: valid", detail)
         self.assertIn("Agents communicate with each other.", detail)
+        node_detail = "\n".join(node_detail_rows(snapshot, "agent-a"))
+        self.assertIn("type: agent", node_detail)
+        self.assertIn("Relationships", node_detail)
 
 
 if __name__ == "__main__":

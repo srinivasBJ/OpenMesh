@@ -22,6 +22,7 @@ from ...services.openmesh_collector import collector
 from ...services.discovery import get_discovery
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
 from ...services.openmesh_queries import get_graph, get_session, get_sessions, get_trace, get_traces
+from ...services.node_types import node_type_registry, node_type_validation_metadata
 from ...services.relationship_types import relationship_registry
 from ...sdk.integrations import list_integrations
 
@@ -476,6 +477,14 @@ async def get_openmesh_graph(
 @router.get("/openmesh/relationships")
 async def get_openmesh_relationships():
     return {"relationships": relationship_registry()}
+
+
+@router.get("/openmesh/node-types")
+async def get_openmesh_node_types():
+    return {
+        "node_types": node_type_registry(),
+        "validation": node_type_validation_metadata(),
+    }
 
 
 @router.get("/openmesh/sessions")

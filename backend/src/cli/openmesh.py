@@ -190,6 +190,23 @@ def _print_graph(graph: dict[str, Any], *, details: bool = False) -> None:
             print(f"broken_references: {len(broken)}")
 
 
+def _print_nodes(graph: dict[str, Any]) -> None:
+    nodes = sorted(graph.get("nodes", []), key=lambda node: (node["type"], node["name"]))
+    if not nodes:
+        print("No OpenMesh graph nodes found.")
+        return
+    print(f"{'name':<30} {'type':<14} {'status':<10} {'validation':<10} {'events':>6} last_seen")
+    for node in nodes:
+        print(
+            f"{_short(node['name'], 30):<30} "
+            f"{node['type']:<14} "
+            f"{node.get('lifecycle_state', 'unknown'):<10} "
+            f"{node.get('validation_status', 'unknown'):<10} "
+            f"{node.get('event_count', 0):>6} "
+            f"{node.get('last_seen') or '-'}"
+        )
+
+
 def _print_doctor(report: dict[str, Any]) -> None:
     print("OpenMesh Doctor")
     print()
@@ -403,6 +420,14 @@ async def _graph(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _nodes(args: argparse.Namespace) -> int:
+    async def run(db):
+        graph = await get_graph(db)
+        _print_nodes(graph)
+
+    return await _with_db(run)
+
+
 async def _doctor(args: argparse.Namespace) -> int:
     async def run(db):
         report = await run_doctor(db)
@@ -592,6 +617,9 @@ def build_parser() -> argparse.ArgumentParser:
     graph = subparsers.add_parser("graph", help="Show OpenMesh graph relationships.")
     graph.add_argument("--details", action="store_true", help="Show edge provenance and lifecycle metadata.")
     graph.set_defaults(func=_graph)
+
+    nodes = subparsers.add_parser("nodes", help="Show governed OpenMesh graph nodes.")
+    nodes.set_defaults(func=_nodes)
 
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
     doctor.set_defaults(func=_doctor)

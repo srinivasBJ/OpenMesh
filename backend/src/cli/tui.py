@@ -13,6 +13,7 @@ from textual.widgets import DataTable, Footer, Static
 from ..db.openmesh_events import list_openmesh_events
 from ..db.session import AsyncSessionLocal
 from ..services.discovery import get_discovery
+from ..services.mcp_config_discovery import get_mcp_config_registry
 from ..services.mcp_discovery import get_mcp_registry
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_sessions, get_traces
 from ..services.registry_status import build_registry_status
@@ -40,6 +41,7 @@ class TuiSnapshot:
     integrations: list[dict[str, Any]]
     discovery: dict[str, list[dict[str, Any]]]
     mcp_servers: list[dict[str, Any]]
+    mcp_configs: list[dict[str, Any]]
     registry_status: dict[str, Any]
     loaded_at: datetime
 
@@ -56,6 +58,7 @@ async def load_snapshot() -> TuiSnapshot:
             integrations=list_integrations(),
             discovery=await get_discovery(db, limit=5000),
             mcp_servers=await get_mcp_registry(db, limit=5000),
+            mcp_configs=await get_mcp_config_registry(db, limit=5000),
             registry_status=build_registry_status(registry_records),
             loaded_at=datetime.utcnow(),
         )
@@ -304,6 +307,20 @@ def mcp_rows(snapshot: TuiSnapshot) -> list[str]:
     return rows
 
 
+def mcp_config_rows(snapshot: TuiSnapshot) -> list[str]:
+    if not snapshot.mcp_configs:
+        return ["No MCP config sources discovered"]
+    rows = ["MCP Config Sources"]
+    for config in snapshot.mcp_configs[:12]:
+        rows.append(
+            f"  {_short(config.get('source'), 14):<14} "
+            f"{_short(config.get('server'), 16):<16} "
+            f"{_short(config.get('transport') or '-', 8):<8}"
+        )
+        rows.append(f"    {_short(config.get('config_path'), 34)}")
+    return rows
+
+
 def trace_detail_rows(snapshot: TuiSnapshot, trace_id: str) -> list[str]:
     events = sorted(
         [event for event in snapshot.events if event.get("trace_id") == trace_id],
@@ -526,6 +543,7 @@ class OpenMeshTui(App):
         ("6", "show_discovery", "Discovery"),
         ("7", "show_registry", "Registry"),
         ("8", "show_mcp", "MCP"),
+        ("9", "show_mcp_config", "MCP Config"),
         ("enter", "inspect_selected", "Inspect"),
         ("q", "quit", "Quit"),
     ]
@@ -582,7 +600,7 @@ class OpenMeshTui(App):
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -656,6 +674,10 @@ class OpenMeshTui(App):
             self.query_one("#event-title", Static).update("MCP")
             self.query_one("#event-body", Static).update("\n".join(mcp_rows(self.snapshot)))
             return
+        if self.lower_right_mode == "mcp_config":
+            self.query_one("#event-title", Static).update("MCP CONFIG")
+            self.query_one("#event-body", Static).update("\n".join(mcp_config_rows(self.snapshot)))
+            return
         if self.lower_right_mode == "trace" and self.selected_trace_id:
             self.query_one("#event-title", Static).update("TRACE DETAIL")
             self.query_one("#event-body", Static).update("\n".join(trace_detail_rows(self.snapshot, self.selected_trace_id)))
@@ -700,6 +722,11 @@ class OpenMeshTui(App):
 
     def action_show_mcp(self) -> None:
         self.lower_right_mode = "mcp"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_show_mcp_config(self) -> None:
+        self.lower_right_mode = "mcp_config"
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
 

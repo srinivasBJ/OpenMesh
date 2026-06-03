@@ -12,6 +12,7 @@ from ..db.openmesh_events import list_openmesh_events, records_to_events
 from ..db.session import ASYNC_URL, DATABASE_URL
 from ..sdk.integrations import list_integrations
 from .graph_state import reduce_graph_state
+from .mcp_config_discovery import build_mcp_config_registry, discover_mcp_configs, validate_mcp_config_entries
 from .openmesh_collector import collector
 from .registry_status import build_registry_status
 from .trace_semantics import build_span_summary, validate_trace_semantics
@@ -89,6 +90,7 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
         checks.append(build_node_diagnostics(records))
         checks.append(build_relationship_diagnostics(records))
         checks.append(build_registry_compatibility_diagnostics(records))
+        checks.append(build_mcp_config_diagnostics(records, discovered=discover_mcp_configs()))
     except Exception as exc:
         checks.append({"name": "OpenMesh Diagnostics", "status": "ERROR", "severity": "ERROR", "detail": str(exc)})
 
@@ -344,6 +346,31 @@ def build_registry_compatibility_diagnostics(
             "warnings": compatibility["warnings"],
             "errors": compatibility["errors"],
         },
+    }
+
+
+def build_mcp_config_diagnostics(
+    records: list[Any],
+    *,
+    discovered: dict[str, list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    persisted = build_mcp_config_registry(records)
+    discovered = discovered or {"entries": [], "issues": []}
+    validation = validate_mcp_config_entries([*persisted, *discovered.get("entries", [])])
+    detail = {
+        "persisted_configs": len(persisted),
+        "discovered_configs": len(discovered.get("entries", [])),
+        "duplicate_definitions": validation["duplicates"],
+        "malformed_configs": discovered.get("issues", []),
+        "missing_required_metadata": validation["missing_required_metadata"],
+    }
+    errors = detail["malformed_configs"] or detail["missing_required_metadata"]
+    warnings = detail["duplicate_definitions"]
+    return {
+        "name": "MCP Configuration Integrity",
+        "status": "ERROR" if errors else "WARNING" if warnings else "OK",
+        "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
+        "detail": detail,
     }
 
 

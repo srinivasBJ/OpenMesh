@@ -1,6 +1,9 @@
 import asyncio
+import json
+import tempfile
 import unittest
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -19,8 +22,18 @@ from src.services.node_types import (
     validate_node,
 )
 from src.services.mcp_discovery import build_mcp_registry, mcp_server_node, register_mcp_server
+from src.services.mcp_config_discovery import (
+    ClaudeDesktopConfigProvider,
+    CodexConfigProvider,
+    MCPConfigEntry,
+    build_mcp_config_registry,
+    discover_mcp_configs,
+    register_mcp_config_entry,
+    validate_mcp_config_entries,
+)
 from src.services.openmesh_doctor import (
     build_graph_diagnostics,
+    build_mcp_config_diagnostics,
     build_node_diagnostics,
     build_registry_compatibility_diagnostics,
     build_relationship_diagnostics,
@@ -46,8 +59,8 @@ from src.services.relationship_types import (
 )
 from src.services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace, validate_trace_semantics
 from src.shared.openmesh_events import agent_node, make_openmesh_event
-from src.cli.openmesh import _print_mcp
-from src.cli.tui import TuiSnapshot, edge_detail_rows, mcp_rows, node_detail_rows, registry_rows, render_plain
+from src.cli.openmesh import _print_mcp, _print_mcp_config
+from src.cli.tui import TuiSnapshot, edge_detail_rows, mcp_config_rows, mcp_rows, node_detail_rows, registry_rows, render_plain
 
 
 CLI_NODE = {
@@ -423,6 +436,115 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(entry["type"] == "mcp_server" for entry in discovery["services"]))
         self.assertEqual(graph["edges"][0]["type"], "connects_to")
         self.assertEqual(graph["edges"][0]["validation_status"], "valid")
+
+    def test_mcp_config_providers_parse_json_and_toml_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            claude_path = root / "claude_desktop_config.json"
+            codex_path = root / "config.toml"
+            claude_path.write_text(
+                json.dumps({
+                    "mcpServers": {
+                        "filesystem": {
+                            "command": "mcp-server-filesystem",
+                            "version": "1.0.0",
+                        }
+                    }
+                }),
+                encoding="utf-8",
+            )
+            codex_path.write_text(
+                "[mcp.servers.search]\n"
+                "transport = \"http\"\n"
+                "endpoint = \"http://localhost:8765/mcp\"\n",
+                encoding="utf-8",
+            )
+
+            discovered = discover_mcp_configs(
+                providers=(ClaudeDesktopConfigProvider(), CodexConfigProvider()),
+                paths_by_source={
+                    "Claude Desktop": [claude_path],
+                    "Codex": [codex_path],
+                },
+            )
+
+        self.assertEqual(len(discovered["issues"]), 0)
+        self.assertEqual({entry["server"] for entry in discovered["entries"]}, {"filesystem", "search"})
+        self.assertTrue(any(entry["transport"] == "stdio" for entry in discovered["entries"]))
+        self.assertTrue(any(entry["transport"] == "http" for entry in discovered["entries"]))
+
+    async def test_mcp_config_registration_creates_defines_edge(self):
+        db = FakeAsyncSession()
+        entry = MCPConfigEntry(
+            source="Codex",
+            config_path="/tmp/codex/config.toml",
+            server="search",
+            transport="http",
+            endpoint="http://localhost:8765/mcp",
+            version="0.2.0",
+        )
+
+        event = await register_mcp_config_entry(db, entry, broadcast=False)
+        record = record_from_event(event)
+        configs = build_mcp_config_registry([record])
+        mcp_servers = build_mcp_registry([record])
+        graph = reduce_graph_state([record])
+
+        self.assertEqual(event["event_type"], "mcp.config.discovered")
+        self.assertEqual(configs[0]["source"], "Codex")
+        self.assertEqual(mcp_servers[0]["server"], "search")
+        self.assertEqual(graph["edges"][0]["type"], "defines")
+        self.assertEqual(graph["edges"][0]["validation_status"], "valid")
+        self.assertEqual(len(db.added), 1)
+
+    def test_mcp_config_validation_detects_duplicates_and_missing_metadata(self):
+        validation = validate_mcp_config_entries([
+            {
+                "source": "Codex",
+                "config_path": "/tmp/a.toml",
+                "server": "search",
+                "transport": "http",
+                "endpoint": "http://localhost:8765/mcp",
+            },
+            {
+                "source": "Codex",
+                "config_path": "/tmp/b.toml",
+                "server": "search",
+                "transport": "http",
+                "endpoint": "http://localhost:9999/mcp",
+            },
+            {
+                "source": "OpenHands",
+                "config_path": "/tmp/openhands.toml",
+                "server": "broken",
+            },
+        ])
+
+        self.assertEqual(len(validation["duplicates"]), 1)
+        self.assertEqual(len(validation["missing_required_metadata"]), 1)
+
+    def test_doctor_mcp_config_diagnostics_reports_integrity_issues(self):
+        diagnostics = build_mcp_config_diagnostics(
+            [],
+            discovered={
+                "entries": [{
+                    "source": "Codex",
+                    "config_path": "/tmp/config.toml",
+                    "server": "broken",
+                }],
+                "issues": [{
+                    "source": "Codex",
+                    "config_path": "/tmp/bad.toml",
+                    "code": "malformed_config",
+                    "message": "bad toml",
+                }],
+            },
+        )
+
+        self.assertEqual(diagnostics["name"], "MCP Configuration Integrity")
+        self.assertEqual(diagnostics["severity"], "ERROR")
+        self.assertEqual(len(diagnostics["detail"]["malformed_configs"]), 1)
+        self.assertEqual(len(diagnostics["detail"]["missing_required_metadata"]), 1)
 
     def test_graph_validation_distinguishes_relationship_integrity_errors(self):
         nodes = {
@@ -834,6 +956,7 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             integrations=[],
             discovery={"frameworks": [], "agents": [], "tools": [], "processes": [], "services": []},
             mcp_servers=[],
+            mcp_configs=[],
             registry_status=build_registry_status([]),
             loaded_at=datetime.utcnow(),
         )
@@ -869,6 +992,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "endpoint": "stdio://filesystem",
                 "last_seen": "2026-06-03T10:00:00Z",
             }],
+            mcp_configs=[{
+                "source": "Codex",
+                "server": "search",
+                "transport": "http",
+                "config_path": "/tmp/config.toml",
+            }],
             registry_status=build_registry_status([]),
             loaded_at=datetime.utcnow(),
         )
@@ -877,6 +1006,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("Filesystem MCP", output)
         self.assertIn("stdio", output)
+        config_output = "\n".join(mcp_config_rows(snapshot))
+        self.assertIn("Codex", config_output)
+        self.assertIn("search", config_output)
 
     def test_cli_mcp_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
@@ -890,6 +1022,19 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
         self.assertIn("Filesystem MCP", printed)
         self.assertIn("stdio", printed)
+
+    def test_cli_mcp_config_printer_displays_metadata(self):
+        with patch("builtins.print") as printer:
+            _print_mcp_config([{
+                "source": "Codex",
+                "server": "search",
+                "transport": "http",
+                "config_path": "/tmp/config.toml",
+            }])
+
+        printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
+        self.assertIn("Codex", printed)
+        self.assertIn("search", printed)
 
 
 if __name__ == "__main__":

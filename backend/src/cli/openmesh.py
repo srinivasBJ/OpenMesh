@@ -4,6 +4,7 @@ import argparse
 import asyncio
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 from shlex import join as shell_join
 from typing import Any, Callable
 from uuid import uuid4
@@ -13,6 +14,10 @@ from ..db.openmesh_events import list_openmesh_events
 from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_session
 from ..services.openmesh_collector import collector
 from ..services.discovery import get_discovery
+from ..services.mcp_config_discovery import (
+    get_mcp_config_registry,
+    register_discovered_mcp_configs,
+)
 from ..services.mcp_discovery import get_mcp_registry
 from ..services.openmesh_doctor import run_doctor
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_trace, get_traces
@@ -332,6 +337,28 @@ def _print_mcp(servers: list[dict[str, Any]]) -> None:
         )
 
 
+def _print_mcp_config(configs: list[dict[str, Any]], *, issues: list[dict[str, Any]] | None = None) -> None:
+    print("MCP Configuration Sources")
+    print()
+    issues = issues or []
+    if issues:
+        print("Issues")
+        for issue in issues:
+            print(f"- {issue['source']} {issue['config_path']}: {issue['code']} ({issue['message']})")
+        print()
+    if not configs:
+        print("No MCP configuration entries discovered.")
+        return
+    print(f"{'source':<18} {'server':<24} {'transport':<12} path")
+    for config in configs:
+        print(
+            f"{_short(config.get('source'), 18):<18} "
+            f"{_short(config.get('server'), 24):<24} "
+            f"{_short(config.get('transport') or '-', 12):<12} "
+            f"{config.get('config_path') or '-'}"
+        )
+
+
 def _utc_now() -> datetime:
     return datetime.utcnow()
 
@@ -529,6 +556,32 @@ async def _mcp(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _mcp_config(args: argparse.Namespace) -> int:
+    async def run(db):
+        if args.scan:
+            result = await register_discovered_mcp_configs(
+                db,
+                paths_by_source=_paths_by_source(args.path),
+                broadcast=False,
+            )
+            _print_mcp_config(result["entries"], issues=result["issues"])
+            return 1 if result["issues"] else 0
+        configs = await get_mcp_config_registry(db, limit=args.limit)
+        _print_mcp_config(configs)
+
+    return await _with_db(run)
+
+
+def _paths_by_source(raw_paths: list[str] | None) -> dict[str, list[Path]]:
+    paths: dict[str, list[Path]] = {}
+    for raw in raw_paths or []:
+        if "=" not in raw:
+            raise ValueError("--path must use SOURCE=/path/to/config")
+        source, path = raw.split("=", 1)
+        paths.setdefault(source, []).append(Path(path).expanduser())
+    return paths
+
+
 async def _run_command(args: argparse.Namespace) -> int:
     command_parts = args.command
     if command_parts and command_parts[0] == "--":
@@ -717,6 +770,16 @@ def build_parser() -> argparse.ArgumentParser:
     mcp = subparsers.add_parser("mcp", help="Show discovered MCP server metadata.")
     mcp.add_argument("--limit", type=int, default=5000, help="Maximum events to derive MCP registry from.")
     mcp.set_defaults(func=_mcp)
+
+    mcp_config = subparsers.add_parser("mcp-config", help="Show discovered MCP configuration metadata.")
+    mcp_config.add_argument("--limit", type=int, default=5000, help="Maximum events to derive MCP config registry from.")
+    mcp_config.add_argument("--scan", action="store_true", help="Passively scan known MCP config files and register metadata.")
+    mcp_config.add_argument(
+        "--path",
+        action="append",
+        help="Override scan path as SOURCE=/path/to/config. May be repeated.",
+    )
+    mcp_config.set_defaults(func=_mcp_config)
 
     tui = subparsers.add_parser("tui", help="Launch the OpenMesh terminal UI.")
     tui.add_argument("--once", action="store_true", help="Render one terminal capture and exit.")

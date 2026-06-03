@@ -55,6 +55,13 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
         source_types=("agent", "tool", "service"),
         target_types=("service", "mcp_server"),
     ),
+    "defines": RelationshipType(
+        type="defines",
+        label="defines",
+        description="A configuration source defines an MCP server.",
+        source_types=("service",),
+        target_types=("mcp_server",),
+    ),
     "exposes": RelationshipType(
         type="exposes",
         label="exposes",
@@ -96,6 +103,7 @@ EVENT_RELATIONSHIPS = {
     "message.sent": "communicates_with",
     "delegation.created": "delegates_to",
     "node.transition": "transitions_to",
+    "mcp.config.discovered": "defines",
 }
 
 

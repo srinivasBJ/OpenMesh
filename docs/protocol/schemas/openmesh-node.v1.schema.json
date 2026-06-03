@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmesh.dev/protocol/v1/schemas/openmesh-node.v1.schema.json",
+  "title": "OpenMesh Protocol v1 Node",
+  "description": "A governed ecosystem entity observed by OpenMesh.",
+  "$ref": "./openmesh-common.v1.schema.json#/$defs/graphNode"
+}

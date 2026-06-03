@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmesh.dev/protocol/v1/schemas/openmesh-relationship.v1.schema.json",
+  "title": "OpenMesh Protocol v1 Relationship",
+  "type": "object",
+  "required": ["id", "source", "target", "type", "relationship_type", "provenance"],
+  "properties": {
+    "id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "source": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "target": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "type": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/relationshipType"
+    },
+    "relationship_type": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/relationshipType"
+    },
+    "relationship_definition": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "event_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "observation_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "first_seen": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/timestamp"
+    },
+    "last_seen": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/timestamp"
+    },
+    "trace_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+      },
+      "default": []
+    },
+    "event_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+      },
+      "default": []
+    },
+    "session_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+      },
+      "default": []
+    },
+    "span_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+      },
+      "default": []
+    },
+    "provenance": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/provenance"
+    },
+    "lifecycle_state": {
+      "type": "string",
+      "enum": ["active", "stale", "inactive", "unknown"]
+    },
+    "validation_status": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmesh.dev/protocol/v1/schemas/openmesh-event.v1.schema.json",
+  "title": "OpenMesh Protocol v1 Event",
+  "type": "object",
+  "required": [
+    "spec_version",
+    "event_id",
+    "event_type",
+    "timestamp",
+    "workspace_id",
+    "session_id",
+    "trace_id",
+    "span_id",
+    "root_event_id",
+    "source",
+    "payload",
+    "metrics",
+    "links",
+    "severity"
+  ],
+  "properties": {
+    "spec_version": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/protocolVersion"
+    },
+    "event_id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "event_type": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "timestamp": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/timestamp"
+    },
+    "workspace_id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "session_id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "trace_id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "span_id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "parent_span_id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "parent_event_id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "root_event_id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "source": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/nodeRef"
+    },
+    "target": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/nodeRef"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "$ref": "./openmesh-common.v1.schema.json#/$defs/link"
+      }
+    },
+    "severity": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/severity"
+    }
+  },
+  "additionalProperties": true
+}

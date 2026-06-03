@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmesh.dev/protocol/v1/schemas/openmesh-replay.v1.schema.json",
+  "title": "OpenMesh Protocol v1 Replay",
+  "type": "object",
+  "required": [
+    "scope",
+    "subject",
+    "source",
+    "controls",
+    "state",
+    "frames",
+    "visible_frames",
+    "summary"
+  ],
+  "properties": {
+    "scope": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "controls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "description"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": ["start", "pause", "stop", "step"]
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "state": {
+      "type": "object",
+      "required": ["control", "status", "position", "frame_count"],
+      "properties": {
+        "control": {
+          "type": "string",
+          "enum": ["start", "pause", "stop", "step"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["playing", "paused", "stopped", "stepped"]
+        },
+        "position": {
+          "type": "integer"
+        },
+        "requested_position": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "next_position": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "frame_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "visible_frame_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "current_frame": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/replayFrame"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "frames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/replayFrame"
+      }
+    },
+    "visible_frames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/replayFrame"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "$defs": {
+    "replayFrame": {
+      "type": "object",
+      "required": ["frame_index", "action", "category", "description"],
+      "properties": {
+        "frame_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timestamp": {
+          "type": ["string", "null"]
+        },
+        "action": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "./openmesh-common.v1.schema.json#/$defs/provenance"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

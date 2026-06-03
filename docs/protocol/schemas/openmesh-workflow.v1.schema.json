@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmesh.dev/protocol/v1/schemas/openmesh-workflow.v1.schema.json",
+  "title": "OpenMesh Protocol v1 Workflow",
+  "type": "object",
+  "required": ["workflow_id", "workflow", "status"],
+  "properties": {
+    "workflow_id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "workflow": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "name": {
+      "type": "string"
+    },
+    "workflow_type": {
+      "type": "string"
+    },
+    "runtime": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": ["string", "null"]
+    },
+    "ended_at": {
+      "type": ["string", "null"]
+    },
+    "participating_agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "default": []
+    },
+    "participating_tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "default": []
+    },
+    "participating_mcp_servers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "default": []
+    },
+    "participating_services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "default": []
+    },
+    "trace_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+      },
+      "default": []
+    },
+    "session_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+      },
+      "default": []
+    },
+    "provenance": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/provenance"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "default": {}
+    }
+  },
+  "additionalProperties": true
+}

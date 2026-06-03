@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmesh.dev/protocol/v1/schemas/openmesh-timeline.v1.schema.json",
+  "title": "OpenMesh Protocol v1 Timeline",
+  "type": "object",
+  "required": ["scope", "subject", "timeline", "summary"],
+  "properties": {
+    "scope": {
+      "type": "string",
+      "enum": ["ecosystem", "node", "workflow", "trace"]
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "first_appearance": {
+      "type": ["string", "null"]
+    },
+    "last_appearance": {
+      "type": ["string", "null"]
+    },
+    "relationship_changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/timelineEntry"
+      },
+      "default": []
+    },
+    "workflow_changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/timelineEntry"
+      },
+      "default": []
+    },
+    "capability_changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/timelineEntry"
+      },
+      "default": []
+    },
+    "mcp_changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/timelineEntry"
+      },
+      "default": []
+    },
+    "session_history": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/timelineEntry"
+      },
+      "default": []
+    },
+    "snapshot_history": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/timelineEntry"
+      },
+      "default": []
+    },
+    "timeline": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/timelineEntry"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "$defs": {
+    "timelineEntry": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": ["string", "null"]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "event_type": {
+          "type": "string"
+        },
+        "trace_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "snapshot_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "relationship_type": {
+          "$ref": "./openmesh-common.v1.schema.json#/$defs/relationshipType"
+        },
+        "provenance": {
+          "$ref": "./openmesh-common.v1.schema.json#/$defs/provenance"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmesh.dev/protocol/v1/schemas/openmesh-common.v1.schema.json",
+  "title": "OpenMesh Protocol v1 Common Definitions",
+  "type": "object",
+  "$defs": {
+    "protocolVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC RFC 3339 timestamp."
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["debug", "info", "warning", "error"]
+    },
+    "nodeType": {
+      "type": "string",
+      "enum": [
+        "agent",
+        "tool",
+        "model",
+        "memory",
+        "file",
+        "command",
+        "browser",
+        "user",
+        "service",
+        "runtime",
+        "process",
+        "workflow",
+        "framework",
+        "mcp_server",
+        "capability",
+        "guild",
+        "wiki",
+        "post"
+      ]
+    },
+    "relationshipType": {
+      "type": "string",
+      "enum": [
+        "uses",
+        "runs",
+        "spawns",
+        "executes",
+        "connects_to",
+        "defines",
+        "exposes",
+        "communicates_with",
+        "delegates_to",
+        "transitions_to"
+      ]
+    },
+    "nodeRef": {
+      "type": "object",
+      "required": ["node_id", "node_type", "name"],
+      "properties": {
+        "node_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "node_type": {
+          "$ref": "#/$defs/nodeType"
+        },
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true,
+          "default": {}
+        }
+      },
+      "additionalProperties": true
+    },
+    "graphNode": {
+      "type": "object",
+      "required": ["id", "type", "name"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "$ref": "#/$defs/nodeType"
+        },
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "category": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": ["string", "null"]
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true,
+          "default": {}
+        },
+        "event_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "trace_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "default": []
+        },
+        "session_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "default": []
+        },
+        "first_seen": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_seen": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "validation_status": {
+          "type": "string"
+        },
+        "lifecycle_state": {
+          "type": "string",
+          "enum": ["active", "stale", "inactive", "unknown"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "event_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "default": []
+        },
+        "trace_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "default": []
+        },
+        "session_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "default": []
+        },
+        "span_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "default": []
+        },
+        "first_seen": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_seen": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "first_event_id": {
+          "type": ["string", "null"]
+        },
+        "last_event_id": {
+          "type": ["string", "null"]
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": true,
+      "default": {}
+    },
+    "link": {
+      "type": "object",
+      "properties": {
+        "trace_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "span_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "event_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "url": {
+          "type": "string"
+        },
+        "relationship": {
+          "type": "string"
+        },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": true,
+          "default": {}
+        }
+      },
+      "anyOf": [
+        {
+          "required": ["trace_id"]
+        },
+        {
+          "required": ["span_id"]
+        },
+        {
+          "required": ["event_id"]
+        },
+        {
+          "required": ["url"]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/identifier"
+        },
+        "message": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

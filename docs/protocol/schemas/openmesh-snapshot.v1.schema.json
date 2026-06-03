@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmesh.dev/protocol/v1/schemas/openmesh-snapshot.v1.schema.json",
+  "title": "OpenMesh Protocol v1 Snapshot",
+  "type": "object",
+  "required": [
+    "snapshot_id",
+    "schema_version",
+    "created_at",
+    "counts",
+    "graph_statistics",
+    "ecosystem_statistics",
+    "contents"
+  ],
+  "properties": {
+    "snapshot_id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "created_at": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/timestamp"
+    },
+    "counts": {
+      "$ref": "#/$defs/counts"
+    },
+    "graph_statistics": {
+      "type": "object",
+      "required": ["node_count", "edge_count"],
+      "properties": {
+        "node_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edge_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "node_types": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "relationship_types": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "validation_status": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ecosystem_statistics": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "contents": {
+      "type": "object",
+      "required": ["graph", "relationships", "traces", "sessions"],
+      "properties": {
+        "agents": {
+          "type": "array",
+          "items": {
+            "$ref": "./openmesh-common.v1.schema.json#/$defs/graphNode"
+          },
+          "default": []
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "./openmesh-common.v1.schema.json#/$defs/graphNode"
+          },
+          "default": []
+        },
+        "workflows": {
+          "type": "array",
+          "items": {
+            "$ref": "./openmesh-workflow.v1.schema.json"
+          },
+          "default": []
+        },
+        "processes": {
+          "type": "array",
+          "items": {
+            "$ref": "./openmesh-common.v1.schema.json#/$defs/graphNode"
+          },
+          "default": []
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "$ref": "./openmesh-common.v1.schema.json#/$defs/graphNode"
+          },
+          "default": []
+        },
+        "mcp_servers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "default": []
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "default": []
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "$ref": "./openmesh-relationship.v1.schema.json"
+          },
+          "default": []
+        },
+        "graph_provenance": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "./openmesh-common.v1.schema.json#/$defs/provenance"
+          },
+          "default": {}
+        },
+        "traces": {
+          "type": "array",
+          "items": {
+            "$ref": "./openmesh-trace.v1.schema.json"
+          },
+          "default": []
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["session_id", "command", "started_at", "status"],
+            "properties": {
+              "session_id": {
+                "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+              },
+              "command": {
+                "type": "string"
+              },
+              "started_at": {
+                "$ref": "./openmesh-common.v1.schema.json#/$defs/timestamp"
+              },
+              "ended_at": {
+                "type": ["string", "null"]
+              },
+              "status": {
+                "type": "string"
+              },
+              "exit_code": {
+                "type": ["integer", "null"]
+              }
+            },
+            "additionalProperties": true
+          },
+          "default": []
+        },
+        "graph": {
+          "type": "object",
+          "required": ["nodes", "edges"],
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "items": {
+                "$ref": "./openmesh-common.v1.schema.json#/$defs/graphNode"
+              }
+            },
+            "edges": {
+              "type": "array",
+              "items": {
+                "$ref": "./openmesh-relationship.v1.schema.json"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "properties": {
+        "events": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "traces": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sessions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edges": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "relationships": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "additionalProperties": true
+}

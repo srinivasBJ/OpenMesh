@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmesh.dev/protocol/v1/schemas/openmesh-query.v1.schema.json",
+  "title": "OpenMesh Protocol v1 Query",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/queryRequest"
+    },
+    {
+      "$ref": "#/$defs/queryResult"
+    }
+  ],
+  "$defs": {
+    "queryRequest": {
+      "type": "object",
+      "required": ["query"],
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "default": 5000
+        }
+      },
+      "additionalProperties": true
+    },
+    "queryResult": {
+      "type": "object",
+      "required": [
+        "query",
+        "normalized_query",
+        "status",
+        "category",
+        "intent",
+        "parameters",
+        "source",
+        "count",
+        "results",
+        "errors"
+      ],
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "normalized_query": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ok", "not_found", "unsupported", "error"]
+        },
+        "category": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "source": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "./openmesh-common.v1.schema.json#/$defs/error"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true,
+          "default": {}
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

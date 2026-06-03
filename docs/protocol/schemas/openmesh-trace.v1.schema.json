@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmesh.dev/protocol/v1/schemas/openmesh-trace.v1.schema.json",
+  "title": "OpenMesh Protocol v1 Trace",
+  "type": "object",
+  "required": ["trace_id", "started_at", "event_count", "status"],
+  "properties": {
+    "trace_id": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+    },
+    "started_at": {
+      "$ref": "./openmesh-common.v1.schema.json#/$defs/timestamp"
+    },
+    "ended_at": {
+      "anyOf": [
+        {
+          "$ref": "./openmesh-common.v1.schema.json#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "event_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "completed", "failed", "unknown"]
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "./openmesh-event.v1.schema.json"
+      },
+      "default": []
+    },
+    "spans": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/spanSummary"
+      },
+      "default": []
+    },
+    "span_tree": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/spanTreeNode"
+      },
+      "default": []
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "$ref": "./openmesh-relationship.v1.schema.json"
+      },
+      "default": []
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": true,
+      "default": {}
+    }
+  },
+  "$defs": {
+    "spanSummary": {
+      "type": "object",
+      "required": ["span_id", "trace_id", "event_count", "status"],
+      "properties": {
+        "span_id": {
+          "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+        },
+        "parent_span_id": {
+          "type": ["string", "null"]
+        },
+        "trace_id": {
+          "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+        },
+        "started_at": {
+          "type": ["string", "null"]
+        },
+        "ended_at": {
+          "type": ["string", "null"]
+        },
+        "event_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "type": "string"
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "./openmesh-common.v1.schema.json#/$defs/link"
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": true
+    },
+    "spanTreeNode": {
+      "type": "object",
+      "required": ["span_id"],
+      "properties": {
+        "span_id": {
+          "$ref": "./openmesh-common.v1.schema.json#/$defs/identifier"
+        },
+        "parent_span_id": {
+          "type": ["string", "null"]
+        },
+        "status": {
+          "type": "string"
+        },
+        "event_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/spanTreeNode"
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

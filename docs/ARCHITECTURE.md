@@ -36,6 +36,10 @@ Core backend pieces:
 - `backend/src/cli/openmesh.py`: terminal consumer and process observer.
 - `backend/src/cli/tui.py`: terminal control-room UI.
 
+Protocol:
+
+- `docs/protocol/`: OpenMesh Protocol v1 documentation, compatibility rules, migration rules, and JSON Schemas.
+
 Storage:
 
 - `openmesh_events`: immutable protocol event records.

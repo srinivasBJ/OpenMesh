@@ -82,6 +82,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Historical snapshot diffs for comparing nodes, relationships, workflows, MCP servers, capabilities, traces, sessions, and graph statistics across time
 - Historical timelines for navigating ecosystem, node, workflow, and trace evolution over time
 - Ecosystem replays for playing back timeline, snapshot, trace, and workflow evolution without creating a second graph model
+- Structured query engine for asking graph, trace, session, snapshot, MCP, and capability questions from existing OpenMesh state
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
@@ -314,6 +315,11 @@ openmesh replay
 openmesh replay snapshot <snapshot_id>
 openmesh replay trace <trace_id>
 openmesh replay workflow <workflow_id>
+openmesh query agents using web_search
+openmesh query workflows using search
+openmesh query relationships created since 2026-06-03T00:00:00Z
+openmesh query nodes added between snapshots
+openmesh query traces involving <node_id>
 openmesh capabilities
 openmesh integrations
 openmesh tui

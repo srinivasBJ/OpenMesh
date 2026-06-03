@@ -29,6 +29,8 @@ from src.api.routes.main import (
     get_openmesh_snapshot_replay as api_get_openmesh_snapshot_replay,
     get_openmesh_trace_replay as api_get_openmesh_trace_replay,
     get_openmesh_workflow_replay as api_get_openmesh_workflow_replay,
+    query_openmesh as api_query_openmesh,
+    OpenMeshQueryRequest,
 )
 from src.services.discovery import build_discovery
 from src.services.graph_state import reduce_graph_state, validate_graph_state
@@ -98,6 +100,7 @@ from src.services.timeline import (
     build_trace_timeline,
     build_workflow_timeline,
 )
+from src.services.query_engine import parse_query, run_query_on_state
 from src.services.replay import build_replay_from_snapshot, build_replay_from_timeline
 from src.services.relationship_types import (
     relationship_definition,
@@ -130,6 +133,7 @@ from src.cli.openmesh import (
     _print_snapshot_detail,
     _print_snapshot_diff,
     _print_snapshots,
+    _print_query_result,
     _print_replay,
     _print_timeline,
     _print_workflow_inspection,
@@ -142,6 +146,7 @@ from src.cli.tui import (
     mcp_config_rows,
     mcp_rows,
     node_detail_rows,
+    query_rows,
     registry_rows,
     replay_rows,
     render_plain,
@@ -322,6 +327,138 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "events": [],
                 "registry": {},
             },
+        }
+
+    def make_query_context(self) -> dict:
+        agent = agent_node("agent-a", "Research Agent", "researcher")
+        tool = {
+            "node_id": "tool:web_search",
+            "node_type": "tool",
+            "name": "web_search",
+            "runtime": "mcp",
+        }
+        workflow = workflow_node(
+            WorkflowEntry(
+                workflow="Research Flow",
+                framework="LangGraph",
+                source="examples/langgraph_basic.py",
+            )
+        )
+        mcp = mcp_server_node(
+            name="Search MCP",
+            transport="stdio",
+            endpoint="stdio://search",
+        )
+        capability = capability_node(
+            MCPCapabilityEntry(
+                server="Search MCP",
+                capability="search",
+                category="web",
+            )
+        )
+        events = [
+            make_openmesh_event(
+                "tool.call.started",
+                agent,
+                {"tool": "web_search"},
+                target=tool,
+                session_id="sess_query",
+                trace_id="trace_query_agent",
+            ),
+            make_openmesh_event(
+                "workflow.mcp.connected",
+                workflow,
+                {"workflow": "Research Flow", "server": "Search MCP"},
+                target=mcp,
+                session_id="sess_query",
+                trace_id="trace_query_workflow",
+            ),
+            make_openmesh_event(
+                "mcp.capability.discovered",
+                mcp,
+                {"server": "Search MCP", "capability": "search", "category": "web"},
+                target=capability,
+                session_id="sess_query",
+                trace_id="trace_query_workflow",
+            ),
+        ]
+        records = [
+            record_from_event(event, timestamp=datetime(2026, 6, 3, 10, index, 0))
+            for index, event in enumerate(events)
+        ]
+        sessions = [
+            SimpleNamespace(
+                session_id="sess_query",
+                command="python query_agent.py",
+                started_at=datetime(2026, 6, 3, 10, 0, 0),
+                ended_at=datetime(2026, 6, 3, 10, 3, 0),
+                status="completed",
+                exit_code=0,
+            )
+        ]
+        before = self.make_snapshot_payload(
+            "snap_query_before",
+            created_at="2026-06-03T09:55:00Z",
+            nodes=[{"id": agent["node_id"], "type": "agent", "name": agent["name"]}],
+            relationships=[],
+            traces=[{"trace_id": "trace_query_agent"}],
+            sessions=[{"session_id": "sess_query"}],
+        )
+        after = self.make_snapshot_payload(
+            "snap_query_after",
+            created_at="2026-06-03T10:05:00Z",
+            nodes=[
+                {"id": agent["node_id"], "type": "agent", "name": agent["name"]},
+                {"id": tool["node_id"], "type": "tool", "name": tool["name"]},
+                {
+                    "id": workflow["node_id"],
+                    "type": "workflow",
+                    "name": workflow["name"],
+                },
+                {"id": mcp["node_id"], "type": "mcp_server", "name": mcp["name"]},
+                {
+                    "id": capability["node_id"],
+                    "type": "capability",
+                    "name": capability["name"],
+                },
+            ],
+            relationships=[
+                {
+                    "id": f"{agent['node_id']}:uses:{tool['node_id']}",
+                    "source": agent["node_id"],
+                    "target": tool["node_id"],
+                    "type": "uses",
+                    "event_count": 1,
+                }
+            ],
+            workflows=[
+                {
+                    "id": workflow["node_id"],
+                    "workflow": "Research Flow",
+                    "framework": "LangGraph",
+                }
+            ],
+            mcp_servers=[{"id": mcp["node_id"], "server": "Search MCP"}],
+            capabilities=[{"server": "Search MCP", "capability": "search"}],
+            traces=[
+                {"trace_id": "trace_query_agent"},
+                {"trace_id": "trace_query_workflow"},
+            ],
+            sessions=[{"session_id": "sess_query"}],
+        )
+        grouped: dict[str, list] = {}
+        for record in records:
+            grouped.setdefault(record.trace_id, []).append(record)
+        return {
+            "records": records,
+            "graph": reduce_graph_state(records),
+            "discovery": build_discovery(records),
+            "traces": [
+                trace_summary(trace_id, trace_records)
+                for trace_id, trace_records in grouped.items()
+            ],
+            "sessions": [session_to_dict(record) for record in sessions],
+            "snapshots": [before, after],
         }
 
     def _count_by_type(self, items: list[dict]) -> dict[str, int]:
@@ -1848,6 +1985,79 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("capability.evolved", actions)
         self.assertIn("session.started", actions)
 
+    def test_query_parser_supports_structured_queries(self):
+        parsed = parse_query("agents using web_search")
+        assert parsed is not None
+        self.assertEqual(parsed.intent, "agents_using_tool")
+        self.assertEqual(parsed.parameters["tool"], "web_search")
+
+        parsed = parse_query("nodes removed between snapshots snap_a snap_b")
+        assert parsed is not None
+        self.assertEqual(parsed.intent, "nodes_removed_between_snapshots")
+        self.assertEqual(parsed.parameters["snapshot_a"], "snap_a")
+        self.assertEqual(parsed.parameters["snapshot_b"], "snap_b")
+
+        self.assertIsNone(parse_query("why did this fail"))
+
+    def test_query_engine_answers_graph_and_provenance_questions(self):
+        context = self.make_query_context()
+        state = {key: value for key, value in context.items() if key != "records"}
+
+        agents = run_query_on_state("agents using web_search", **state)
+        workflows = run_query_on_state("workflows using search", **state)
+        relationships = run_query_on_state(
+            "relationships created since 2026-06-03T10:01:30Z", **state
+        )
+        capabilities = run_query_on_state("capabilities exposed by Search MCP", **state)
+
+        self.assertEqual(agents["status"], "ok")
+        self.assertEqual(agents["results"][0]["agent"], "Research Agent")
+        self.assertEqual(agents["results"][0]["relationship_type"], "uses")
+        self.assertEqual(workflows["results"][0]["workflow"], "Research Flow")
+        self.assertEqual(workflows["results"][0]["capability"], "search")
+        self.assertEqual(relationships["count"], 1)
+        self.assertEqual(relationships["results"][0]["relationship_type"], "exposes")
+        self.assertEqual(capabilities["results"][0]["capability"], "search")
+
+    def test_query_engine_answers_snapshot_trace_and_session_questions(self):
+        context = self.make_query_context()
+        state = {key: value for key, value in context.items() if key != "records"}
+
+        added = run_query_on_state("nodes added between snapshots", **state)
+        removed = run_query_on_state(
+            "nodes removed between snapshots snap_query_before snap_query_after",
+            **state,
+        )
+        traces = run_query_on_state("traces involving Research Agent", **state)
+        sessions = run_query_on_state("sessions involving Research Agent", **state)
+
+        self.assertEqual(added["status"], "ok")
+        self.assertEqual(added["parameters"]["snapshot_a"], "snap_query_before")
+        self.assertIn("web_search", {item.get("name") for item in added["results"]})
+        self.assertEqual(removed["count"], 0)
+        self.assertEqual(traces["results"][0]["trace_id"], "trace_query_agent")
+        self.assertEqual(sessions["results"][0]["session_id"], "sess_query")
+
+    def test_query_engine_reports_unsupported_and_not_found_queries(self):
+        context = self.make_query_context()
+        state = {key: value for key, value in context.items() if key != "records"}
+
+        unsupported = run_query_on_state("show me surprises", **state)
+        missing = run_query_on_state("agents using missing_tool", **state)
+        no_snapshots = run_query_on_state(
+            "nodes added between snapshots",
+            graph=context["graph"],
+            traces=context["traces"],
+            sessions=context["sessions"],
+            snapshots=[],
+        )
+
+        self.assertEqual(unsupported["status"], "unsupported")
+        self.assertEqual(missing["status"], "not_found")
+        self.assertEqual(missing["errors"][0]["code"], "tool_not_found")
+        self.assertEqual(no_snapshots["status"], "not_found")
+        self.assertEqual(no_snapshots["errors"][0]["code"], "snapshot_pair_not_found")
+
     async def test_replay_api_routes_return_derived_payloads(self):
         async def fake_trace_replay(db, trace_id, **kwargs):
             return {
@@ -1914,6 +2124,26 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(err.exception.status_code, 404)
         self.assertIn("replay not found", err.exception.detail)
+
+    async def test_query_api_route_returns_query_payload(self):
+        async def fake_execute_query(db, query, **kwargs):
+            return {
+                "query": query,
+                "status": "ok",
+                "count": 1,
+                "results": [{"name": "Research Agent"}],
+                "limit": kwargs["limit"],
+            }
+
+        with patch("src.api.routes.main.execute_query", fake_execute_query):
+            result = await api_query_openmesh(
+                OpenMeshQueryRequest(query="agents using web_search", limit=25),
+                db=FakeAsyncSession(),
+            )
+
+        self.assertEqual(result["query"], "agents using web_search")
+        self.assertEqual(result["limit"], 25)
+        self.assertEqual(result["count"], 1)
 
     def test_workflow_validation_detects_duplicates_and_missing_metadata(self):
         validation = validate_workflow_entries(
@@ -3055,6 +3285,62 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("space start/pause", output)
         self.assertIn("relationship.created", output)
 
+    def test_tui_query_rows_display_saved_query_results(self):
+        context = self.make_query_context()
+        before, after = context["snapshots"]
+        snapshot = TuiSnapshot(
+            health={"events": 3, "traces": 2, "nodes": 5, "edges": 3},
+            graph=context["graph"],
+            traces=context["traces"],
+            events=[],
+            sessions=context["sessions"],
+            integrations=[],
+            discovery=context["discovery"],
+            mcp_servers=[],
+            mcp_configs=[],
+            capabilities=[],
+            workflows=[],
+            snapshots=[
+                {
+                    "snapshot_id": after["snapshot_id"],
+                    "created_at": after["created_at"],
+                    "counts": after["counts"],
+                },
+                {
+                    "snapshot_id": before["snapshot_id"],
+                    "created_at": before["created_at"],
+                    "counts": before["counts"],
+                },
+            ],
+            ecosystem={
+                "entities": {
+                    "agents": [],
+                    "tools": [],
+                    "processes": [],
+                    "workflows": [],
+                    "mcp_servers": [],
+                    "mcp_configs": [],
+                    "capabilities": [],
+                },
+                "summary": {"entity_count": 0, "relationship_count": 0},
+                "validation": {"status": "OK"},
+            },
+            registry_status=build_registry_status([]),
+            loaded_at=datetime.utcnow(),
+            snapshot_details={
+                before["snapshot_id"]: before,
+                after["snapshot_id"]: after,
+            },
+            timeline={},
+        )
+
+        output = "\n".join(query_rows(snapshot, query_index=0))
+
+        self.assertIn("Query", output)
+        self.assertIn("Agents using web_search", output)
+        self.assertIn("Research Agent", output)
+        self.assertIn("u next saved query", output)
+
     def test_cli_mcp_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
             _print_mcp(
@@ -3397,6 +3683,38 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("control: pause", printed)
         self.assertIn("Controls", printed)
         self.assertIn("relationship.created", printed)
+
+    def test_cli_query_printer_displays_results(self):
+        result = {
+            "query": "agents using web_search",
+            "status": "ok",
+            "category": "Agents",
+            "intent": "agents_using_tool",
+            "source": ["graph", "provenance"],
+            "count": 1,
+            "metadata": {},
+            "errors": [],
+            "results": [
+                {
+                    "agent": "Research Agent",
+                    "agent_id": "agent-a",
+                    "source": "Research Agent",
+                    "target": "web_search",
+                    "relationship_type": "uses",
+                    "event_count": 2,
+                }
+            ],
+        }
+
+        with patch("builtins.print") as printer:
+            _print_query_result(result)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Query", printed)
+        self.assertIn("agents using web_search", printed)
+        self.assertIn("Research Agent --uses--> web_search", printed)
 
     def test_cli_ecosystem_printer_displays_grouped_inventory(self):
         with patch("builtins.print") as printer:

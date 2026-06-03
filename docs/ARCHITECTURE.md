@@ -101,6 +101,17 @@ timeline payloads + snapshot payloads
 
 Replays are derived from the Timeline Engine, Snapshot Engine, Diff Engine, Event Store, and Trace Store. They reconstruct node appearance, relationship creation, workflow evolution, capability evolution, MCP evolution, and session progression without writing a replay table or duplicating graph state.
 
+Query flow:
+
+```text
+structured query text
+  -> query parser
+  -> graph, discovery, provenance, timelines, snapshots, diffs, traces, and sessions
+  -> CLI, TUI, and API query results
+```
+
+Queries are derived from existing OpenMesh state. The Query Engine does not create a second graph, new storage model, analysis layer, recommendation layer, or AI summarization path.
+
 Registry flow:
 
 ```text

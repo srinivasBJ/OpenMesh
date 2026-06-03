@@ -38,6 +38,7 @@ from ..services.openmesh_queries import (
     inspect_workflow,
     list_workflows,
 )
+from ..services.query_engine import SAVED_QUERIES, execute_query
 from ..services.replay import (
     get_replay,
     get_snapshot_replay,
@@ -946,6 +947,70 @@ def _replay_frame(frame: dict[str, Any]) -> str:
     return f"[{index}] {timestamp} {action} {description}"
 
 
+def _print_saved_queries() -> None:
+    print("OpenMesh Saved Queries")
+    print()
+    for query in SAVED_QUERIES:
+        print(f"{query['category']}: {query['name']}")
+        print(f"  openmesh query {query['query']}")
+
+
+def _print_query_result(result: dict[str, Any]) -> None:
+    print("OpenMesh Query")
+    print()
+    print(f"query: {result.get('query')}")
+    print(f"status: {result.get('status')}")
+    print(f"category: {result.get('category')}")
+    print(f"intent: {result.get('intent')}")
+    print(f"source: {', '.join(result.get('source', []))}")
+    print(f"count: {result.get('count', 0)}")
+    if result.get("metadata"):
+        print()
+        print("Metadata")
+        for key, value in result["metadata"].items():
+            print(f"  {key}: {_short(value, 120)}")
+    if result.get("errors"):
+        print()
+        print("Errors")
+        for error in result["errors"]:
+            print(f"  {error.get('code')}: {error.get('message')}")
+    print()
+    print("Results")
+    results = result.get("results", [])
+    if not results:
+        print("  none")
+        return
+    for item in results[:50]:
+        print(f"  - {_query_result_line(item)}")
+    if len(results) > 50:
+        print(f"  ... {len(results) - 50} more")
+
+
+def _query_result_line(item: dict[str, Any]) -> str:
+    if item.get("relationship_type"):
+        return (
+            f"{item.get('source')} --{item.get('relationship_type')}--> "
+            f"{item.get('target')} events:{item.get('event_count', 0)}"
+        )
+    if item.get("trace_id"):
+        return (
+            f"{item.get('trace_id')} status:{item.get('status', '-')} "
+            f"events:{item.get('event_count', 0)}"
+        )
+    if item.get("session_id"):
+        return (
+            f"{item.get('session_id')} status:{item.get('status', '-')} "
+            f"{_short(item.get('command'), 48)}"
+        )
+    if item.get("capability"):
+        return f"{item.get('mcp') or item.get('server') or '-'} exposes {item['capability']}"
+    if item.get("workflow"):
+        return f"{item['workflow']} ({item.get('workflow_id') or item.get('id')})"
+    if item.get("agent"):
+        return f"{item['agent']} ({item.get('agent_id')})"
+    return _short(item.get("name") or item.get("id") or item, 120)
+
+
 def _utc_now() -> datetime:
     return datetime.utcnow()
 
@@ -1278,6 +1343,23 @@ async def _replay_workflow(args: argparse.Namespace) -> int:
             return 1
         _print_replay(replay)
         return 0
+
+    return await _with_db(run)
+
+
+async def _query(args: argparse.Namespace) -> int:
+    query_parts = args.query or []
+    if query_parts and query_parts[0] == "--":
+        query_parts = query_parts[1:]
+    query_text = " ".join(query_parts).strip()
+    if args.saved or not query_text:
+        _print_saved_queries()
+        return 0
+
+    async def run(db):
+        result = await execute_query(db, query_text, limit=args.limit)
+        _print_query_result(result)
+        return 1 if result.get("status") == "unsupported" else 0
 
     return await _with_db(run)
 
@@ -1708,6 +1790,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum events to derive replay from.",
     )
     replay_workflow.set_defaults(func=_replay_workflow)
+
+    query = subparsers.add_parser("query", help="Run a structured OpenMesh query.")
+    query.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive query answers from.",
+    )
+    query.add_argument(
+        "--saved",
+        action="store_true",
+        help="List built-in saved query examples.",
+    )
+    query.add_argument("query", nargs=argparse.REMAINDER, help="Query text.")
+    query.set_defaults(func=_query)
 
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
     doctor.set_defaults(func=_doctor)

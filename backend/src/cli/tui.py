@@ -32,6 +32,7 @@ from ..services.openmesh_queries import (
     inspect_graph_workflow,
     list_workflows,
 )
+from ..services.query_engine import SAVED_QUERIES, run_query_on_state
 from ..services.replay import build_replay_from_timeline
 from ..services.registry_status import build_registry_status
 from ..services.timeline import get_timeline
@@ -589,6 +590,68 @@ def replay_rows(replay: dict[str, Any]) -> list[str]:
     return rows
 
 
+def query_rows(snapshot: TuiSnapshot, query_index: int = 0) -> list[str]:
+    if not SAVED_QUERIES:
+        return ["No saved queries available"]
+    saved = SAVED_QUERIES[query_index % len(SAVED_QUERIES)]
+    snapshot_payloads = [
+        snapshot.snapshot_details[item["snapshot_id"]]
+        for item in snapshot.snapshots
+        if item.get("snapshot_id") in snapshot.snapshot_details
+    ]
+    result = run_query_on_state(
+        saved["query"],
+        graph=snapshot.graph,
+        discovery=snapshot.discovery,
+        traces=snapshot.traces,
+        sessions=snapshot.sessions,
+        snapshots=snapshot_payloads,
+        timeline=snapshot.timeline,
+    )
+    rows = [
+        "Query",
+        f"{saved['category']} / {saved['name']}",
+        _short(saved["query"], 62),
+        f"status {result.get('status')}  count {result.get('count', 0)}",
+        "u next saved query",
+        "",
+        "Results",
+    ]
+    errors = result.get("errors", [])
+    if errors:
+        rows.append(f"  {errors[0].get('code')}: {errors[0].get('message')}")
+    results = result.get("results", [])
+    if not results and not errors:
+        rows.append("  none")
+    for item in results[:12]:
+        rows.append(f"  {_query_label(item)}")
+    rows.extend(["", "Sources"])
+    rows.append(f"  {', '.join(result.get('source', [])) or '-'}")
+    return rows
+
+
+def _query_label(item: dict[str, Any]) -> str:
+    if item.get("relationship_type"):
+        return _short(
+            f"{item.get('source')} {item.get('relationship_type')} {item.get('target')}",
+            62,
+        )
+    if item.get("trace_id"):
+        return _short(
+            f"{item.get('trace_id')} {item.get('status', '-')} e:{item.get('event_count', 0)}",
+            62,
+        )
+    if item.get("session_id"):
+        return _short(
+            f"{item.get('session_id')} {item.get('status', '-')} {item.get('command', '')}",
+            62,
+        )
+    for key in ("agent", "workflow", "capability", "name", "id"):
+        if item.get(key):
+            return _short(str(item[key]), 62)
+    return _short(str(item), 62)
+
+
 def _replay_label(frame: dict[str, Any] | None) -> str:
     if not frame:
         return "none"
@@ -980,6 +1043,8 @@ class OpenMeshTui(App):
         ("d", "show_snapshot_diff", "Snapshot Diff"),
         ("l", "show_timeline", "Timeline"),
         ("r", "show_replay", "Replay"),
+        ("y", "show_query", "Query"),
+        ("u", "next_query", "Next Query"),
         ("space", "toggle_replay", "Play/Pause"),
         ("n", "step_replay", "Step"),
         ("x", "stop_replay", "Stop"),
@@ -1001,6 +1066,7 @@ class OpenMeshTui(App):
         self.snapshot_diff_b_index = 0
         self.replay_control = "start"
         self.replay_position = 0
+        self.query_index = 0
         self.agent_node_rows: list[dict[str, Any]] = []
         self.network_edge_rows: list[dict[str, Any]] = []
 
@@ -1047,7 +1113,7 @@ class OpenMeshTui(App):
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [d diff] [l timeline] [r replay] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [d diff] [l timeline] [r replay] [y query] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -1193,6 +1259,12 @@ class OpenMeshTui(App):
             self.query_one("#event-title", Static).update("REPLAY")
             self.query_one("#event-body", Static).update("\n".join(replay_rows(replay)))
             return
+        if self.lower_right_mode == "query":
+            self.query_one("#event-title", Static).update("QUERY")
+            self.query_one("#event-body", Static).update(
+                "\n".join(query_rows(self.snapshot, self.query_index))
+            )
+            return
         if self.lower_right_mode == "trace" and self.selected_trace_id:
             self.query_one("#event-title", Static).update("TRACE DETAIL")
             self.query_one("#event-body", Static).update(
@@ -1308,6 +1380,18 @@ class OpenMeshTui(App):
             return
         self.replay_control = "stop"
         self.replay_position = 0
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_show_query(self) -> None:
+        self.lower_right_mode = "query"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_next_query(self) -> None:
+        if self.lower_right_mode != "query":
+            return
+        self.query_index = (self.query_index + 1) % max(len(SAVED_QUERIES), 1)
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
 

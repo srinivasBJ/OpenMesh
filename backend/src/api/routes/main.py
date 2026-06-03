@@ -49,6 +49,7 @@ from ...services.openmesh_queries import (
     get_trace,
     get_traces,
 )
+from ...services.query_engine import execute_query
 from ...services.replay import (
     get_snapshot_replay,
     get_trace_replay,
@@ -75,6 +76,11 @@ class SpawnAgentRequest(BaseModel):
     name: str
     role: str
     guild_id: Optional[str] = None
+
+
+class OpenMeshQueryRequest(BaseModel):
+    query: str
+    limit: int = 5000
 
 
 @router.get("/agents")
@@ -824,6 +830,14 @@ async def get_openmesh_workflow_replay(
     if not replay:
         raise HTTPException(404, "OpenMesh workflow replay not found")
     return replay
+
+
+@router.post("/openmesh/query")
+async def query_openmesh(
+    req: OpenMeshQueryRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    return await execute_query(db, req.query, limit=min(max(req.limit, 1), 10000))
 
 
 @router.get("/openmesh/ecosystem")

@@ -21,7 +21,7 @@ INTEGRATIONS: dict[str, IntegrationSpec] = {
         package="langgraph",
         status="reference",
     ),
-    "crewai": IntegrationSpec(key="crewai", name="CrewAI", package="crewai"),
+    "crewai": IntegrationSpec(key="crewai", name="CrewAI", package="crewai", status="reference"),
     "autogen": IntegrationSpec(key="autogen", name="AutoGen", package="autogen"),
     "openhands": IntegrationSpec(key="openhands", name="OpenHands", package="openhands"),
 }

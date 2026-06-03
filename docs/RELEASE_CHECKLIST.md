@@ -1,0 +1,89 @@
+# OpenMesh Release Checklist
+
+Use this checklist before publishing an OpenMesh Python package release.
+
+## Package Metadata
+
+- [ ] `pyproject.toml` version is updated.
+- [ ] `README.md` describes install and CLI usage.
+- [ ] License metadata matches `LICENSE`.
+- [ ] Installable command launcher `scripts/openmesh` is included.
+- [ ] Public SDK import works:
+
+```bash
+python -c "from openmesh import OpenMeshClient; print(OpenMeshClient.__name__)"
+```
+
+## Local Validation
+
+Run from repository root:
+
+```bash
+python -m pip install -e .
+openmesh doctor
+openmesh discover
+openmesh ecosystem
+openmesh tui --once
+```
+
+Backend checks:
+
+```bash
+cd backend
+python -m compileall src tests
+python -m unittest discover -s tests
+```
+
+Frontend check:
+
+```bash
+cd frontend
+npm run build
+```
+
+## Build Validation
+
+Build package artifacts:
+
+```bash
+python -m build
+```
+
+Inspect package contents:
+
+```bash
+python -m tarfile -l dist/openmesh-*.tar.gz
+python -m zipfile -l dist/openmesh-*.whl
+```
+
+Install wheel in a clean virtual environment:
+
+```bash
+python -m venv /tmp/openmesh-release-venv
+/tmp/openmesh-release-venv/bin/python -m pip install dist/openmesh-*.whl
+/tmp/openmesh-release-venv/bin/openmesh doctor
+```
+
+## Publish
+
+TestPyPI first:
+
+```bash
+python -m twine upload --repository testpypi dist/*
+```
+
+PyPI:
+
+```bash
+python -m twine upload dist/*
+```
+
+## Post-Release
+
+- [ ] Verify `pip install openmesh` in a clean environment.
+- [ ] Verify `openmesh doctor`.
+- [ ] Verify `openmesh discover`.
+- [ ] Verify `openmesh ecosystem`.
+- [ ] Verify `openmesh tui --once`.
+- [ ] Tag the release in Git.
+- [ ] Update release notes.

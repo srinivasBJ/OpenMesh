@@ -262,22 +262,37 @@ GET http://localhost:8000/health
 GET http://localhost:8000/health/ready
 ```
 
-### 5. Use The OpenMesh CLI
+### 5. Install And Use The OpenMesh CLI
 
-From `backend/`:
+From the repository root:
 
 ```bash
-python -m src.cli.openmesh doctor
-python -m src.cli.openmesh health
-python -m src.cli.openmesh run -- python3 -c "print('hello openmesh')"
-python -m src.cli.openmesh events
-python -m src.cli.openmesh traces
-python -m src.cli.openmesh graph
-python -m src.cli.openmesh discover
-python -m src.cli.openmesh tui
+python -m pip install -e .
+```
+
+Then run:
+
+```bash
+openmesh doctor
+openmesh health
+openmesh run -- python3 -c "print('hello openmesh')"
+openmesh events
+openmesh traces
+openmesh graph
+openmesh discover
+openmesh ecosystem
+openmesh tui
 ```
 
 The TUI uses a terminal-first control-room layout where the network panel stays visible while agents/processes, traces, and live events update from persisted OpenMesh data.
+
+When OpenMesh is published as a package:
+
+```bash
+python -m pip install openmesh
+```
+
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) and [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
 
 Run the basic Python SDK example from the repository root:
 

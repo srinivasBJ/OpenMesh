@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openmesh"
+version = "0.1.0"
+description = "Terminal-first observability and ecosystem registry for AI agents."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "OpenMesh Contributors" }
+]
+keywords = [
+  "agents",
+  "ai",
+  "observability",
+  "openmesh",
+  "tracing",
+  "tui"
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: System :: Monitoring",
+]
+dependencies = [
+  "fastapi==0.135.1",
+  "uvicorn[standard]==0.27.1",
+  "sqlalchemy==2.0.27",
+  "alembic==1.13.1",
+  "psycopg2-binary==2.9.9",
+  "redis==5.0.1",
+  "anthropic==0.84.0",
+  "python-dotenv==1.0.1",
+  "pydantic==2.11.7",
+  "pydantic-settings==2.2.1",
+  "websockets>=12.0,<17.0",
+  "apscheduler==3.10.4",
+  "httpx==0.26.0",
+  "asyncpg==0.29.0",
+  "greenlet==3.0.3",
+  "aiosqlite==0.20.0",
+  "textual==8.2.7",
+]
+
+[project.urls]
+Homepage = "https://github.com/srinivasBJ/OpenMeshAI"
+Repository = "https://github.com/srinivasBJ/OpenMeshAI"
+Issues = "https://github.com/srinivasBJ/OpenMeshAI/issues"
+
+[tool.setuptools]
+include-package-data = true
+script-files = ["scripts/openmesh"]
+packages = [
+  "openmesh",
+  "src",
+  "src.agents",
+  "src.api",
+  "src.api.routes",
+  "src.cli",
+  "src.core",
+  "src.db",
+  "src.jobs",
+  "src.sdk",
+  "src.sdk.integrations",
+  "src.services",
+  "src.shared",
+  "src.websocket",
+]
+
+[tool.setuptools.package-dir]
+openmesh = "openmesh"
+src = "backend/src"
+
+[tool.setuptools.package-data]
+"src.db" = ["migrations/*.sql"]

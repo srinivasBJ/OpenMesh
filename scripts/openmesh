@@ -1,0 +1,51 @@
+#!/bin/sh
+''':'
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -x "$SCRIPT_DIR/python" ]; then
+  exec "$SCRIPT_DIR/python" "$0" "$@"
+fi
+exec python3 "$0" "$@"
+':'''
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+from urllib.parse import urlparse, unquote
+
+
+def _bootstrap_editable_install() -> None:
+    for entry in list(sys.path):
+        site_path = Path(entry)
+        if not site_path.exists():
+            continue
+        for direct_url in site_path.glob("openmesh-*.dist-info/direct_url.json"):
+            try:
+                payload = json.loads(direct_url.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not payload.get("dir_info", {}).get("editable"):
+                continue
+            project_url = payload.get("url", "")
+            parsed = urlparse(project_url)
+            if parsed.scheme != "file":
+                continue
+            project_root = Path(unquote(parsed.path))
+            backend_root = project_root / "backend"
+            for path in (project_root, backend_root):
+                if path.exists() and str(path) not in sys.path:
+                    sys.path.insert(0, str(path))
+            return
+
+
+try:
+    from openmesh.cli import main
+except ModuleNotFoundError as exc:
+    if exc.name != "openmesh":
+        raise
+    _bootstrap_editable_install()
+    from openmesh.cli import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

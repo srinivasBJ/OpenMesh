@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "react-hot-toast";
 import AppLayout from "@/components/layout/AppLayout";
+import IndustrialToaster from "@/components/shared/IndustrialToaster";
 import FeedPage from "@/pages/FeedPage";
 import AgentsPage from "@/pages/AgentsPage";
 import AgentProfilePage from "@/pages/AgentProfilePage";
@@ -33,9 +33,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
-      <Toaster position="top-right" toastOptions={{
-        style: { background: "#12100d", color: "#efe7db", border: "1px solid rgba(223,116,45,.38)", borderRadius: "6px" },
-      }} />
+      <IndustrialToaster />
     </QueryClientProvider>
   );
 }

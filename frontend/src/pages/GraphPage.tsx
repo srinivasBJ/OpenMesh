@@ -14,7 +14,10 @@ import {
   GitBranch,
   Info,
   Network,
+  PanelRightClose,
+  PanelRightOpen,
   Search,
+  SlidersHorizontal,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -66,6 +69,9 @@ export default function GraphPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+  const [controlsCollapsed, setControlsCollapsed] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorWidth, setInspectorWidth] = useState(360);
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
   const dragRef = useRef<DragState | null>(null);
 
@@ -173,10 +179,29 @@ export default function GraphPage() {
     setSelectedEdgeId(null);
   };
 
+  const openInspector = () => {
+    setInspectorOpen(true);
+  };
+
+  const startInspectorResize = (event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = inspectorWidth;
+    const onMove = (moveEvent: MouseEvent) => {
+      setInspectorWidth(clamp(startWidth + moveEvent.clientX - startX, 300, 520));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   return (
-    <div className="om-page text-stone-200">
-      <div className="space-y-4">
-        <header className="om-panel flex flex-col gap-4 p-5 lg:flex-row lg:items-end lg:justify-between">
+    <div className="om-page px-4 py-3 text-stone-200">
+      <div className="space-y-3">
+        <header className="om-panel flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="flex items-center gap-3 text-[color:var(--om-rust-400)]">
               <img src="/brand/openmesh-wheel.png" alt="" className="h-10 w-10 rounded-[6px] border border-[color:var(--om-border-strong)] object-cover" />
@@ -196,8 +221,15 @@ export default function GraphPage() {
           </div>
         </header>
 
-        <section className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_360px]">
+        <section
+          className="grid gap-3"
+          style={{
+            gridTemplateColumns: `${controlsCollapsed ? 52 : 280}px minmax(0, 1fr) ${inspectorOpen ? `${inspectorWidth}px` : "52px"}`,
+          }}
+        >
           <GraphControls
+            collapsed={controlsCollapsed}
+            onToggle={() => setControlsCollapsed((value) => !value)}
             search={search}
             setSearch={setSearch}
             nodeType={nodeType}
@@ -219,6 +251,7 @@ export default function GraphPage() {
               setDepth(2);
               clearSelection();
               setSelectedTraceId(null);
+              setInspectorOpen(false);
             }}
           />
 
@@ -241,7 +274,7 @@ export default function GraphPage() {
               </div>
             </div>
 
-            <div className="relative h-[680px] bg-[color:var(--om-iron-980)]">
+            <div className="relative h-[calc(100vh-13rem)] min-h-[660px] bg-[color:var(--om-iron-980)]">
               {graph.nodes.length === 0 ? <EmptyGraphOnboarding /> : null}
               {graph.nodes.length > 0 && visibleGraph.nodes.length === 0 ? (
                 <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80">
@@ -290,6 +323,7 @@ export default function GraphPage() {
                         onClick={(event) => {
                           event.stopPropagation();
                           setSelectedEdgeId(edge.id);
+                          openInspector();
                         }}
                       >
                         <line
@@ -331,6 +365,7 @@ export default function GraphPage() {
                           event.stopPropagation();
                           setSelectedNodeId(node.id);
                           setSelectedEdgeId(null);
+                          openInspector();
                         }}
                       >
                         <circle
@@ -363,14 +398,19 @@ export default function GraphPage() {
             </div>
           </div>
 
-          <InspectorPanel
-            selectedNode={selectedNode}
-            selectedEdge={selectedEdge}
-            inspection={selectedInspection}
-            nodesById={nodesById}
-            selectedTraceId={selectedTraceId}
-            onTraceSelect={setSelectedTraceId}
-          />
+          <div className="relative min-w-0">
+            {inspectorOpen ? <div className="om-resize-handle-x absolute -left-2 top-0 bottom-0 z-20" onMouseDown={startInspectorResize} /> : null}
+            <InspectorPanel
+              open={inspectorOpen}
+              onOpenChange={setInspectorOpen}
+              selectedNode={selectedNode}
+              selectedEdge={selectedEdge}
+              inspection={selectedInspection}
+              nodesById={nodesById}
+              selectedTraceId={selectedTraceId}
+              onTraceSelect={setSelectedTraceId}
+            />
+          </div>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -389,6 +429,8 @@ export default function GraphPage() {
 }
 
 function GraphControls({
+  collapsed,
+  onToggle,
   search,
   setSearch,
   nodeType,
@@ -404,6 +446,8 @@ function GraphControls({
   lifecycleOptions,
   onReset,
 }: {
+  collapsed: boolean;
+  onToggle: () => void;
   search: string;
   setSearch: (value: string) => void;
   nodeType: string;
@@ -419,11 +463,29 @@ function GraphControls({
   lifecycleOptions: string[];
   onReset: () => void;
 }) {
+  if (collapsed) {
+    return (
+      <aside className="om-panel flex min-h-[12rem] flex-col items-center gap-2 p-2">
+        <button type="button" className="om-button-ghost h-9 w-9 p-0" onClick={onToggle} aria-label="Expand graph controls" title="Expand graph controls">
+          <SlidersHorizontal size={15} />
+        </button>
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:var(--om-muted)] [writing-mode:vertical-rl]">
+          Controls
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="om-panel space-y-3 p-4">
-      <div className="flex items-center gap-2 text-sm font-semibold text-stone-100">
-        <Filter size={15} className="text-[#c56b2c]" />
-        Graph Controls
+      <div className="flex items-center justify-between gap-2 text-sm font-semibold text-stone-100">
+        <div className="flex items-center gap-2">
+          <Filter size={15} className="text-[color:var(--om-rust-400)]" />
+          Graph Controls
+        </div>
+        <button type="button" className="om-button-ghost h-8 w-8 p-0" onClick={onToggle} aria-label="Collapse graph controls" title="Collapse graph controls">
+          <PanelRightClose size={14} />
+        </button>
       </div>
       <label className="block">
         <span className="mb-1 flex items-center gap-1 text-xs text-[color:var(--om-muted)]">
@@ -503,6 +565,8 @@ function SelectControl({
 }
 
 function InspectorPanel({
+  open,
+  onOpenChange,
   selectedNode,
   selectedEdge,
   inspection,
@@ -510,6 +574,8 @@ function InspectorPanel({
   selectedTraceId,
   onTraceSelect,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   selectedNode: OpenMeshGraphNode | null;
   selectedEdge: OpenMeshGraphEdge | null;
   inspection?: OpenMeshNodeInspection;
@@ -517,13 +583,32 @@ function InspectorPanel({
   selectedTraceId: string | null;
   onTraceSelect: (traceId: string) => void;
 }) {
+  if (!open) {
+    return (
+      <aside className="om-panel flex h-full min-h-[12rem] flex-col items-center gap-2 p-2">
+        <button
+          type="button"
+          className="om-button-ghost h-9 w-9 p-0"
+          onClick={() => onOpenChange(true)}
+          aria-label="Open graph inspector"
+          title="Open graph inspector"
+        >
+          <PanelRightOpen size={15} />
+        </button>
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:var(--om-muted)] [writing-mode:vertical-rl]">
+          Inspector
+        </div>
+      </aside>
+    );
+  }
+
   if (selectedEdge) {
     const source = nodesById.get(selectedEdge.source);
     const target = nodesById.get(selectedEdge.target);
     const provenance = selectedEdge.provenance || {};
     return (
-      <aside className="om-panel p-4">
-        <PanelTitle icon={<GitBranch size={15} />} title="Relationship Inspector" />
+      <aside className="om-panel max-h-[calc(100vh-13rem)] overflow-auto p-4">
+        <InspectorHeader icon={<GitBranch size={15} />} title="Relationship Inspector" onClose={() => onOpenChange(false)} />
         <div className="mt-4 space-y-4">
           <div>
             <div className="text-sm font-semibold text-stone-100">{selectedEdge.type}</div>
@@ -549,8 +634,8 @@ function InspectorPanel({
 
   if (!selectedNode) {
     return (
-      <aside className="om-panel p-4">
-        <PanelTitle icon={<Info size={15} />} title="Inspector" />
+      <aside className="om-panel max-h-[calc(100vh-13rem)] overflow-auto p-4">
+        <InspectorHeader icon={<Info size={15} />} title="Inspector" onClose={() => onOpenChange(false)} />
         <div className="mt-4 text-sm leading-6 text-stone-500">
           Select a node or relationship in the graph to inspect provenance, traces, metadata, and relationships.
         </div>
@@ -565,8 +650,8 @@ function InspectorPanel({
   const traceIds = inspection?.trace_ids || node.provenance?.trace_ids || [];
 
   return (
-    <aside className="om-panel max-h-[780px] overflow-auto p-4">
-      <PanelTitle icon={<Info size={15} />} title="Node Inspector" />
+    <aside className="om-panel max-h-[calc(100vh-13rem)] overflow-auto p-4">
+      <InspectorHeader icon={<Info size={15} />} title="Node Inspector" onClose={() => onOpenChange(false)} />
       <div className="mt-4">
         <div className="text-lg font-semibold text-stone-50">{node.name}</div>
         <div className="text-xs text-[#c56b2c]">{node.type}</div>
@@ -756,7 +841,7 @@ function EmptyGraphOnboarding() {
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color:var(--om-iron-980)]/95 p-6">
       <div className="om-empty w-full max-w-3xl">
-        <img src="/brand/openmesh-logo.png" alt="OpenMesh" className="mx-auto h-14 max-w-md object-contain" />
+        <img src="/brand/openmesh-wheel.png" alt="OpenMesh wheel" className="mx-auto h-16 w-16 object-contain" />
         <div className="om-kicker mt-6">No graph data yet</div>
         <h2 className="mt-2 text-2xl font-bold text-stone-50">Start observing an agent or process</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[color:var(--om-muted)]">
@@ -790,6 +875,17 @@ function PanelTitle({ icon, title }: { icon: ReactNode; title: string }) {
     <div className="flex items-center gap-2 text-sm font-semibold text-stone-100">
       <span className="text-[color:var(--om-rust-400)]">{icon}</span>
       {title}
+    </div>
+  );
+}
+
+function InspectorHeader({ icon, title, onClose }: { icon: ReactNode; title: string; onClose: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <PanelTitle icon={icon} title={title} />
+      <button type="button" className="om-button-ghost h-8 w-8 p-0" onClick={onClose} aria-label="Close inspector" title="Close inspector">
+        <PanelRightClose size={14} />
+      </button>
     </div>
   );
 }

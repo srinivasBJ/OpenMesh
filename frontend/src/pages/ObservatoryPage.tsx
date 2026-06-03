@@ -1,13 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
-import { BarChart2, Brain, Zap, Heart, Star, Network } from "lucide-react";
-import { statsApi, agentsApi, openmeshApi } from "@/api";
-import AgentAvatar from "@/components/shared/AgentAvatar";
-import { ROLE_COLORS, ROLE_EMOJI } from "@/lib/utils";
+import type { ReactNode } from "react";
+import {
+  Activity,
+  BarChart2,
+  GitBranch,
+  Layers,
+  Network,
+  Radio,
+  Server,
+  ShieldCheck,
+  Zap,
+} from "lucide-react";
+import { agentsApi, openmeshApi, statsApi } from "@/api";
+import { brandText, cn } from "@/lib/utils";
 import { useWSStore } from "@/store/wsStore";
+
+type GraphNode = { id: string; name?: string; type?: string; event_count?: number; last_seen?: string };
+type GraphEdge = { id: string; source: string; target: string; type?: string; event_count?: number; last_seen?: string };
+type TraceSummary = { trace_id: string; status?: string; event_count?: number; started_at?: string };
 
 export default function ObservatoryPage() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: statsApi.get, refetchInterval: 30000 });
-  const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: () => agentsApi.list() });
+  const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: () => agentsApi.list(), refetchInterval: 30000 });
   const { data: graph = { nodes: [], edges: [] } } = useQuery({
     queryKey: ["openmesh-graph"],
     queryFn: () => openmeshApi.graph(),
@@ -20,222 +34,227 @@ export default function ObservatoryPage() {
   });
   const { events } = useWSStore();
 
-  const byRole = (agents as any[]).reduce((acc: Record<string, number>, a: any) => {
-    acc[a.role] = (acc[a.role] || 0) + 1;
-    return acc;
-  }, {});
-
-  const topByRep = [...(agents as any[])].sort((a, b) => b.reputation - a.reputation).slice(0, 5);
-  const leastEnergy = [...(agents as any[])].sort((a, b) => a.energy - b.energy).slice(0, 5);
-  const graphNodes = graph.nodes as Array<{ id: string; name: string; type: string; event_count: number }>;
-  const graphEdges = graph.edges as Array<{ id: string; source: string; target: string; type: string; event_count: number }>;
-  const activeAgents = graphNodes.filter((node) => node.type === "agent").length;
-  const activeTraces = (traces as any[]).filter((trace) => trace.status === "active").length;
-  const nodeNames = new Map(graphNodes.map((node) => [node.id, node.name]));
-  const liveNodes = new Map<string, { name: string; type: string; events: number }>();
-  const liveEdges = events.slice(0, 25).flatMap((evt) => {
-    const source = evt.data?.source;
-    const target = evt.data?.target;
-    if (!source?.node_id) return [];
-    liveNodes.set(source.node_id, {
-      name: source.name || source.node_id,
-      type: source.node_type || "unknown",
-      events: (liveNodes.get(source.node_id)?.events || 0) + 1,
-    });
-    if (!target) return [];
-    liveNodes.set(target.node_id, {
-      name: target.name || target.node_id,
-      type: target.node_type || "unknown",
-      events: (liveNodes.get(target.node_id)?.events || 0) + 1,
-    });
-    return [{ id: evt.id, type: evt.type, source: source.name || source.node_id, target: target.name || target.node_id }];
-  });
+  const graphNodes = graph.nodes as GraphNode[];
+  const graphEdges = graph.edges as GraphEdge[];
+  const traceList = traces as TraceSummary[];
+  const nodeNames = new Map(graphNodes.map((node) => [node.id, node.name || node.id]));
+  const activeAgentNodes = graphNodes.filter((node) => node.type === "agent");
+  const processNodes = graphNodes.filter((node) => node.type === "process");
+  const workflowNodes = graphNodes.filter((node) => node.type === "workflow");
+  const serviceNodes = graphNodes.filter((node) => ["service", "mcp_server", "capability", "framework"].includes(node.type || ""));
+  const activeTraces = traceList.filter((trace) => trace.status === "active");
+  const healthState = graphNodes.length > 0 || events.length > 0 ? "operational" : "waiting";
+  const relationshipActivity = graphEdges.reduce((count, edge) => count + Number(edge.event_count || 0), 0);
 
   return (
     <div className="om-page">
-      <div className="om-page-narrow space-y-6">
-      <div className="om-panel p-5">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="om-kicker">OpenMesh Control Room</div>
-            <h1 className="om-title flex items-center gap-2 text-2xl">
-              <BarChart2 size={22} className="text-[color:var(--om-rust-400)]" /> Observatory
-            </h1>
-            <p className="mt-1 text-sm text-[color:var(--om-muted)]">Live operational readout for the observed agent network.</p>
+      <div className="space-y-4">
+        <header className="om-panel overflow-hidden p-0">
+          <div className="om-rust-texture flex flex-col gap-5 border-b border-[color:var(--om-border)] p-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="om-kicker">OpenMesh Control Room</div>
+              <h1 className="mt-2 flex items-center gap-2 text-3xl font-black text-[color:var(--om-text)]">
+                <BarChart2 size={25} className="text-[color:var(--om-rust-300)]" /> Network Operations Center
+              </h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--om-steel-300)]">
+                Monitor agent activity, traces, workflows, relationships, and services as one living ecosystem.
+              </p>
+            </div>
+            <img src="/brand/openmesh-banner-v02.png" alt="OpenMesh" className="h-16 max-w-sm object-contain object-right" />
           </div>
-          <img src="/brand/openmesh-logo.png" alt="OpenMesh" className="h-12 max-w-64 object-contain object-right" />
-        </div>
-      </div>
+        </header>
 
-      <div className="card p-5">
-        <h3 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-white">
-          <Network size={14} className="text-[color:var(--om-rust-400)]" /> Network Operations
-        </h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-          {[
-            { label: "Total Nodes", value: graphNodes.length },
-            { label: "Total Edges", value: graphEdges.length },
-            { label: "Active Agents", value: activeAgents },
-            { label: "Active Traces", value: activeTraces },
-          ].map(({ label, value }) => (
-            <div key={label} className="om-stat">
-              <div className="om-stat-value">{value}</div>
-              <div className="stat-label">{label}</div>
-            </div>
-          ))}
-        </div>
-        {events.length === 0 ? (
-          <p className="rounded-[4px] border border-dashed border-[color:var(--om-border)] bg-black/25 p-4 text-xs text-[color:var(--om-dim)]">
-            Waiting for live OpenMesh events. Run an example or `openmesh run -- &lt;command&gt;` to wake the board.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="space-y-2">
-              {[...liveNodes.entries()].slice(0, 8).map(([id, node]) => (
-                <div key={id} className="flex items-center justify-between border-b border-[color:var(--om-border)]/60 pb-2 last:border-0">
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-white truncate">{node.name}</div>
-                    <div className="text-[11px] text-[color:var(--om-muted)]">{node.type}</div>
-                  </div>
-                  <span className="font-mono text-xs text-[color:var(--om-green-500)]">{node.events}</span>
-                </div>
-              ))}
-            </div>
-            <div className="space-y-2">
-              {liveEdges.slice(0, 8).map((edge) => (
-                <div key={edge.id} className="border-b border-[color:var(--om-border)]/60 pb-2 last:border-0">
-                  <div className="truncate text-xs text-[color:var(--om-steel-300)]">
-                    {edge.source} <span className="text-[color:var(--om-rust-400)]">→</span> {edge.target}
-                  </div>
-                  <div className="text-[11px] text-[color:var(--om-muted)]">{edge.type}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {graphEdges.length > 0 && (
-          <div className="mt-5 border-t border-[color:var(--om-border)] pt-4">
-            <h4 className="om-kicker mb-2">Recent Relationships</h4>
-            <div className="space-y-2">
-              {graphEdges.slice(0, 5).map((edge) => (
-                <div key={edge.id} className="truncate text-xs text-[color:var(--om-steel-300)]">
-                  {nodeNames.get(edge.source) || edge.source}{" "}
-                  <span className="text-[color:var(--om-rust-400)]">{edge.type}</span>{" "}
-                  {nodeNames.get(edge.target) || edge.target}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Global Stats */}
-      {stats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: "Total Agents", value: stats.agents ?? 0, icon: Zap, color: "text-[color:var(--om-rust-400)]" },
-            { label: "Avg Reputation", value: `${stats.avg_reputation ?? 0}`, icon: Star, color: "text-[color:var(--om-amber-500)]" },
-            { label: "Avg Knowledge", value: `${stats.avg_knowledge ?? 0}`, icon: Brain, color: "text-[color:var(--om-steel-300)]" },
-            { label: "Avg Happiness", value: `${stats.avg_happiness ?? 0}%`, icon: Heart, color: "text-[color:var(--om-green-500)]" },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="card p-4">
-              <Icon size={18} className={`${color} mb-2`} />
-              <div className="om-stat-value">{value}</div>
-              <div className="stat-label">{label}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Role distribution */}
-        <div className="card p-5">
-          <h3 className="mb-4 text-sm font-semibold text-white">Agent Roles</h3>
-          <div className="space-y-2">
-            {Object.entries(byRole).map(([role, count]) => {
-              const total = (agents as any[]).length || 1;
-              const pct = Math.round((count / total) * 100);
-              return (
-                <div key={role}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className={ROLE_COLORS[role]}>{ROLE_EMOJI[role]} {role}</span>
-                    <span className="text-[color:var(--om-muted)]">{count}</span>
-                  </div>
-                  <div className="h-1.5 w-full rounded-full bg-black/45">
-                    <div className="h-1.5 rounded-full bg-[color:var(--om-rust-500)]" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Top reputation */}
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-1.5">
-            <Star size={14} className="text-[color:var(--om-amber-500)]" /> Highest Reputation
-          </h3>
-          <div className="space-y-3">
-            {topByRep.map((agent: any, i: number) => (
-              <div key={agent.id} className="flex items-center gap-3">
-                <span className="w-4 font-mono text-xs text-[color:var(--om-dim)]">{i + 1}</span>
-                <AgentAvatar name={agent.name || "Unknown"} role={agent.role || "agent"} size="sm" showRole />
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-white truncate">{agent.name || "Unknown agent"}</div>
-                  <div className="mt-1 h-1 w-full rounded-full bg-black/45">
-                    <div className="h-1 rounded-full bg-[color:var(--om-amber-500)]" style={{ width: `${agent.reputation || 0}%` }} />
-                  </div>
-                </div>
-                <span className="text-xs font-bold text-[color:var(--om-amber-500)]">{Number(agent.reputation || 0).toFixed(0)}</span>
+        <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
+          <ControlPanel title="Network Health" icon={<ShieldCheck size={16} />} className="min-h-64">
+            <div className="grid gap-4 lg:grid-cols-[.8fr_1.2fr]">
+              <div className="rounded-[6px] border border-[color:var(--om-border)] bg-black/35 p-5">
+                <StatusPill status={healthState === "operational" ? "active" : "idle"} label={healthState === "operational" ? "Operational" : "Awaiting Activity"} />
+                <div className="mt-5 font-mono text-5xl font-black text-[color:var(--om-text)]">{graphNodes.length}</div>
+                <div className="stat-label mt-1">Observed Nodes</div>
+                <p className="mt-4 text-sm leading-6 text-[color:var(--om-muted)]">
+                  {healthState === "operational"
+                    ? "The ecosystem graph has active structure and relationship evidence."
+                    : "Run an example or observe a process to populate this station."}
+                </p>
               </div>
-            ))}
-          </div>
-        </div>
+              <div className="grid grid-cols-2 gap-3">
+                <MetricCell label="Edges" value={graphEdges.length} />
+                <MetricCell label="Events" value={events.length || stats?.messages || 0} />
+                <MetricCell label="Traces" value={traceList.length} />
+                <MetricCell label="Workflows" value={workflowNodes.length} />
+                <MetricCell label="Processes" value={processNodes.length} />
+                <MetricCell label="Rel Activity" value={relationshipActivity} />
+              </div>
+            </div>
+          </ControlPanel>
 
-        {/* Lowest energy (needs rest) */}
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-1.5">
-            <Zap size={14} className="text-[color:var(--om-red-500)]" /> Needs Rest
-          </h3>
-          <div className="space-y-3">
-            {leastEnergy.map((agent: any) => (
-              <div key={agent.id} className="flex items-center gap-3">
-                <AgentAvatar name={agent.name || "Unknown"} role={agent.role || "agent"} size="sm" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-white truncate">{agent.name || "Unknown agent"}</div>
-                  <div className="mt-1 h-1 w-full rounded-full bg-black/45">
-                    <div className="h-1 rounded-full bg-[color:var(--om-red-500)]" style={{ width: `${agent.energy || 0}%` }} />
+          <ControlPanel title="Recent Events" icon={<Radio size={16} />} className="min-h-64">
+            {events.length === 0 ? (
+              <EmptyOperationalMessage text="No live websocket events are present in this browser session." />
+            ) : (
+              <div className="space-y-2">
+                {events.slice(0, 8).map((event) => (
+                  <div key={event.id} className="flex items-start gap-3 border-b border-[color:var(--om-border)]/50 pb-2 last:border-0">
+                    <span className="om-status-dot om-status-active mt-1.5 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="truncate text-sm text-[color:var(--om-text)]">{event.type}</div>
+                      <div className="truncate text-xs text-[color:var(--om-muted)]">
+                        {brandText(event.data?.source?.name, "OpenMesh")} {event.data?.target?.name ? `-> ${brandText(event.data.target.name)}` : ""}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <span className="text-xs font-bold text-[color:var(--om-red-500)]">{Number(agent.energy || 0).toFixed(0)}%</span>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
+            )}
+          </ControlPanel>
+        </section>
 
-      {/* Mesh totals */}
-      {stats && (
-        <div className="card p-5">
-          <h3 className="mb-4 text-sm font-semibold text-white">Observed Output</h3>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            {[
-              { label: "Posts Written", value: stats.posts, emoji: "📝" },
-              { label: "Wiki Articles", value: stats.wiki_pages, emoji: "📚" },
-              { label: "Messages Sent", value: stats.messages, emoji: "💬" },
-              { label: "Guilds Formed", value: stats.guilds, emoji: "🏛️" },
-              { label: "Collaborations", value: stats.collaborations, emoji: "🤝" },
-            ].map(({ label, value, emoji }) => (
-              <div key={label} className="om-stat text-center">
-                <div className="text-2xl mb-1">{emoji}</div>
-                <div className="om-stat-value">{value ?? 0}</div>
-                <div className="stat-label">{label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        <section className="grid gap-4 xl:grid-cols-3">
+          <ControlPanel title="Active Agents" icon={<Zap size={16} />}>
+            <EntityList
+              empty="No agent nodes observed yet."
+              items={(activeAgentNodes.length ? activeAgentNodes : (agents as GraphNode[])).slice(0, 7).map((node) => ({
+                id: node.id,
+                title: brandText(node.name, "Unknown agent"),
+                subtitle: node.type || "agent",
+                value: `${node.event_count || 0} ev`,
+                status: "active",
+              }))}
+            />
+          </ControlPanel>
+
+          <ControlPanel title="Active Traces" icon={<Activity size={16} />}>
+            <EntityList
+              empty="No traces are currently active."
+              items={(activeTraces.length ? activeTraces : traceList).slice(0, 7).map((trace) => ({
+                id: trace.trace_id,
+                title: trace.trace_id,
+                subtitle: trace.status || "unknown",
+                value: `${trace.event_count || 0} ev`,
+                status: trace.status === "active" ? "active" : "idle",
+              }))}
+            />
+          </ControlPanel>
+
+          <ControlPanel title="Relationships" icon={<GitBranch size={16} />}>
+            <EntityList
+              empty="No graph relationships have been reduced yet."
+              items={graphEdges.slice(0, 7).map((edge) => ({
+                id: edge.id,
+                title: `${nodeNames.get(edge.source) || edge.source} -> ${nodeNames.get(edge.target) || edge.target}`,
+                subtitle: edge.type || "relationship",
+                value: `${edge.event_count || 0} obs`,
+                status: "active",
+              }))}
+            />
+          </ControlPanel>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-3">
+          <ControlPanel title="Workflows" icon={<Layers size={16} />}>
+            <EntityList
+              empty="No workflow nodes are visible yet."
+              items={workflowNodes.slice(0, 7).map((node) => ({
+                id: node.id,
+                title: brandText(node.name, node.id),
+                subtitle: "workflow",
+                value: `${node.event_count || 0} ev`,
+                status: "idle",
+              }))}
+            />
+          </ControlPanel>
+
+          <ControlPanel title="Services" icon={<Server size={16} />}>
+            <EntityList
+              empty="No services, MCP servers, or capabilities observed yet."
+              items={serviceNodes.slice(0, 7).map((node) => ({
+                id: node.id,
+                title: brandText(node.name, node.id),
+                subtitle: node.type || "service",
+                value: `${node.event_count || 0} ev`,
+                status: "idle",
+              }))}
+            />
+          </ControlPanel>
+
+          <ControlPanel title="Ecosystem Summary" icon={<Network size={16} />}>
+            <div className="grid grid-cols-2 gap-3">
+              <MetricCell label="Agents" value={activeAgentNodes.length || stats?.agents || 0} />
+              <MetricCell label="Guilds" value={stats?.guilds || 0} />
+              <MetricCell label="Wiki" value={stats?.wiki_pages || 0} />
+              <MetricCell label="Posts" value={stats?.posts || 0} />
+            </div>
+            <div className="mt-4 rounded-[4px] border border-[color:var(--om-border)] bg-black/30 p-3 text-xs leading-5 text-[color:var(--om-muted)]">
+              Daily operation starts in Graph, then fans out through traces, workflows, and relationship evidence.
+            </div>
+          </ControlPanel>
+        </section>
       </div>
+    </div>
+  );
+}
+
+function ControlPanel({ title, icon, className, children }: { title: string; icon: ReactNode; className?: string; children: ReactNode }) {
+  return (
+    <section className={cn("card p-4", className)}>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-[color:var(--om-text)]">
+          <span className="text-[color:var(--om-rust-400)]">{icon}</span>
+          {title}
+        </h2>
+        <span className="h-px flex-1 bg-[color:var(--om-border)]" />
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function MetricCell({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="om-stat">
+      <div className="om-stat-value">{value}</div>
+      <div className="stat-label">{label}</div>
+    </div>
+  );
+}
+
+function StatusPill({ status, label }: { status: "active" | "idle" | "failed"; label: string }) {
+  return (
+    <span className="om-badge">
+      <span className={cn("om-status-dot", status === "active" && "om-status-active", status === "idle" && "om-status-idle", status === "failed" && "om-status-failed")} />
+      {label}
+    </span>
+  );
+}
+
+function EntityList({
+  items,
+  empty,
+}: {
+  items: Array<{ id: string; title: string; subtitle: string; value: string; status: "active" | "idle" | "failed" }>;
+  empty: string;
+}) {
+  if (items.length === 0) return <EmptyOperationalMessage text={empty} />;
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <div key={item.id} className="flex items-center gap-3 rounded-[4px] border border-[color:var(--om-border)] bg-black/25 px-3 py-2">
+          <span className={cn("om-status-dot shrink-0", item.status === "active" && "om-status-active", item.status === "idle" && "om-status-idle", item.status === "failed" && "om-status-failed")} />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-[color:var(--om-text)]">{item.title}</div>
+            <div className="truncate text-xs text-[color:var(--om-muted)]">{item.subtitle}</div>
+          </div>
+          <div className="font-mono text-xs text-[color:var(--om-rust-300)]">{item.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyOperationalMessage({ text }: { text: string }) {
+  return (
+    <div className="rounded-[4px] border border-dashed border-[color:var(--om-border)] bg-black/25 p-4 text-sm leading-6 text-[color:var(--om-dim)]">
+      {text}
     </div>
   );
 }

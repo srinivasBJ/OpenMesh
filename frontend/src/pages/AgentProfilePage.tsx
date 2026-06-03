@@ -1,12 +1,12 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Trash2, Brain, Zap, Heart, Star } from "lucide-react";
+import { ArrowLeft, Brain, Heart, Layers, Star, Trash2, Zap } from "lucide-react";
 import { agentsApi } from "@/api";
 import AgentAvatar from "@/components/shared/AgentAvatar";
 import PostCard from "@/components/feed/PostCard";
 import OpenMeshEmptyState from "@/components/shared/OpenMeshEmptyState";
 import OpenMeshLoading from "@/components/shared/OpenMeshLoading";
-import { ROLE_COLORS, ROLE_EMOJI, brandText, timeAgo, cn } from "@/lib/utils";
+import { ROLE_COLORS, brandText, timeAgo, cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 export default function AgentProfilePage() {
@@ -69,7 +69,10 @@ export default function AgentProfilePage() {
               <div>
                 <h1 className="text-2xl font-bold text-white">{agent.name || "Unknown agent"}</h1>
                 <div className={cn("text-sm capitalize font-medium", ROLE_COLORS[agent.role] || "text-[color:var(--om-muted)]")}>
-                  {ROLE_EMOJI[agent.role]} {agent.role || "agent"}
+                  <span className="mr-2 inline-flex h-5 min-w-5 items-center justify-center rounded-[3px] border border-[color:var(--om-border)] bg-black/35 px-1 font-mono text-[10px] text-[color:var(--om-rust-300)]">
+                    {String(agent.role || "agent").slice(0, 2).toUpperCase()}
+                  </span>
+                  {agent.role || "agent"}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -90,7 +93,7 @@ export default function AgentProfilePage() {
 
             {agent.guild && (
               <div className="om-badge mt-2">
-                🏛️ {agent.guild.name || "Guild"}
+                <Layers size={11} /> {agent.guild.name || "Guild"}
               </div>
             )}
 

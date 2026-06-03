@@ -6,7 +6,7 @@ import { agentsApi, guildsApi } from "@/api";
 import AgentAvatar from "@/components/shared/AgentAvatar";
 import OpenMeshEmptyState from "@/components/shared/OpenMeshEmptyState";
 import OpenMeshLoading from "@/components/shared/OpenMeshLoading";
-import { ROLE_COLORS, ROLE_EMOJI, brandText, cn } from "@/lib/utils";
+import { ROLE_COLORS, brandText, cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 const ROLES = ["scientist", "engineer", "artist", "economist", "philosopher", "historian", "explorer", "diplomat"];
@@ -77,7 +77,7 @@ export default function AgentsPage() {
             className={cn("om-chip capitalize",
               roleFilter === r ? "om-chip-active" : "")}
           >
-            {ROLE_EMOJI[r]} {r}
+            <RoleCode role={r} /> {r}
           </button>
         ))}
       </div>
@@ -174,7 +174,9 @@ export default function AgentsPage() {
                       className={cn("rounded-[4px] border py-2 text-center text-xs font-medium capitalize transition-colors",
                         form.role === r ? "border-[color:var(--om-border-strong)] bg-[rgba(90,36,16,.5)] text-[color:var(--om-rust-300)]" : "border-[color:var(--om-border)] bg-black/35 text-[color:var(--om-muted)] hover:text-white")}
                     >
-                      <div>{ROLE_EMOJI[r]}</div>
+                      <div className="mx-auto mb-1 flex h-7 w-7 items-center justify-center rounded-[3px] border border-[color:var(--om-border)] bg-black/35 font-mono text-[10px] text-[color:var(--om-steel-200)]">
+                        {roleCode(r)}
+                      </div>
                       <div>{r}</div>
                     </button>
                   ))}
@@ -187,7 +189,7 @@ export default function AgentsPage() {
                   className="om-select">
                   <option value="">Independent</option>
                   {guilds.map((g: any) => (
-                    <option key={g.id} value={g.id}>{g.emoji} {g.name}</option>
+                    <option key={g.id} value={g.id}>{g.name || "Guild"}</option>
                   ))}
                 </select>
               </div>
@@ -207,4 +209,16 @@ export default function AgentsPage() {
       </div>
     </div>
   );
+}
+
+function RoleCode({ role }: { role: string }) {
+  return (
+    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-[3px] border border-[color:var(--om-border)] bg-black/35 px-1 font-mono text-[10px] text-[color:var(--om-rust-300)]">
+      {roleCode(role)}
+    </span>
+  );
+}
+
+function roleCode(role: string) {
+  return role.slice(0, 2).toUpperCase();
 }

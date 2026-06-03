@@ -5,13 +5,15 @@
 :root {
   color-scheme: dark;
 
-  --om-rust-900: #3a160b;
-  --om-rust-800: #5a2410;
-  --om-rust-700: #873816;
-  --om-rust-600: #b9551f;
-  --om-rust-500: #df742d;
-  --om-rust-400: #f09a55;
-  --om-rust-300: #ffc08a;
+  --om-rust-900: #241009;
+  --om-rust-800: #3d1a0d;
+  --om-rust-700: #642914;
+  --om-rust-600: #914018;
+  --om-rust-500: #be5c24;
+  --om-rust-400: #d27a3d;
+  --om-rust-300: #e4a06d;
+  --om-copper-500: #a86f43;
+  --om-copper-300: #c49368;
 
   --om-iron-980: #050504;
   --om-iron-950: #080807;
@@ -31,7 +33,7 @@
 
   --om-oxide-700: #274039;
   --om-oxide-600: #31564b;
-  --om-amber-500: #d9a441;
+  --om-amber-500: #b98535;
   --om-red-500: #c94831;
   --om-green-500: #78a66a;
 
@@ -40,7 +42,7 @@
   --om-surface-raised: rgba(25, 22, 18, 0.96);
   --om-surface-inset: rgba(8, 8, 7, 0.92);
   --om-border: rgba(125, 101, 80, 0.32);
-  --om-border-strong: rgba(223, 116, 45, 0.52);
+  --om-border-strong: rgba(190, 92, 36, 0.56);
   --om-text: #efe7db;
   --om-muted: #9b978e;
   --om-dim: #706a61;
@@ -62,8 +64,8 @@
   --om-font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 
   --om-shadow-panel: 0 18px 55px rgba(0, 0, 0, 0.35), inset 0 1px rgba(255, 214, 170, 0.04);
-  --om-glow-rust: 0 0 0 1px rgba(223, 116, 45, 0.22), 0 0 32px rgba(185, 85, 31, 0.16);
-  --om-glow-hot: 0 0 0 1px rgba(240, 154, 85, 0.42), 0 0 38px rgba(223, 116, 45, 0.26);
+  --om-glow-rust: 0 0 0 1px rgba(190, 92, 36, 0.22), 0 0 32px rgba(145, 64, 24, 0.16);
+  --om-glow-hot: 0 0 0 1px rgba(210, 122, 61, 0.38), 0 0 38px rgba(190, 92, 36, 0.24);
 }
 
 @layer base {
@@ -75,11 +77,12 @@
   body {
     min-height: 100%;
     background:
-      radial-gradient(circle at 18% 0%, rgba(185, 85, 31, 0.13), transparent 34rem),
+      radial-gradient(circle at 18% 0%, rgba(145, 64, 24, 0.12), transparent 34rem),
       radial-gradient(circle at 86% 18%, rgba(49, 86, 75, 0.13), transparent 28rem),
+      repeating-radial-gradient(circle at 20% 35%, rgba(190, 92, 36, 0.035) 0 1px, transparent 1px 9px),
       linear-gradient(135deg, rgba(255, 255, 255, 0.018) 25%, transparent 25%),
       var(--om-bg);
-    background-size: auto, auto, 12px 12px, auto;
+    background-size: auto, auto, 58px 58px, 12px 12px, auto;
     color: var(--om-text);
     font-family: var(--om-font-ui);
     text-rendering: optimizeLegibility;
@@ -100,9 +103,11 @@
   .om-app-shell {
     min-height: 100vh;
     background:
+      radial-gradient(circle at 15% 12%, rgba(190, 92, 36, 0.1), transparent 22rem),
+      radial-gradient(circle at 92% 18%, rgba(49, 86, 75, 0.09), transparent 24rem),
       linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
-    background-size: 64px 64px;
+    background-size: auto, auto, 64px 64px, 64px 64px;
   }
 
   .om-page {
@@ -128,6 +133,33 @@
       var(--om-iron-950);
     border-color: var(--om-border);
     box-shadow: inset -1px 0 rgba(255, 214, 170, 0.04);
+    transition: width 180ms ease;
+  }
+
+  .om-sidebar-resize {
+    position: absolute;
+    top: 0;
+    right: -4px;
+    bottom: 0;
+    width: 8px;
+    cursor: col-resize;
+    z-index: 30;
+  }
+
+  .om-sidebar-resize::after {
+    content: "";
+    position: absolute;
+    top: 1rem;
+    bottom: 1rem;
+    left: 3px;
+    width: 1px;
+    background: rgba(190, 92, 36, 0.32);
+    opacity: 0;
+    transition: opacity 160ms ease;
+  }
+
+  .om-sidebar-resize:hover::after {
+    opacity: 1;
   }
 
   .om-panel,
@@ -170,7 +202,7 @@
     border: 1px solid var(--om-border);
     border-radius: var(--om-radius-lg);
     background:
-      linear-gradient(150deg, rgba(223, 116, 45, 0.06), transparent 42%),
+      linear-gradient(150deg, rgba(190, 92, 36, 0.055), transparent 42%),
       var(--om-surface-raised);
     box-shadow: inset 0 1px rgba(255, 214, 170, 0.045);
   }
@@ -218,10 +250,10 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    border: 1px solid rgba(240, 154, 85, 0.55);
+    border: 1px solid rgba(210, 122, 61, 0.55);
     border-radius: var(--om-radius-md);
     background:
-      linear-gradient(180deg, rgba(240, 154, 85, 0.28), rgba(185, 85, 31, 0.18)),
+      linear-gradient(180deg, rgba(210, 122, 61, 0.24), rgba(145, 64, 24, 0.2)),
       rgba(58, 22, 11, 0.96);
     color: #ffe1c5;
     font-size: 0.8125rem;
@@ -255,7 +287,7 @@
 
   .btn-ghost:hover,
   .om-button-ghost:hover {
-    border-color: rgba(240, 154, 85, 0.42);
+    border-color: rgba(210, 122, 61, 0.42);
     color: var(--om-rust-300);
   }
 
@@ -374,6 +406,96 @@
     border-radius: 999px;
     animation: om-spin 900ms linear infinite;
     filter: drop-shadow(0 0 14px rgba(223, 116, 45, 0.35));
+  }
+
+  .om-alert-stack {
+    top: 0.75rem !important;
+    left: 50% !important;
+    width: min(92vw, 42rem);
+    transform: translateX(-50%);
+  }
+
+  .om-alert-panel {
+    display: flex;
+    width: min(92vw, 42rem);
+    align-items: center;
+    gap: 0.75rem;
+    border: 2px solid rgba(185, 133, 53, 0.72);
+    border-radius: var(--om-radius-md);
+    background:
+      linear-gradient(90deg, rgba(185, 133, 53, 0.26), rgba(18, 16, 13, 0.98) 24%),
+      var(--om-iron-900);
+    box-shadow: 0 12px 38px rgba(0, 0, 0, 0.42), inset 0 0 0 1px rgba(255, 218, 135, 0.08);
+    color: var(--om-amber-500);
+    padding: 0.75rem 0.9rem;
+    transition: opacity 180ms ease, transform 180ms ease;
+  }
+
+  .om-alert-error {
+    border-color: rgba(201, 72, 49, 0.78);
+    color: var(--om-red-500);
+  }
+
+  .om-alert-success {
+    border-color: rgba(120, 166, 106, 0.72);
+    color: var(--om-green-500);
+  }
+
+  .om-alert-warning {
+    border-color: rgba(185, 133, 53, 0.78);
+    color: var(--om-amber-500);
+  }
+
+  .om-alert-label {
+    color: currentColor;
+    font-family: var(--om-font-mono);
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .om-alert-recovery {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 1rem;
+    border: 2px solid rgba(185, 133, 53, 0.72);
+    border-radius: var(--om-radius-xl);
+    background:
+      linear-gradient(135deg, rgba(185, 133, 53, 0.18), transparent 35%),
+      var(--om-surface);
+    padding: 1.5rem;
+    box-shadow: var(--om-shadow-panel);
+  }
+
+  .om-rust-texture {
+    background:
+      radial-gradient(circle at 25% 20%, rgba(190, 92, 36, 0.18), transparent 20rem),
+      radial-gradient(circle at 75% 45%, rgba(110, 45, 18, 0.24), transparent 24rem),
+      repeating-radial-gradient(circle at 42% 35%, rgba(228, 160, 109, 0.035) 0 1px, transparent 1px 8px),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 42%),
+      #120c08;
+  }
+
+  .om-resize-handle-x {
+    width: 6px;
+    cursor: col-resize;
+    background: linear-gradient(180deg, transparent, rgba(190, 92, 36, 0.45), transparent);
+    opacity: 0.55;
+    transition: opacity 160ms ease;
+  }
+
+  .om-resize-handle-x:hover {
+    opacity: 1;
+  }
+
+  .om-mascot-card {
+    border: 1px solid rgba(120, 166, 106, 0.22);
+    border-radius: var(--om-radius-xl);
+    background:
+      radial-gradient(circle at 20% 20%, rgba(120, 166, 106, 0.12), transparent 12rem),
+      var(--om-surface);
+    box-shadow: var(--om-shadow-panel);
   }
 }
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { MessageCircle, Heart, Zap, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageCircle } from "lucide-react";
 import { feedApi } from "@/api";
-import { cn, timeAgo, ROLE_COLORS, ROLE_EMOJI, POST_TYPE_EMOJI, POST_TYPE_COLOR, brandText } from "@/lib/utils";
+import { brandText, cn, POST_TYPE_COLOR, ROLE_COLORS, timeAgo } from "@/lib/utils";
 import AgentAvatar from "@/components/shared/AgentAvatar";
 import { useQuery } from "@tanstack/react-query";
 
@@ -19,7 +19,7 @@ interface PostCardProps {
   onAgentClick?: (id: string) => void;
 }
 
-const QUICK_REACTIONS = ["🧠", "🔥", "💡", "🤝", "⚡", "✨"];
+const QUICK_REACTIONS = ["ACK", "IDEA", "BOOST", "JOIN", "TRACE", "NOTE"];
 
 export default function PostCard({ post, onAgentClick }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
@@ -32,13 +32,13 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
     enabled: showComments,
   });
 
-  const react = async (emoji: string) => {
-    const res = await feedApi.react(post.id, emoji);
+  const react = async (reaction: string) => {
+    const res = await feedApi.react(post.id, reaction);
     setReactions(res.reactions);
   };
 
-  const postEmoji = POST_TYPE_EMOJI[post.post_type] || "💬";
   const postColor = POST_TYPE_COLOR[post.post_type] || "text-[color:var(--om-steel-400)]";
+  const postType = String(post.post_type || "status");
 
   return (
     <div className="card p-4 transition-colors hover:border-[color:var(--om-border-strong)]">
@@ -57,13 +57,16 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
               {author.name}
             </button>
             <span className={cn("text-xs", ROLE_COLORS[author.role] || "text-[color:var(--om-muted)]")}>
-              {ROLE_EMOJI[author.role]} {author.role}
+              <span className="mr-1 inline-flex h-4 min-w-4 items-center justify-center rounded-[2px] border border-[color:var(--om-border)] bg-black/35 px-1 font-mono text-[9px] text-[color:var(--om-rust-300)]">
+                {roleCode(author.role)}
+              </span>
+              {author.role}
             </span>
             <span className="ml-auto text-xs text-[color:var(--om-dim)]">{post.created_at ? timeAgo(post.created_at) : "time unknown"}</span>
           </div>
           <div className={cn("text-xs flex items-center gap-1 mt-0.5", postColor)}>
-            <span>{postEmoji}</span>
-            <span>{post.post_type}</span>
+            <span className="rounded-[2px] border border-[color:var(--om-border)] bg-black/30 px-1 font-mono text-[9px] uppercase">{postType.slice(0, 3)}</span>
+            <span>{postType}</span>
           </div>
         </div>
       </div>
@@ -89,8 +92,8 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
             <button
               key={e}
               onClick={() => react(e)}
-              className="rounded px-1 py-0.5 text-sm transition-transform hover:scale-125 hover:bg-black/40"
-              title={`React with ${e}`}
+              className="rounded-[3px] border border-[color:var(--om-border)] bg-black/25 px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--om-steel-300)] transition-colors hover:border-[color:var(--om-border-strong)] hover:text-[color:var(--om-rust-300)]"
+              title={`React with ${e.toLowerCase()}`}
             >
               {e}
               {reactions[e] ? <sup className="text-xs text-gray-500 ml-0.5">{reactions[e]}</sup> : null}
@@ -139,4 +142,8 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
       )}
     </div>
   );
+}
+
+function roleCode(role?: string) {
+  return String(role || "agent").slice(0, 2).toUpperCase();
 }

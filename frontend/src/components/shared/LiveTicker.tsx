@@ -1,5 +1,5 @@
 import { useWSStore } from "@/store/wsStore";
-import { ROLE_EMOJI, POST_TYPE_EMOJI, timeAgo } from "@/lib/utils";
+import { timeAgo } from "@/lib/utils";
 import { Activity, Wifi, WifiOff } from "lucide-react";
 import type { OpenMeshEvent } from "@/types/openmesh";
 
@@ -7,7 +7,7 @@ const EVENT_LABELS: Record<string, (evt: OpenMeshEvent) => string> = {
   "agent.task.completed": (evt) => {
     const legacy = evt.payload.legacy as { post?: { post_type?: string } } | undefined;
     const postType = legacy?.post?.post_type || "status";
-    return `${evt.source.name} posted ${POST_TYPE_EMOJI[postType] || "💬"}`;
+    return `${evt.source.name} posted ${postType}`;
   },
   "message.sent": (evt) => {
     const legacy = evt.payload.legacy as { legacy_type?: string; message?: { message_type?: string } } | undefined;
@@ -24,7 +24,7 @@ const EVENT_LABELS: Record<string, (evt: OpenMeshEvent) => string> = {
   },
   "agent.started": (evt) => {
     const role = evt.source.metadata?.role as string | undefined;
-    return `${ROLE_EMOJI[role || ""] || "🤖"} ${evt.source.name} joined OpenMesh`;
+    return `[${roleCode(role || "agent")}] ${evt.source.name} joined OpenMesh`;
   },
 };
 
@@ -66,4 +66,8 @@ export default function LiveTicker() {
       </div>
     </div>
   );
+}
+
+function roleCode(role: string) {
+  return role.slice(0, 2).toUpperCase();
 }

@@ -1,4 +1,4 @@
-import { ROLE_EMOJI, avatarColor } from "@/lib/utils";
+import { avatarColor } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 interface AgentAvatarProps {
@@ -17,8 +17,8 @@ const sizes = {
 
 export default function AgentAvatar({ name, role, size = "md", showRole = false }: AgentAvatarProps) {
   const gradient = avatarColor(name);
-  const emoji = ROLE_EMOJI[role] || "🤖";
   const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const roleCode = String(role || "agent").slice(0, 2).toUpperCase();
 
   return (
     <div className="relative inline-block">
@@ -30,8 +30,8 @@ export default function AgentAvatar({ name, role, size = "md", showRole = false 
         {initials}
       </div>
       {showRole && (
-        <div className="absolute -bottom-1 -right-1 rounded-full border border-[color:var(--om-border)] bg-[color:var(--om-iron-950)] px-1 text-xs leading-none">
-          {emoji}
+        <div className="absolute -bottom-1 -right-1 rounded-[3px] border border-[color:var(--om-border-strong)] bg-[color:var(--om-iron-950)] px-1 font-mono text-[9px] leading-4 text-[color:var(--om-rust-300)]">
+          {roleCode}
         </div>
       )}
     </div>

@@ -32,6 +32,7 @@ from ..services.openmesh_queries import (
     inspect_graph_workflow,
     list_workflows,
 )
+from ..services.replay import build_replay_from_timeline
 from ..services.registry_status import build_registry_status
 from ..services.timeline import get_timeline
 from ..services.trace_semantics import (
@@ -560,6 +561,45 @@ def _timeline_label(item: dict[str, Any]) -> str:
     return f"{kind} {item.get('name') or item.get('id') or ''}".strip()
 
 
+def replay_rows(replay: dict[str, Any]) -> list[str]:
+    state = replay.get("state", {})
+    summary = replay.get("summary", {})
+    rows = [
+        "Replay",
+        f"control {state.get('control')}  status {state.get('status')}",
+        f"position {state.get('position')} / {max(state.get('frame_count', 0) - 1, 0)}",
+        (
+            "frames "
+            f"{summary.get('frames', 0)}  "
+            f"nodes {summary.get('nodes', 0)}  "
+            f"relationships {summary.get('relationships', 0)}"
+        ),
+        "space start/pause  n step  x stop",
+        "",
+        "Current",
+    ]
+    current = state.get("current_frame")
+    rows.append(f"  {_replay_label(current)}" if current else "  none")
+    rows.extend(["", "Playback"])
+    visible = replay.get("visible_frames", [])
+    if not visible:
+        rows.append("  none")
+    for frame in visible[-12:]:
+        rows.append(f"  {_replay_label(frame)}")
+    return rows
+
+
+def _replay_label(frame: dict[str, Any] | None) -> str:
+    if not frame:
+        return "none"
+    return (
+        f"[{frame.get('frame_index', '-')}] "
+        f"{_time(frame.get('timestamp'))} "
+        f"{_short(frame.get('action'), 22)} "
+        f"{_short(frame.get('description'), 32)}"
+    )
+
+
 def _diff_row_title(item: dict[str, Any]) -> str:
     if item.get("source") and item.get("target") and item.get("type"):
         return f"{item['source']} {item['type']} {item['target']}"
@@ -939,6 +979,10 @@ class OpenMeshTui(App):
         ("s", "show_snapshots", "Snapshots"),
         ("d", "show_snapshot_diff", "Snapshot Diff"),
         ("l", "show_timeline", "Timeline"),
+        ("r", "show_replay", "Replay"),
+        ("space", "toggle_replay", "Play/Pause"),
+        ("n", "step_replay", "Step"),
+        ("x", "stop_replay", "Stop"),
         ("a", "select_snapshot_a", "Select A"),
         ("b", "select_snapshot_b", "Select B"),
         ("enter", "inspect_selected", "Inspect"),
@@ -955,6 +999,8 @@ class OpenMeshTui(App):
         self.selected_node_id: str | None = None
         self.snapshot_diff_a_index = 1
         self.snapshot_diff_b_index = 0
+        self.replay_control = "start"
+        self.replay_position = 0
         self.agent_node_rows: list[dict[str, Any]] = []
         self.network_edge_rows: list[dict[str, Any]] = []
 
@@ -1001,7 +1047,7 @@ class OpenMeshTui(App):
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [d diff] [l timeline] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [d diff] [l timeline] [r replay] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -1135,6 +1181,18 @@ class OpenMeshTui(App):
                 "\n".join(timeline_rows(self.snapshot))
             )
             return
+        if self.lower_right_mode == "replay":
+            replay = build_replay_from_timeline(
+                self.snapshot.timeline,
+                control=self.replay_control,
+                position=self.replay_position,
+            )
+            position = replay.get("state", {}).get("position")
+            if isinstance(position, int) and position >= 0:
+                self.replay_position = position
+            self.query_one("#event-title", Static).update("REPLAY")
+            self.query_one("#event-body", Static).update("\n".join(replay_rows(replay)))
+            return
         if self.lower_right_mode == "trace" and self.selected_trace_id:
             self.query_one("#event-title", Static).update("TRACE DETAIL")
             self.query_one("#event-body", Static).update(
@@ -1222,6 +1280,34 @@ class OpenMeshTui(App):
 
     def action_show_timeline(self) -> None:
         self.lower_right_mode = "timeline"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_show_replay(self) -> None:
+        self.lower_right_mode = "replay"
+        self.replay_control = "start"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_toggle_replay(self) -> None:
+        if self.lower_right_mode != "replay":
+            return
+        self.replay_control = "pause" if self.replay_control == "start" else "start"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_step_replay(self) -> None:
+        if self.lower_right_mode != "replay":
+            return
+        self.replay_control = "step"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_stop_replay(self) -> None:
+        if self.lower_right_mode != "replay":
+            return
+        self.replay_control = "stop"
+        self.replay_position = 0
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
 

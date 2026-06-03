@@ -90,6 +90,17 @@ openmesh_events + openmesh_sessions + openmesh_snapshots
 
 Timelines are derived read models over existing persisted history. They do not create a second timeline store, graph model, analysis system, recommendation engine, or health scoring layer.
 
+Replay flow:
+
+```text
+timeline payloads + snapshot payloads
+  -> ordered replay frames
+  -> stateless playback controls
+  -> CLI, TUI, and API replay views
+```
+
+Replays are derived from the Timeline Engine, Snapshot Engine, Diff Engine, Event Store, and Trace Store. They reconstruct node appearance, relationship creation, workflow evolution, capability evolution, MCP evolution, and session progression without writing a replay table or duplicating graph state.
+
 Registry flow:
 
 ```text

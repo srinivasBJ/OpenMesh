@@ -9,6 +9,7 @@
 - Keep ecosystem snapshots derived from existing reducers rather than introducing a parallel graph or registry model.
 - Keep snapshot diffs derived from persisted snapshot payloads rather than introducing a second graph or registry model.
 - Keep timelines derived from existing events, sessions, snapshots, diffs, graph state, traces, and provenance.
+- Keep replays derived from timeline and snapshot payloads rather than introducing a second timeline or graph model.
 
 ## Next
 
@@ -17,6 +18,7 @@
 - Add trace/session filtering to CLI commands.
 - Add snapshot export formats after the persisted snapshot and diff payloads stabilize.
 - Add timeline filtering after the core historical read model stabilizes.
+- Add replay filtering and richer TUI playback controls after the stateless replay read model stabilizes.
 - Add API tests around OpenMesh routes.
 - Add release automation for package build, artifact inspection, and smoke tests.
 

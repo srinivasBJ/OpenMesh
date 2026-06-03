@@ -38,6 +38,12 @@ from ..services.openmesh_queries import (
     inspect_workflow,
     list_workflows,
 )
+from ..services.replay import (
+    get_replay,
+    get_snapshot_replay,
+    get_trace_replay,
+    get_workflow_replay,
+)
 from ..services.timeline import (
     get_node_timeline,
     get_timeline,
@@ -860,7 +866,7 @@ def _print_timeline_section(
 
 
 def _timeline_subject(subject: dict[str, Any]) -> str:
-    for key in ("workflow", "name", "trace_id", "id", "node_id"):
+    for key in ("workflow", "name", "trace_id", "snapshot_id", "id", "node_id"):
         if subject.get(key):
             return str(subject[key])
     return str(subject.get("type") or "ecosystem")
@@ -893,6 +899,51 @@ def _timeline_item(item: dict[str, Any]) -> str:
             f"{timestamp} {kind} {item['session_id']} {_short(item.get('command'), 36)}"
         )
     return f"{timestamp} {kind} {_timeline_subject(item)}"
+
+
+def _print_replay(replay: dict[str, Any]) -> None:
+    subject = replay.get("subject", {})
+    state = replay.get("state", {})
+    summary = replay.get("summary", {})
+    print(f"OpenMesh {str(replay.get('scope', 'ecosystem')).title()} Replay")
+    print()
+    print(f"subject: {_timeline_subject(subject)}")
+    print(f"control: {state.get('control')} ({state.get('status')})")
+    print(
+        f"position: {state.get('position')} / {max(state.get('frame_count', 0) - 1, 0)}"
+    )
+    print()
+    print("Controls")
+    for control in replay.get("controls", []):
+        print(f"  {control['name']}: {control['description']}")
+    print()
+    print("Summary")
+    for key, value in summary.items():
+        print(f"  {key}: {value}")
+    print()
+    current = state.get("current_frame")
+    print("Current Frame")
+    if current:
+        print(f"  {_replay_frame(current)}")
+    else:
+        print("  none")
+    print()
+    print("Visible Frames")
+    visible = replay.get("visible_frames", [])
+    if not visible:
+        print("  none")
+    for frame in visible[-20:]:
+        print(f"  - {_replay_frame(frame)}")
+    if len(visible) > 20:
+        print(f"  ... {len(visible) - 20} earlier")
+
+
+def _replay_frame(frame: dict[str, Any]) -> str:
+    timestamp = frame.get("timestamp") or "-"
+    index = frame.get("frame_index", "-")
+    action = frame.get("action") or "frame"
+    description = frame.get("description") or "-"
+    return f"[{index}] {timestamp} {action} {description}"
 
 
 def _utc_now() -> datetime:
@@ -1159,6 +1210,73 @@ async def _timeline_trace(args: argparse.Namespace) -> int:
             print(f"OpenMesh trace timeline not found: {args.trace_id}")
             return 1
         _print_timeline(timeline)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _replay(args: argparse.Namespace) -> int:
+    async def run(db):
+        replay = await get_replay(
+            db,
+            control=args.control,
+            position=args.position,
+            limit=args.limit,
+        )
+        _print_replay(replay)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _replay_snapshot(args: argparse.Namespace) -> int:
+    async def run(db):
+        replay = await get_snapshot_replay(
+            db,
+            args.snapshot_id,
+            control=args.control,
+            position=args.position,
+        )
+        if not replay:
+            print(f"OpenMesh snapshot replay not found: {args.snapshot_id}")
+            return 1
+        _print_replay(replay)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _replay_trace(args: argparse.Namespace) -> int:
+    async def run(db):
+        replay = await get_trace_replay(
+            db,
+            args.trace_id,
+            control=args.control,
+            position=args.position,
+            limit=args.limit,
+        )
+        if not replay:
+            print(f"OpenMesh trace replay not found: {args.trace_id}")
+            return 1
+        _print_replay(replay)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _replay_workflow(args: argparse.Namespace) -> int:
+    async def run(db):
+        replay = await get_workflow_replay(
+            db,
+            args.workflow_id,
+            control=args.control,
+            position=args.position,
+            limit=args.limit,
+        )
+        if not replay:
+            print(f"OpenMesh workflow replay not found: {args.workflow_id}")
+            return 1
+        _print_replay(replay)
         return 0
 
     return await _with_db(run)
@@ -1548,6 +1666,49 @@ def build_parser() -> argparse.ArgumentParser:
     )
     timeline_trace.set_defaults(func=_timeline_trace)
 
+    replay = subparsers.add_parser("replay", help="Replay OpenMesh ecosystem history.")
+    _add_replay_options(replay)
+    replay.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive replay from.",
+    )
+    replay.set_defaults(func=_replay)
+    replay_subparsers = replay.add_subparsers(dest="replay_command")
+    replay_snapshot = replay_subparsers.add_parser(
+        "snapshot", help="Replay one saved ecosystem snapshot."
+    )
+    replay_snapshot.add_argument("snapshot_id", help="Snapshot id to replay.")
+    _add_replay_options(replay_snapshot)
+    replay_snapshot.set_defaults(func=_replay_snapshot)
+    replay_trace = replay_subparsers.add_parser(
+        "trace", help="Replay one OpenMesh trace."
+    )
+    replay_trace.add_argument("trace_id", help="Trace id to replay.")
+    _add_replay_options(replay_trace)
+    replay_trace.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive replay from.",
+    )
+    replay_trace.set_defaults(func=_replay_trace)
+    replay_workflow = replay_subparsers.add_parser(
+        "workflow", help="Replay one OpenMesh workflow."
+    )
+    replay_workflow.add_argument(
+        "workflow_id", help="Workflow id, workflow name, or normalized workflow alias."
+    )
+    _add_replay_options(replay_workflow)
+    replay_workflow.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive replay from.",
+    )
+    replay_workflow.set_defaults(func=_replay_workflow)
+
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
     doctor.set_defaults(func=_doctor)
 
@@ -1671,6 +1832,21 @@ def build_parser() -> argparse.ArgumentParser:
     run.set_defaults(func=_run_command)
 
     return parser
+
+
+def _add_replay_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--control",
+        choices=("start", "pause", "stop", "step"),
+        default="start",
+        help="Playback control to apply to the derived replay.",
+    )
+    parser.add_argument(
+        "--position",
+        type=int,
+        default=0,
+        help="Frame position to start, pause, stop, or step from.",
+    )
 
 
 def main() -> int:

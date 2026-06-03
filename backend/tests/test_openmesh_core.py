@@ -25,6 +25,11 @@ from src.db.openmesh_snapshots import (
     snapshot_record_to_detail,
     snapshot_record_to_summary,
 )
+from src.api.routes.main import (
+    get_openmesh_snapshot_replay as api_get_openmesh_snapshot_replay,
+    get_openmesh_trace_replay as api_get_openmesh_trace_replay,
+    get_openmesh_workflow_replay as api_get_openmesh_workflow_replay,
+)
 from src.services.discovery import build_discovery
 from src.services.graph_state import reduce_graph_state, validate_graph_state
 from src.services.node_types import (
@@ -93,6 +98,7 @@ from src.services.timeline import (
     build_trace_timeline,
     build_workflow_timeline,
 )
+from src.services.replay import build_replay_from_snapshot, build_replay_from_timeline
 from src.services.relationship_types import (
     relationship_definition,
     relationship_registry,
@@ -124,6 +130,7 @@ from src.cli.openmesh import (
     _print_snapshot_detail,
     _print_snapshot_diff,
     _print_snapshots,
+    _print_replay,
     _print_timeline,
     _print_workflow_inspection,
     _print_workflows,
@@ -136,6 +143,7 @@ from src.cli.tui import (
     mcp_rows,
     node_detail_rows,
     registry_rows,
+    replay_rows,
     render_plain,
     ecosystem_rows,
     snapshot_diff_rows,
@@ -1682,6 +1690,231 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             trace_timeline["session_history"][0]["session_id"], "sess_timeline"
         )
 
+    def test_replay_from_timeline_reconstructs_playback_frames(self):
+        timeline = {
+            "scope": "ecosystem",
+            "subject": {"type": "ecosystem", "id": "openmesh.ecosystem"},
+            "summary": {"events": 1},
+            "relationship_changes": [
+                {
+                    "timestamp": "2026-06-03T10:00:00Z",
+                    "kind": "relationship.observed",
+                    "source": "agent-a",
+                    "source_name": "Research Agent",
+                    "target": "workflow:research",
+                    "target_name": "Research Flow",
+                    "relationship_type": "runs",
+                    "provenance": {
+                        "trace_ids": ["trace_replay"],
+                        "event_ids": ["evt_replay"],
+                    },
+                }
+            ],
+            "workflow_changes": [
+                {
+                    "timestamp": "2026-06-03T10:01:00Z",
+                    "kind": "workflow.observed",
+                    "id": "workflow:research",
+                    "name": "Research Flow",
+                }
+            ],
+            "mcp_changes": [
+                {
+                    "timestamp": "2026-06-03T10:02:00Z",
+                    "kind": "mcp_server.observed",
+                    "id": "mcp:search",
+                    "name": "Search MCP",
+                }
+            ],
+            "capability_changes": [
+                {
+                    "timestamp": "2026-06-03T10:03:00Z",
+                    "kind": "capability.observed",
+                    "id": "capability:search",
+                    "name": "search",
+                }
+            ],
+            "session_history": [
+                {
+                    "session_id": "sess_replay",
+                    "command": "python agent.py",
+                    "started_at": "2026-06-03T10:04:00Z",
+                    "ended_at": "2026-06-03T10:05:00Z",
+                    "status": "completed",
+                    "exit_code": 0,
+                }
+            ],
+            "snapshot_history": [
+                {
+                    "snapshot_id": "snap_replay",
+                    "created_at": "2026-06-03T10:06:00Z",
+                    "counts": {"nodes": 2, "edges": 1},
+                }
+            ],
+            "timeline": [
+                {
+                    "timestamp": "2026-06-03T10:00:30Z",
+                    "kind": "event",
+                    "event_id": "evt_replay",
+                    "event_type": "workflow.registered",
+                    "trace_id": "trace_replay",
+                    "session_id": "sess_replay",
+                    "source": "Research Agent",
+                    "target": "Research Flow",
+                }
+            ],
+        }
+
+        replay = build_replay_from_timeline(timeline, control="step", position=0)
+        actions = [frame["action"] for frame in replay["frames"]]
+
+        self.assertEqual(replay["state"]["control"], "step")
+        self.assertEqual(replay["state"]["position"], 1)
+        self.assertIn("node.appeared", actions)
+        self.assertIn("relationship.created", actions)
+        self.assertIn("workflow.evolved", actions)
+        self.assertIn("mcp.evolved", actions)
+        self.assertIn("capability.evolved", actions)
+        self.assertIn("session.started", actions)
+        self.assertIn("snapshot.created", actions)
+        self.assertGreaterEqual(replay["summary"]["frames"], 8)
+
+        stopped = build_replay_from_timeline(timeline, control="stop", position=3)
+        self.assertEqual(stopped["state"]["status"], "stopped")
+        self.assertEqual(stopped["visible_frames"], [])
+
+    def test_replay_from_snapshot_reconstructs_snapshot_state(self):
+        snapshot = self.make_snapshot_payload(
+            "snap_replay",
+            created_at="2026-06-03T10:00:00Z",
+            nodes=[
+                {
+                    "id": "agent-a",
+                    "type": "agent",
+                    "name": "Research Agent",
+                    "first_seen": "2026-06-03T09:59:00Z",
+                    "provenance": {"event_ids": ["evt_agent"]},
+                },
+                {
+                    "id": "tool:web_search",
+                    "type": "tool",
+                    "name": "web_search",
+                    "first_seen": "2026-06-03T09:59:30Z",
+                },
+            ],
+            relationships=[
+                {
+                    "id": "agent-a:uses:tool:web_search",
+                    "source": "agent-a",
+                    "target": "tool:web_search",
+                    "type": "uses",
+                    "first_seen": "2026-06-03T10:00:00Z",
+                    "provenance": {
+                        "trace_ids": ["trace_snapshot"],
+                        "event_ids": ["evt_edge"],
+                    },
+                }
+            ],
+            workflows=[
+                {
+                    "id": "workflow:research",
+                    "workflow": "Research Flow",
+                    "framework": "LangGraph",
+                }
+            ],
+            mcp_servers=[{"id": "mcp:search", "server": "Search MCP"}],
+            capabilities=[{"server": "Search MCP", "capability": "search"}],
+            sessions=[
+                {
+                    "session_id": "sess_replay",
+                    "command": "python agent.py",
+                    "started_at": "2026-06-03T09:58:00Z",
+                    "ended_at": "2026-06-03T10:01:00Z",
+                    "status": "completed",
+                    "exit_code": 0,
+                }
+            ],
+        )
+
+        replay = build_replay_from_snapshot(snapshot, control="start", position=0)
+        actions = [frame["action"] for frame in replay["frames"]]
+
+        self.assertEqual(replay["scope"], "snapshot")
+        self.assertIn("snapshot.loaded", actions)
+        self.assertIn("node.appeared", actions)
+        self.assertIn("relationship.created", actions)
+        self.assertIn("workflow.evolved", actions)
+        self.assertIn("mcp.evolved", actions)
+        self.assertIn("capability.evolved", actions)
+        self.assertIn("session.started", actions)
+
+    async def test_replay_api_routes_return_derived_payloads(self):
+        async def fake_trace_replay(db, trace_id, **kwargs):
+            return {
+                "scope": "trace",
+                "subject": {"trace_id": trace_id},
+                "state": {"control": kwargs["control"]},
+            }
+
+        async def fake_workflow_replay(db, workflow_id, **kwargs):
+            return {
+                "scope": "workflow",
+                "subject": {"workflow": workflow_id},
+                "state": {"position": kwargs["position"]},
+            }
+
+        async def fake_snapshot_replay(db, snapshot_id, **kwargs):
+            return {
+                "scope": "snapshot",
+                "subject": {"snapshot_id": snapshot_id},
+                "state": {"control": kwargs["control"]},
+            }
+
+        with (
+            patch("src.api.routes.main.get_trace_replay", fake_trace_replay),
+            patch("src.api.routes.main.get_workflow_replay", fake_workflow_replay),
+            patch("src.api.routes.main.get_snapshot_replay", fake_snapshot_replay),
+        ):
+            trace = await api_get_openmesh_trace_replay(
+                "trace_api",
+                control="pause",
+                position=2,
+                limit=100,
+                db=FakeAsyncSession(),
+            )
+            workflow = await api_get_openmesh_workflow_replay(
+                "workflow_api",
+                control="step",
+                position=3,
+                limit=100,
+                db=FakeAsyncSession(),
+            )
+            snapshot = await api_get_openmesh_snapshot_replay(
+                "snap_api",
+                control="start",
+                position=0,
+                db=FakeAsyncSession(),
+            )
+
+        self.assertEqual(trace["subject"]["trace_id"], "trace_api")
+        self.assertEqual(trace["state"]["control"], "pause")
+        self.assertEqual(workflow["scope"], "workflow")
+        self.assertEqual(workflow["state"]["position"], 3)
+        self.assertEqual(snapshot["subject"]["snapshot_id"], "snap_api")
+
+    async def test_replay_api_routes_return_404_when_missing(self):
+        async def missing_replay(*args, **kwargs):
+            return None
+
+        with patch("src.api.routes.main.get_trace_replay", missing_replay):
+            with self.assertRaises(HTTPException) as err:
+                await api_get_openmesh_trace_replay(
+                    "missing_trace", db=FakeAsyncSession()
+                )
+
+        self.assertEqual(err.exception.status_code, 404)
+        self.assertIn("replay not found", err.exception.detail)
+
     def test_workflow_validation_detects_duplicates_and_missing_metadata(self):
         validation = validate_workflow_entries(
             [
@@ -2784,6 +3017,44 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("workflow.registered", output)
         self.assertIn("snap_timeline", output)
 
+    def test_tui_replay_rows_display_playback_controls(self):
+        replay = {
+            "state": {
+                "control": "start",
+                "status": "playing",
+                "position": 0,
+                "frame_count": 2,
+                "current_frame": {
+                    "frame_index": 0,
+                    "timestamp": "2026-06-03T10:00:00Z",
+                    "action": "node.appeared",
+                    "description": "Research Agent appeared",
+                },
+            },
+            "summary": {"frames": 2, "nodes": 1, "relationships": 1},
+            "visible_frames": [
+                {
+                    "frame_index": 0,
+                    "timestamp": "2026-06-03T10:00:00Z",
+                    "action": "node.appeared",
+                    "description": "Research Agent appeared",
+                },
+                {
+                    "frame_index": 1,
+                    "timestamp": "2026-06-03T10:01:00Z",
+                    "action": "relationship.created",
+                    "description": "Research Agent runs Research Flow",
+                },
+            ],
+        }
+
+        output = "\n".join(replay_rows(replay))
+
+        self.assertIn("Replay", output)
+        self.assertIn("control start", output)
+        self.assertIn("space start/pause", output)
+        self.assertIn("relationship.created", output)
+
     def test_cli_mcp_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
             _print_mcp(
@@ -3076,6 +3347,56 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Relationship Changes", printed)
         self.assertIn("Snapshot History", printed)
         self.assertIn("workflow.registered", printed)
+
+    def test_cli_replay_printer_displays_controls_and_frames(self):
+        replay = {
+            "scope": "trace",
+            "subject": {"trace_id": "trace_replay"},
+            "controls": [
+                {"name": "start", "description": "Begin playback."},
+                {"name": "pause", "description": "Hold playback."},
+                {"name": "stop", "description": "Stop playback."},
+                {"name": "step", "description": "Advance one frame."},
+            ],
+            "state": {
+                "control": "pause",
+                "status": "paused",
+                "position": 1,
+                "frame_count": 2,
+                "current_frame": {
+                    "frame_index": 1,
+                    "timestamp": "2026-06-03T10:01:00Z",
+                    "action": "relationship.created",
+                    "description": "Research Agent runs Research Flow",
+                },
+            },
+            "summary": {"frames": 2, "nodes": 1, "relationships": 1},
+            "visible_frames": [
+                {
+                    "frame_index": 0,
+                    "timestamp": "2026-06-03T10:00:00Z",
+                    "action": "node.appeared",
+                    "description": "Research Agent appeared",
+                },
+                {
+                    "frame_index": 1,
+                    "timestamp": "2026-06-03T10:01:00Z",
+                    "action": "relationship.created",
+                    "description": "Research Agent runs Research Flow",
+                },
+            ],
+        }
+
+        with patch("builtins.print") as printer:
+            _print_replay(replay)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Trace Replay", printed)
+        self.assertIn("control: pause", printed)
+        self.assertIn("Controls", printed)
+        self.assertIn("relationship.created", printed)
 
     def test_cli_ecosystem_printer_displays_grouped_inventory(self):
         with patch("builtins.print") as printer:

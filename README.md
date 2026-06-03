@@ -81,6 +81,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Ecosystem snapshots for freezing graph, discovery, traces, sessions, registries, and provenance at a point in time
 - Historical snapshot diffs for comparing nodes, relationships, workflows, MCP servers, capabilities, traces, sessions, and graph statistics across time
 - Historical timelines for navigating ecosystem, node, workflow, and trace evolution over time
+- Ecosystem replays for playing back timeline, snapshot, trace, and workflow evolution without creating a second graph model
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
@@ -90,7 +91,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Provider abstraction for OpenAI, Anthropic, Ollama, Gemini, DeepSeek, OpenRouter, and custom endpoints
 - First-class mesh graph models for nodes, edges, sessions, events, and traces
 - Mesh Explorer UI with live graph updates
-- Agent trace timeline and replay
+- Replay controls for richer terminal playback of ecosystem history
 - External agent registration through REST, WebSocket, SDK, and CLI
 - OpenMeshAI SDKs and framework integrations
 - Durable observability, provider usage, tool usage, runtime health, governance, and cross-mesh features
@@ -309,6 +310,10 @@ openmesh timeline
 openmesh timeline node <node_id>
 openmesh timeline workflow <workflow_id>
 openmesh timeline trace <trace_id>
+openmesh replay
+openmesh replay snapshot <snapshot_id>
+openmesh replay trace <trace_id>
+openmesh replay workflow <workflow_id>
 openmesh capabilities
 openmesh integrations
 openmesh tui

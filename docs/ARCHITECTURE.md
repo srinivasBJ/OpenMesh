@@ -32,6 +32,7 @@ Storage:
 
 - `openmesh_events`: immutable protocol event records.
 - `openmesh_sessions`: CLI execution sessions.
+- `openmesh_snapshots`: persisted point-in-time ecosystem snapshot metadata and payloads.
 - Legacy tables such as `agent_events` remain in place for existing functionality.
 
 Local development can use SQLite by setting:
@@ -53,6 +54,18 @@ LangGraph / CrewAI adapter
   -> trace reconstruction, graph reducer, discovery, ecosystem registry
   -> CLI, TUI, dashboard, and API views
 ```
+
+Snapshot flow:
+
+```text
+stored events and sessions
+  -> graph reducer, discovery, ecosystem, workflow, MCP, and capability registries
+  -> ecosystem snapshot payload
+  -> openmesh_snapshots
+  -> CLI, TUI, and API inspection
+```
+
+Snapshots are point-in-time exports of existing OpenMesh state. They do not create a second graph system and do not perform analysis. Snapshot contents preserve graph provenance, traces, sessions, relationships, and ecosystem registry outputs exactly as derived by the current reducers.
 
 Registry flow:
 

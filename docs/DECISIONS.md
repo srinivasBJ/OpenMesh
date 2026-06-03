@@ -38,6 +38,12 @@ Discovery, workflow, MCP metadata, capability, and ecosystem registries are deri
 
 OpenMesh v0.1 avoids manual registry mutation as the primary source of truth. This keeps the collector and event store at the center of the architecture.
 
+## Snapshots Are Frozen Reducer Outputs
+
+Ecosystem snapshots are persisted point-in-time exports produced from existing OpenMesh events, sessions, graph reducer, discovery, workflow, MCP, capability, and ecosystem registries.
+
+Snapshots do not introduce a second graph system, analysis engine, health score, or recommendation layer. They preserve what OpenMesh observed at creation time so CLI, TUI, and API consumers can inspect the ecosystem later.
+
 ## Active Analysis Is Future Work
 
 MCP endpoint health checks, capability discovery, tool inventory generation, authentication analysis, permission visibility, dependency mapping, trust-chain mapping, and security posture insights belong on the roadmap.

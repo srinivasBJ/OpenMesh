@@ -15,6 +15,11 @@ from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_se
 from ..services.openmesh_collector import collector
 from ..services.discovery import get_discovery
 from ..services.ecosystem_registry import get_ecosystem_registry
+from ..services.ecosystem_snapshot import (
+    create_ecosystem_snapshot,
+    inspect_ecosystem_snapshot,
+    list_ecosystem_snapshots,
+)
 from ..services.mcp_config_discovery import (
     get_mcp_config_registry,
     register_discovered_mcp_configs,
@@ -598,6 +603,92 @@ def _print_ecosystem(ecosystem: dict[str, Any]) -> None:
         print()
 
 
+def _print_snapshot_created(snapshot: dict[str, Any]) -> None:
+    print("OpenMesh Snapshot Created")
+    print()
+    _print_snapshot_summary(snapshot)
+
+
+def _print_snapshots(snapshots: list[dict[str, Any]]) -> None:
+    print("OpenMesh Snapshots")
+    print()
+    if not snapshots:
+        print("No snapshots found.")
+        return
+    print(f"{'snapshot_id':<38} {'created_at':<28} nodes edges traces sessions")
+    for snapshot in snapshots:
+        counts = snapshot.get("counts", {})
+        print(
+            f"{_short(snapshot.get('snapshot_id'), 38):<38} "
+            f"{_short(snapshot.get('created_at'), 28):<28} "
+            f"{counts.get('nodes', 0):>5} "
+            f"{counts.get('edges', 0):>5} "
+            f"{counts.get('traces', 0):>6} "
+            f"{counts.get('sessions', 0):>8}"
+        )
+
+
+def _print_snapshot_detail(snapshot: dict[str, Any]) -> None:
+    print("OpenMesh Snapshot")
+    print()
+    _print_snapshot_summary(snapshot)
+    contents = snapshot.get("contents", {})
+    print()
+    print("Contents")
+    for label, key in [
+        ("Agents", "agents"),
+        ("Tools", "tools"),
+        ("Workflows", "workflows"),
+        ("Processes", "processes"),
+        ("Services", "services"),
+        ("MCP Servers", "mcp_servers"),
+        ("Capabilities", "capabilities"),
+        ("Relationships", "relationships"),
+        ("Traces", "traces"),
+        ("Sessions", "sessions"),
+    ]:
+        print(f"  {label}: {len(contents.get(key, []))}")
+    graph_stats = snapshot.get("graph_statistics", {})
+    ecosystem_stats = snapshot.get("ecosystem_statistics", {})
+    print()
+    print("Graph Statistics")
+    print(f"  node_count: {graph_stats.get('node_count', 0)}")
+    print(f"  edge_count: {graph_stats.get('edge_count', 0)}")
+    print(f"  node_types: {graph_stats.get('node_types', {})}")
+    print(f"  relationship_types: {graph_stats.get('relationship_types', {})}")
+    print(f"  validation: {graph_stats.get('validation_status', 'UNKNOWN')}")
+    print()
+    print("Ecosystem Statistics")
+    print(f"  entity_count: {ecosystem_stats.get('entity_count', 0)}")
+    print(f"  relationship_count: {ecosystem_stats.get('relationship_count', 0)}")
+    print(f"  groups: {ecosystem_stats.get('groups', {})}")
+    print(f"  validation: {ecosystem_stats.get('validation_status', 'UNKNOWN')}")
+
+
+def _print_snapshot_summary(snapshot: dict[str, Any]) -> None:
+    counts = snapshot.get("counts", {})
+    print(f"snapshot_id: {snapshot.get('snapshot_id')}")
+    print(f"created_at: {snapshot.get('created_at')}")
+    print(f"schema_version: {snapshot.get('schema_version', '-')}")
+    print()
+    print("Counts")
+    for key in [
+        "agents",
+        "tools",
+        "workflows",
+        "processes",
+        "services",
+        "mcp_servers",
+        "capabilities",
+        "nodes",
+        "edges",
+        "traces",
+        "sessions",
+        "events",
+    ]:
+        print(f"  {key}: {counts.get(key, 0)}")
+
+
 def _utc_now() -> datetime:
     return datetime.utcnow()
 
@@ -773,6 +864,36 @@ async def _registry(args: argparse.Namespace) -> int:
         registry = build_registry_status(records)
         _print_registry(registry)
         return 1 if registry["compatibility"]["severity"] == "ERROR" else 0
+
+    return await _with_db(run)
+
+
+async def _snapshot_create(args: argparse.Namespace) -> int:
+    async def run(db):
+        snapshot = await create_ecosystem_snapshot(db, limit=args.limit)
+        _print_snapshot_created(snapshot)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _snapshot_list(args: argparse.Namespace) -> int:
+    async def run(db):
+        snapshots = await list_ecosystem_snapshots(db, limit=args.limit)
+        _print_snapshots(snapshots)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _snapshot_inspect(args: argparse.Namespace) -> int:
+    async def run(db):
+        snapshot = await inspect_ecosystem_snapshot(db, args.snapshot_id)
+        if not snapshot:
+            print(f"OpenMesh snapshot not found: {args.snapshot_id}")
+            return 1
+        _print_snapshot_detail(snapshot)
+        return 0
 
     return await _with_db(run)
 
@@ -1076,6 +1197,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum events to validate compatibility from.",
     )
     registry.set_defaults(func=_registry)
+
+    snapshot = subparsers.add_parser(
+        "snapshot", help="Create and inspect OpenMesh ecosystem snapshots."
+    )
+    snapshot_subparsers = snapshot.add_subparsers(
+        dest="snapshot_command", required=True
+    )
+    snapshot_create = snapshot_subparsers.add_parser(
+        "create", help="Create a point-in-time ecosystem snapshot."
+    )
+    snapshot_create.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to include in the snapshot.",
+    )
+    snapshot_create.set_defaults(func=_snapshot_create)
+    snapshot_list = snapshot_subparsers.add_parser(
+        "list", help="List saved ecosystem snapshots."
+    )
+    snapshot_list.add_argument(
+        "--limit", type=int, default=100, help="Maximum snapshots to show."
+    )
+    snapshot_list.set_defaults(func=_snapshot_list)
+    snapshot_inspect = snapshot_subparsers.add_parser(
+        "inspect", help="Inspect one saved ecosystem snapshot."
+    )
+    snapshot_inspect.add_argument("snapshot_id", help="Snapshot id to inspect.")
+    snapshot_inspect.set_defaults(func=_snapshot_inspect)
 
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
     doctor.set_defaults(func=_doctor)

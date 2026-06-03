@@ -78,6 +78,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - LangGraph reference integration for node lifecycle and transition observability
 - CrewAI reference integration for agent, task, tool, and workflow observability
 - Discovery, workflow, capability, MCP metadata, and unified ecosystem registries derived from observed events
+- Ecosystem snapshots for freezing graph, discovery, traces, sessions, registries, and provenance at a point in time
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
@@ -178,6 +179,16 @@ from openmesh import OpenMeshClient
   -> with agent.tool(...) emits tool.call.started / completed / failed
   -> collector persists events
   -> CLI, TUI, API, and dashboard consumers read the same protocol data
+```
+
+Snapshot flow:
+
+```text
+openmesh snapshot create
+  -> stored OpenMesh events and sessions are read
+  -> graph, discovery, ecosystem, workflow, MCP, and capability reducers run
+  -> a frozen snapshot payload and metadata are persisted
+  -> openmesh snapshot list / inspect and API/TUI consumers can browse it later
 ```
 
 Async agent runtimes can use the same client without nested event-loop calls:
@@ -282,9 +293,15 @@ openmesh events
 openmesh traces
 openmesh graph
 openmesh trace <trace_id>
+openmesh inspect <node_id>
 openmesh discover
 openmesh ecosystem
 openmesh workflows
+openmesh workflow list
+openmesh workflow inspect <workflow_id>
+openmesh snapshot create
+openmesh snapshot list
+openmesh snapshot inspect <snapshot_id>
 openmesh capabilities
 openmesh integrations
 openmesh tui

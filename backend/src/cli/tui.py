@@ -14,6 +14,7 @@ from ..db.openmesh_events import list_openmesh_events
 from ..db.session import AsyncSessionLocal
 from ..services.discovery import get_discovery
 from ..services.ecosystem_registry import get_ecosystem_registry
+from ..services.ecosystem_snapshot import list_ecosystem_snapshots
 from ..services.mcp_capabilities import get_capability_registry
 from ..services.mcp_config_discovery import get_mcp_config_registry
 from ..services.mcp_discovery import get_mcp_registry
@@ -60,6 +61,7 @@ class TuiSnapshot:
     mcp_configs: list[dict[str, Any]]
     capabilities: list[dict[str, Any]]
     workflows: list[dict[str, Any]]
+    snapshots: list[dict[str, Any]]
     ecosystem: dict[str, Any]
     registry_status: dict[str, Any]
     loaded_at: datetime
@@ -80,6 +82,7 @@ async def load_snapshot() -> TuiSnapshot:
             mcp_configs=await get_mcp_config_registry(db, limit=5000),
             capabilities=await get_capability_registry(db, limit=5000),
             workflows=await list_workflows(db, limit=5000),
+            snapshots=await list_ecosystem_snapshots(db, limit=100),
             ecosystem=await get_ecosystem_registry(db, limit=5000),
             registry_status=build_registry_status(registry_records),
             loaded_at=datetime.utcnow(),
@@ -392,6 +395,37 @@ def workflow_rows(snapshot: TuiSnapshot) -> list[str]:
         )
         rows.append(f"    id {_short(workflow.get('workflow_id'), 32)}")
         rows.append(f"    start {_time(workflow.get('started_at'))}")
+    return rows
+
+
+def snapshot_rows(snapshot: TuiSnapshot) -> list[str]:
+    if not snapshot.snapshots:
+        return ["No ecosystem snapshots saved", "Run: openmesh snapshot create"]
+    rows = ["Snapshots"]
+    for item in snapshot.snapshots[:12]:
+        counts = item.get("counts", {})
+        rows.append(f"  {_short(item.get('snapshot_id'), 34)}")
+        rows.append(f"    created {_time(item.get('created_at'))}")
+        rows.append(
+            "    "
+            f"nodes {counts.get('nodes', 0)}  "
+            f"edges {counts.get('edges', 0)}  "
+            f"traces {counts.get('traces', 0)}  "
+            f"sessions {counts.get('sessions', 0)}"
+        )
+    latest = snapshot.snapshots[0]
+    graph_stats = latest.get("graph_statistics", {})
+    ecosystem_stats = latest.get("ecosystem_statistics", {})
+    rows.extend(
+        [
+            "",
+            "Latest Snapshot",
+            f"  graph nodes {graph_stats.get('node_count', 0)}",
+            f"  graph edges {graph_stats.get('edge_count', 0)}",
+            f"  ecosystem entities {ecosystem_stats.get('entity_count', 0)}",
+            f"  ecosystem relationships {ecosystem_stats.get('relationship_count', 0)}",
+        ]
+    )
     return rows
 
 
@@ -762,6 +796,7 @@ class OpenMeshTui(App):
         ("0", "show_capabilities", "Capabilities"),
         ("w", "show_workflows", "Workflows"),
         ("e", "show_ecosystem", "Ecosystem"),
+        ("s", "show_snapshots", "Snapshots"),
         ("enter", "inspect_selected", "Inspect"),
         ("q", "quit", "Quit"),
     ]
@@ -820,7 +855,7 @@ class OpenMeshTui(App):
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -930,6 +965,12 @@ class OpenMeshTui(App):
                 "\n".join(ecosystem_rows(self.snapshot))
             )
             return
+        if self.lower_right_mode == "snapshots":
+            self.query_one("#event-title", Static).update("SNAPSHOTS")
+            self.query_one("#event-body", Static).update(
+                "\n".join(snapshot_rows(self.snapshot))
+            )
+            return
         if self.lower_right_mode == "trace" and self.selected_trace_id:
             self.query_one("#event-title", Static).update("TRACE DETAIL")
             self.query_one("#event-body", Static).update(
@@ -1002,6 +1043,11 @@ class OpenMeshTui(App):
 
     def action_show_ecosystem(self) -> None:
         self.lower_right_mode = "ecosystem"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_show_snapshots(self) -> None:
+        self.lower_right_mode = "snapshots"
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
 

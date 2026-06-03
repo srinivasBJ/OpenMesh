@@ -232,6 +232,23 @@ class OpenMeshSessionRecord(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class OpenMeshSnapshotRecord(Base):
+    __tablename__ = "openmesh_snapshots"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    snapshot_id = Column(String(100), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, nullable=False, index=True)
+    event_count = Column(Integer, nullable=False, default=0)
+    trace_count = Column(Integer, nullable=False, default=0)
+    session_count = Column(Integer, nullable=False, default=0)
+    node_count = Column(Integer, nullable=False, default=0)
+    edge_count = Column(Integer, nullable=False, default=0)
+    counts_json = Column(JSON, nullable=False, default=dict)
+    graph_stats_json = Column(JSON, nullable=False, default=dict)
+    ecosystem_stats_json = Column(JSON, nullable=False, default=dict)
+    snapshot_json = Column(JSON, nullable=False, default=dict)
+
+
 class Collaboration(Base):
     __tablename__ = "collaborations"
     id = Column(String, primary_key=True, default=gen_id)

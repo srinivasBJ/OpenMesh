@@ -33,6 +33,10 @@ from ...services.ecosystem_registry import get_ecosystem_registry
 from ...services.mcp_capabilities import get_capability_registry
 from ...services.mcp_config_discovery import get_mcp_config_registry
 from ...services.mcp_discovery import get_mcp_registry
+from ...services.ecosystem_snapshot import (
+    inspect_ecosystem_snapshot,
+    list_ecosystem_snapshots,
+)
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
 from ...services.openmesh_queries import (
     get_graph,
@@ -686,6 +690,25 @@ async def inspect_openmesh_workflow(
     if not workflow:
         raise HTTPException(404, "OpenMesh workflow not found")
     return workflow
+
+
+@router.get("/openmesh/snapshots")
+async def get_openmesh_snapshots(
+    limit: int = Query(100, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"snapshots": await list_ecosystem_snapshots(db, limit=limit)}
+
+
+@router.get("/openmesh/snapshots/{snapshot_id}")
+async def inspect_openmesh_snapshot(
+    snapshot_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    snapshot = await inspect_ecosystem_snapshot(db, snapshot_id)
+    if not snapshot:
+        raise HTTPException(404, "OpenMesh snapshot not found")
+    return snapshot
 
 
 @router.get("/openmesh/ecosystem")

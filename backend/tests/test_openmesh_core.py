@@ -20,6 +20,11 @@ from src.db.openmesh_sessions import (
     create_openmesh_session,
     session_to_dict,
 )
+from src.db.openmesh_snapshots import (
+    create_openmesh_snapshot,
+    snapshot_record_to_detail,
+    snapshot_record_to_summary,
+)
 from src.services.discovery import build_discovery
 from src.services.graph_state import reduce_graph_state, validate_graph_state
 from src.services.node_types import (
@@ -80,6 +85,7 @@ from src.services.openmesh_queries import (
     inspect_graph_workflow,
     trace_summary,
 )
+from src.services.ecosystem_snapshot import build_ecosystem_snapshot
 from src.services.relationship_types import (
     relationship_definition,
     relationship_registry,
@@ -108,6 +114,8 @@ from src.cli.openmesh import (
     _print_ecosystem,
     _print_mcp,
     _print_mcp_config,
+    _print_snapshot_detail,
+    _print_snapshots,
     _print_workflow_inspection,
     _print_workflows,
 )
@@ -121,6 +129,7 @@ from src.cli.tui import (
     registry_rows,
     render_plain,
     ecosystem_rows,
+    snapshot_rows,
     workflow_detail_rows,
     workflow_rows,
 )
@@ -1097,6 +1106,111 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(inspection["session_ids"], ["sess_workflow"])
         self.assertEqual(len(inspection["provenance"]["event_ids"]), 6)
 
+    def test_ecosystem_snapshot_preserves_graph_registry_and_provenance(self):
+        agent = agent_node("agent:research", "Research Agent", "researcher")
+        workflow = workflow_node(
+            WorkflowEntry(
+                workflow="Research Flow",
+                framework="LangGraph",
+                version="0.1.0",
+                source="examples/langgraph_basic.py",
+            )
+        )
+        tool = {
+            "node_id": "tool:web_search",
+            "node_type": "tool",
+            "name": "web_search",
+            "runtime": "mcp",
+        }
+        events = [
+            make_openmesh_event(
+                "workflow.registered",
+                agent,
+                {
+                    "workflow": "Research Flow",
+                    "framework": "LangGraph",
+                    "version": "0.1.0",
+                    "source": "examples/langgraph_basic.py",
+                },
+                target=workflow,
+                session_id="sess_snapshot",
+                trace_id="trace_snapshot",
+            ),
+            make_openmesh_event(
+                "workflow.tool.used",
+                workflow,
+                {"workflow": "Research Flow", "tool": "web_search"},
+                target=tool,
+                session_id="sess_snapshot",
+                trace_id="trace_snapshot",
+            ),
+        ]
+        records = [
+            record_from_event(event, timestamp=datetime(2026, 6, 3, 10, index, 0))
+            for index, event in enumerate(events)
+        ]
+        sessions = [
+            SimpleNamespace(
+                session_id="sess_snapshot",
+                command="langgraph basic",
+                started_at=datetime(2026, 6, 3, 10, 0, 0),
+                ended_at=datetime(2026, 6, 3, 10, 1, 0),
+                status="completed",
+                exit_code=0,
+            )
+        ]
+
+        snapshot = build_ecosystem_snapshot(records, sessions)
+
+        self.assertTrue(snapshot["snapshot_id"].startswith("snap_"))
+        self.assertEqual(snapshot["counts"]["events"], 2)
+        self.assertEqual(snapshot["counts"]["traces"], 1)
+        self.assertEqual(snapshot["counts"]["sessions"], 1)
+        self.assertEqual(snapshot["counts"]["workflows"], 1)
+        self.assertEqual(snapshot["counts"]["tools"], 1)
+        self.assertEqual(snapshot["counts"]["edges"], 2)
+        self.assertEqual(snapshot["graph_statistics"]["edge_count"], 2)
+        self.assertEqual(
+            snapshot["graph_statistics"]["relationship_types"], {"runs": 1, "uses": 1}
+        )
+        self.assertEqual(snapshot["ecosystem_statistics"]["groups"]["workflows"], 1)
+        self.assertEqual(
+            snapshot["contents"]["graph"]["validation"]["missing_provenance"], []
+        )
+        first_edge = snapshot["contents"]["relationships"][0]
+        self.assertIn(first_edge["id"], snapshot["contents"]["graph_provenance"])
+        self.assertIn("trace_snapshot", first_edge["provenance"]["trace_ids"])
+        self.assertEqual(
+            snapshot["contents"]["traces"][0]["trace_id"], "trace_snapshot"
+        )
+        self.assertEqual(
+            snapshot["contents"]["sessions"][0]["session_id"], "sess_snapshot"
+        )
+
+    async def test_snapshot_persistence_stores_metadata_and_payload(self):
+        db = FakeAsyncSession()
+        snapshot = {
+            "snapshot_id": "snap_test",
+            "schema_version": "0.1",
+            "created_at": "2026-06-03T10:00:00Z",
+            "counts": {"events": 2, "traces": 1, "sessions": 1, "nodes": 2, "edges": 1},
+            "graph_statistics": {"node_count": 2, "edge_count": 1},
+            "ecosystem_statistics": {"entity_count": 2, "relationship_count": 1},
+            "contents": {"relationships": [{"id": "edge-1"}]},
+        }
+
+        record = await create_openmesh_snapshot(db, snapshot)
+        summary = snapshot_record_to_summary(record)
+        detail = snapshot_record_to_detail(record)
+
+        self.assertEqual(len(db.added), 1)
+        self.assertEqual(db.commits, 1)
+        self.assertEqual(record.snapshot_id, "snap_test")
+        self.assertEqual(record.event_count, 2)
+        self.assertEqual(record.edge_count, 1)
+        self.assertEqual(summary["counts"]["nodes"], 2)
+        self.assertEqual(detail["contents"]["relationships"][0]["id"], "edge-1")
+
     def test_workflow_validation_detects_duplicates_and_missing_metadata(self):
         validation = validate_workflow_entries(
             [
@@ -1847,6 +1961,7 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             mcp_configs=[],
             capabilities=[],
             workflows=[],
+            snapshots=[],
             ecosystem={
                 "entities": {
                     "agents": [],
@@ -1929,6 +2044,23 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                     "last_seen": "2026-06-03T10:00:00Z",
                 }
             ],
+            snapshots=[
+                {
+                    "snapshot_id": "snap_test",
+                    "created_at": "2026-06-03T10:00:00Z",
+                    "counts": {
+                        "nodes": 2,
+                        "edges": 1,
+                        "traces": 1,
+                        "sessions": 1,
+                    },
+                    "graph_statistics": {"node_count": 2, "edge_count": 1},
+                    "ecosystem_statistics": {
+                        "entity_count": 2,
+                        "relationship_count": 1,
+                    },
+                }
+            ],
             ecosystem={
                 "entities": {
                     "agents": [],
@@ -2006,6 +2138,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         ecosystem_output = "\n".join(ecosystem_rows(snapshot))
         self.assertIn("Ecosystem", ecosystem_output)
         self.assertIn("Research Flow", ecosystem_output)
+        snapshot_output = "\n".join(snapshot_rows(snapshot))
+        self.assertIn("snap_test", snapshot_output)
+        self.assertIn("Latest Snapshot", snapshot_output)
 
     def test_cli_mcp_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
@@ -2130,6 +2265,63 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Participating Agents", printed)
         self.assertIn("Research Agent", printed)
         self.assertIn("Workflow Provenance", printed)
+
+    def test_cli_snapshot_printers_display_counts_and_statistics(self):
+        snapshot = {
+            "snapshot_id": "snap_test",
+            "schema_version": "0.1",
+            "created_at": "2026-06-03T10:00:00Z",
+            "counts": {
+                "agents": 1,
+                "tools": 1,
+                "workflows": 1,
+                "processes": 0,
+                "services": 1,
+                "mcp_servers": 1,
+                "capabilities": 1,
+                "nodes": 6,
+                "edges": 4,
+                "traces": 2,
+                "sessions": 1,
+                "events": 8,
+            },
+            "graph_statistics": {
+                "node_count": 6,
+                "edge_count": 4,
+                "node_types": {"agent": 1},
+                "relationship_types": {"uses": 1},
+                "validation_status": "OK",
+            },
+            "ecosystem_statistics": {
+                "entity_count": 6,
+                "relationship_count": 4,
+                "groups": {"agents": 1},
+                "validation_status": "OK",
+            },
+            "contents": {
+                "agents": [{}],
+                "tools": [{}],
+                "workflows": [{}],
+                "processes": [],
+                "services": [{}],
+                "mcp_servers": [{}],
+                "capabilities": [{}],
+                "relationships": [{}, {}, {}, {}],
+                "traces": [{}, {}],
+                "sessions": [{}],
+            },
+        }
+        with patch("builtins.print") as printer:
+            _print_snapshots([snapshot])
+            _print_snapshot_detail(snapshot)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("snap_test", printed)
+        self.assertIn("Graph Statistics", printed)
+        self.assertIn("Ecosystem Statistics", printed)
+        self.assertIn("Relationships: 4", printed)
 
     def test_cli_ecosystem_printer_displays_grouped_inventory(self):
         with patch("builtins.print") as printer:

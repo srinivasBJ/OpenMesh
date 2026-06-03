@@ -28,6 +28,7 @@ from .workflow_registry import build_workflow_registry, validate_workflow_entrie
 REQUIRED_TABLES = {
     "openmesh_events",
     "openmesh_sessions",
+    "openmesh_snapshots",
     "agents",
     "agent_events",
 }

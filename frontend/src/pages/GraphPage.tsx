@@ -174,17 +174,18 @@ export default function GraphPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#070605] text-stone-200">
-      <div className="p-5 space-y-4">
-        <header className="flex flex-col gap-3 border-b border-[#2f2a24] pb-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="om-page text-stone-200">
+      <div className="space-y-4">
+        <header className="om-panel flex flex-col gap-4 p-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-[#c56b2c]">
+            <div className="flex items-center gap-3 text-[color:var(--om-rust-400)]">
+              <img src="/brand/openmesh-wheel.png" alt="" className="h-10 w-10 rounded-[6px] border border-[color:var(--om-border-strong)] object-cover" />
               <Network size={22} />
-              <span className="text-xs uppercase tracking-[0.2em] text-[#8f9aa0]">OpenMesh</span>
+              <span className="om-kicker">OpenMesh Graph Explorer</span>
             </div>
-            <h1 className="mt-1 text-2xl font-semibold text-stone-50">Graph View</h1>
-            <p className="mt-1 max-w-2xl text-sm text-stone-500">
-              Explore observed agents, tools, workflows, MCP servers, capabilities, traces, and relationships.
+            <h1 className="om-title mt-2 text-3xl">Agent Network Map</h1>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[color:var(--om-muted)]">
+              Explore observed agents, tools, workflows, MCP servers, capabilities, traces, relationships, and provenance.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
@@ -221,10 +222,10 @@ export default function GraphPage() {
             }}
           />
 
-          <div className="min-w-0 overflow-hidden border border-[#2f2a24] bg-[#0d0c0a]">
-            <div className="flex items-center justify-between border-b border-[#2f2a24] bg-[#11100e] px-3 py-2">
+          <div className="om-panel min-w-0 overflow-hidden rounded-[8px]">
+            <div className="om-panel-header flex items-center justify-between px-3 py-2">
               <div className="flex items-center gap-2 text-sm font-medium text-stone-100">
-                <GitBranch size={15} className="text-[#c56b2c]" />
+                <GitBranch size={15} className="text-[color:var(--om-rust-400)]" />
                 Network Map
               </div>
               <div className="flex items-center gap-1">
@@ -240,11 +241,11 @@ export default function GraphPage() {
               </div>
             </div>
 
-            <div className="relative h-[680px] bg-[#090806]">
+            <div className="relative h-[680px] bg-[color:var(--om-iron-980)]">
               {graph.nodes.length === 0 ? <EmptyGraphOnboarding /> : null}
               {graph.nodes.length > 0 && visibleGraph.nodes.length === 0 ? (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#090806]/80">
-                  <div className="border border-[#3b3731] bg-[#11100e] p-5 text-sm text-stone-400">
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80">
+                  <div className="om-empty max-w-md p-5 text-sm text-[color:var(--om-muted)]">
                     No entities match the current graph filters.
                   </div>
                 </div>
@@ -272,7 +273,7 @@ export default function GraphPage() {
                     <path d="M0,0 L9,4.5 L0,9 Z" fill="#c56b2c" />
                   </marker>
                 </defs>
-                <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#090806" />
+                <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#050504" />
                 <GridLines />
                 <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
                   {visibleGraph.edges.map((edge) => {
@@ -356,7 +357,7 @@ export default function GraphPage() {
                   })}
                 </g>
               </svg>
-              <div className="absolute bottom-3 left-3 border border-[#3b3731] bg-[#11100e]/95 px-3 py-2 text-xs text-stone-400">
+              <div className="absolute bottom-3 left-3 rounded-[4px] border border-[color:var(--om-border)] bg-[rgba(18,16,13,.95)] px-3 py-2 font-mono text-xs text-[color:var(--om-muted)]">
                 rendered {visibleGraph.nodes.length}/{graph.nodes.length} nodes, {visibleGraph.edges.length}/{graph.edges.length} relationships
               </div>
             </div>
@@ -419,32 +420,32 @@ function GraphControls({
   onReset: () => void;
 }) {
   return (
-    <aside className="space-y-3 border border-[#2f2a24] bg-[#0d0c0a] p-4">
+    <aside className="om-panel space-y-3 p-4">
       <div className="flex items-center gap-2 text-sm font-semibold text-stone-100">
         <Filter size={15} className="text-[#c56b2c]" />
         Graph Controls
       </div>
       <label className="block">
-        <span className="mb-1 flex items-center gap-1 text-xs text-stone-500">
+        <span className="mb-1 flex items-center gap-1 text-xs text-[color:var(--om-muted)]">
           <Search size={12} /> Search
         </span>
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="agent, tool, trace, event"
-          className="w-full border border-[#3b3731] bg-[#090806] px-3 py-2 text-sm text-stone-100 outline-none transition focus:border-[#c56b2c]"
+          className="om-input"
         />
       </label>
       <SelectControl label="Entity type" value={nodeType} onChange={setNodeType} options={nodeTypeOptions} />
       <SelectControl label="Relationship" value={relationshipType} onChange={setRelationshipType} options={relationshipOptions} />
       <SelectControl label="Lifecycle" value={lifecycle} onChange={setLifecycle} options={lifecycleOptions} />
       <div>
-        <div className="mb-2 flex items-center justify-between text-xs text-stone-500">
+        <div className="mb-2 flex items-center justify-between text-xs text-[color:var(--om-muted)]">
           <span>Depth</span>
-          <span className="text-[#c56b2c]">{depth}</span>
+          <span className="font-mono text-[color:var(--om-rust-400)]">{depth}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" className="h-9 w-9 border border-[#3b3731] bg-[#11100e] text-stone-200" onClick={() => setDepth(clamp(depth - 1, 1, 4))}>
+          <button type="button" className="om-button-ghost h-9 w-9 p-0" onClick={() => setDepth(clamp(depth - 1, 1, 4))}>
             -
           </button>
           <input
@@ -453,17 +454,17 @@ function GraphControls({
             max={4}
             value={depth}
             onChange={(event) => setDepth(Number(event.target.value))}
-            className="w-full accent-[#c56b2c]"
+            className="w-full accent-[color:var(--om-rust-500)]"
           />
-          <button type="button" className="h-9 w-9 border border-[#3b3731] bg-[#11100e] text-stone-200" onClick={() => setDepth(clamp(depth + 1, 1, 4))}>
+          <button type="button" className="om-button-ghost h-9 w-9 p-0" onClick={() => setDepth(clamp(depth + 1, 1, 4))}>
             +
           </button>
         </div>
       </div>
-      <button type="button" className="w-full border border-[#4a3325] bg-[#17130f] px-3 py-2 text-sm text-[#f1d0ad] transition hover:border-[#c56b2c]" onClick={onReset}>
+      <button type="button" className="om-button w-full" onClick={onReset}>
         Reset graph view
       </button>
-      <div className="border-t border-[#2f2a24] pt-3 text-xs leading-5 text-stone-500">
+      <div className="border-t border-[color:var(--om-border)] pt-3 text-xs leading-5 text-[color:var(--om-muted)]">
         <p>Select a node to focus its neighborhood.</p>
         <p>Select a trace below to highlight participating entities.</p>
       </div>
@@ -484,11 +485,11 @@ function SelectControl({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-stone-500">{label}</span>
+      <span className="mb-1 block text-xs text-[color:var(--om-muted)]">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full border border-[#3b3731] bg-[#090806] px-3 py-2 text-sm text-stone-100 outline-none transition focus:border-[#c56b2c]"
+        className="om-select"
       >
         <option value="all">All</option>
         {options.map((option) => (
@@ -521,7 +522,7 @@ function InspectorPanel({
     const target = nodesById.get(selectedEdge.target);
     const provenance = selectedEdge.provenance || {};
     return (
-      <aside className="border border-[#2f2a24] bg-[#0d0c0a] p-4">
+      <aside className="om-panel p-4">
         <PanelTitle icon={<GitBranch size={15} />} title="Relationship Inspector" />
         <div className="mt-4 space-y-4">
           <div>
@@ -548,7 +549,7 @@ function InspectorPanel({
 
   if (!selectedNode) {
     return (
-      <aside className="border border-[#2f2a24] bg-[#0d0c0a] p-4">
+      <aside className="om-panel p-4">
         <PanelTitle icon={<Info size={15} />} title="Inspector" />
         <div className="mt-4 text-sm leading-6 text-stone-500">
           Select a node or relationship in the graph to inspect provenance, traces, metadata, and relationships.
@@ -564,7 +565,7 @@ function InspectorPanel({
   const traceIds = inspection?.trace_ids || node.provenance?.trace_ids || [];
 
   return (
-    <aside className="max-h-[780px] overflow-auto border border-[#2f2a24] bg-[#0d0c0a] p-4">
+    <aside className="om-panel max-h-[780px] overflow-auto p-4">
       <PanelTitle icon={<Info size={15} />} title="Node Inspector" />
       <div className="mt-4">
         <div className="text-lg font-semibold text-stone-50">{node.name}</div>
@@ -650,7 +651,7 @@ function TraceStrip({
   selectedTraceTimeline?: OpenMeshTimeline;
 }) {
   return (
-    <section className="border border-[#2f2a24] bg-[#0d0c0a] p-4">
+    <section className="om-panel p-4">
       <div className="flex items-center justify-between gap-3">
         <PanelTitle icon={<Activity size={15} />} title="Trace Integration" />
         {selectedTraceId ? (
@@ -660,7 +661,7 @@ function TraceStrip({
         ) : null}
       </div>
       <div className="mt-3 grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="max-h-56 overflow-auto border border-[#2f2a24]">
+        <div className="max-h-56 overflow-auto rounded-[4px] border border-[color:var(--om-border)]">
           {traces.length === 0 ? (
             <div className="p-3 text-sm text-stone-500">No traces observed yet.</div>
           ) : (
@@ -685,7 +686,7 @@ function TraceStrip({
             ))
           )}
         </div>
-        <div className="min-h-40 border border-[#2f2a24] bg-[#090806] p-3">
+        <div className="min-h-40 rounded-[4px] border border-[color:var(--om-border)] bg-black/35 p-3">
           {!selectedTraceId ? (
             <div className="text-sm text-stone-500">Select a trace to highlight graph entities and relationships.</div>
           ) : (
@@ -717,7 +718,7 @@ function EvolutionPanel({ timeline, ecosystem }: { timeline?: OpenMeshTimeline; 
   const summary = timeline?.summary || {};
   const ecosystemSummary = getRecord(getRecord(ecosystem, "summary"));
   return (
-    <section className="border border-[#2f2a24] bg-[#0d0c0a] p-4">
+    <section className="om-panel p-4">
       <PanelTitle icon={<Activity size={15} />} title="Evolution" />
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
         <Metric label="Events" value={Number(summary.events || 0)} />
@@ -753,17 +754,21 @@ function TimelineRows({ timeline }: { timeline?: OpenMeshTimeline }) {
 
 function EmptyGraphOnboarding() {
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#090806]">
-      <div className="w-full max-w-2xl border border-[#3b3731] bg-[#11100e] p-6">
-        <div className="text-sm font-semibold uppercase tracking-[0.2em] text-[#c56b2c]">No graph data yet</div>
-        <h2 className="mt-2 text-xl font-semibold text-stone-50">Start observing an agent or process</h2>
-        <div className="mt-4 grid gap-3 text-sm text-stone-400 md:grid-cols-2">
-          <code className="border border-[#2f2a24] bg-[#090806] p-3">openmesh run -- python -c "print('hello openmesh')"</code>
-          <code className="border border-[#2f2a24] bg-[#090806] p-3">python examples/python_basic_agent.py</code>
-          <code className="border border-[#2f2a24] bg-[#090806] p-3">python examples/python_async_agent.py</code>
-          <code className="border border-[#2f2a24] bg-[#090806] p-3">python examples/langgraph_basic.py</code>
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color:var(--om-iron-980)]/95 p-6">
+      <div className="om-empty w-full max-w-3xl">
+        <img src="/brand/openmesh-logo.png" alt="OpenMesh" className="mx-auto h-14 max-w-md object-contain" />
+        <div className="om-kicker mt-6">No graph data yet</div>
+        <h2 className="mt-2 text-2xl font-bold text-stone-50">Start observing an agent or process</h2>
+        <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[color:var(--om-muted)]">
+          OpenMesh becomes useful when events create relationships. Run one command and the graph will populate with nodes, traces, and provenance.
+        </p>
+        <div className="mt-5 grid gap-3 text-left font-mono text-xs text-[color:var(--om-steel-300)] md:grid-cols-2">
+          <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-3">openmesh run -- python -c "print('hello openmesh')"</code>
+          <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-3">python examples/python_basic_agent.py</code>
+          <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-3">python examples/python_async_agent.py</code>
+          <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-3">python examples/langgraph_basic.py</code>
         </div>
-        <div className="mt-4 text-sm text-stone-500">
+        <div className="mt-4 text-sm text-[color:var(--om-muted)]">
           Example entities will appear as agents, tools, workflows, processes, services, MCP servers, and capabilities.
         </div>
       </div>
@@ -773,9 +778,9 @@ function EmptyGraphOnboarding() {
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="border border-[#2f2a24] bg-[#11100e] px-3 py-2">
-      <div className="text-base font-semibold text-stone-50">{value}</div>
-      <div className="text-[11px] uppercase tracking-wide text-stone-500">{label}</div>
+    <div className="om-stat px-3 py-2">
+      <div className="om-stat-value text-base">{value}</div>
+      <div className="stat-label">{label}</div>
     </div>
   );
 }
@@ -783,7 +788,7 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 function PanelTitle({ icon, title }: { icon: ReactNode; title: string }) {
   return (
     <div className="flex items-center gap-2 text-sm font-semibold text-stone-100">
-      <span className="text-[#c56b2c]">{icon}</span>
+      <span className="text-[color:var(--om-rust-400)]">{icon}</span>
       {title}
     </div>
   );
@@ -796,7 +801,7 @@ function IconButton({ label, children, onClick }: { label: string; children: Rea
       title={label}
       aria-label={label}
       onClick={onClick}
-      className="flex h-8 w-8 items-center justify-center border border-[#3b3731] bg-[#090806] text-stone-400 transition hover:border-[#c56b2c] hover:text-[#f1d0ad]"
+      className="flex h-8 w-8 items-center justify-center rounded-[4px] border border-[color:var(--om-border)] bg-black/45 text-[color:var(--om-steel-400)] transition hover:border-[color:var(--om-border-strong)] hover:text-[color:var(--om-rust-300)]"
     >
       {children}
     </button>
@@ -807,9 +812,9 @@ function KeyValueGrid({ rows }: { rows: Array<[string, string]> }) {
   return (
     <div className="mt-4 grid grid-cols-2 gap-2">
       {rows.map(([label, value]) => (
-        <div key={label} className="border border-[#2f2a24] bg-[#090806] px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-stone-600">{label}</div>
-          <div className="mt-1 truncate text-xs text-stone-300">{value}</div>
+        <div key={label} className="rounded-[4px] border border-[color:var(--om-border)] bg-black/35 px-3 py-2">
+          <div className="stat-label">{label}</div>
+          <div className="mt-1 truncate text-xs text-[color:var(--om-steel-300)]">{value}</div>
         </div>
       ))}
     </div>
@@ -860,10 +865,10 @@ function TokenList({
 function GridLines() {
   const lines = [];
   for (let x = 0; x <= CANVAS_WIDTH; x += 80) {
-    lines.push(<line key={`x-${x}`} x1={x} y1={0} x2={x} y2={CANVAS_HEIGHT} stroke="#15120f" strokeWidth={1} />);
+    lines.push(<line key={`x-${x}`} x1={x} y1={0} x2={x} y2={CANVAS_HEIGHT} stroke="#16130f" strokeWidth={1} />);
   }
   for (let y = 0; y <= CANVAS_HEIGHT; y += 80) {
-    lines.push(<line key={`y-${y}`} x1={0} y1={y} x2={CANVAS_WIDTH} y2={y} stroke="#15120f" strokeWidth={1} />);
+    lines.push(<line key={`y-${y}`} x1={0} y1={y} x2={CANVAS_WIDTH} y2={y} stroke="#16130f" strokeWidth={1} />);
   }
   return <g>{lines}</g>;
 }

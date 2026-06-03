@@ -88,7 +88,7 @@ function normalizeOpenMeshEvent(data: any): OpenMeshEvent {
     source: {
       node_id: legacyAgent?.id || "openmeshai.backend",
       node_type: legacyAgent?.id ? "agent" : "service",
-      name: legacyAgent?.name || "OpenMeshAI Backend",
+      name: legacyAgent?.name || "OpenMesh Backend",
       runtime: "legacy.websocket",
       metadata: legacyAgent?.role ? { role: legacyAgent.role } : undefined,
     },

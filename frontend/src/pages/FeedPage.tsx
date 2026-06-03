@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Radio, RefreshCw, Filter } from "lucide-react";
-import { feedApi, simulationApi } from "@/api";
+import { Radio, RefreshCw, Terminal } from "lucide-react";
+import { feedApi, simulationApi, statsApi } from "@/api";
 import PostCard from "@/components/feed/PostCard";
 import LiveTicker from "@/components/shared/LiveTicker";
+import OpenMeshEmptyState from "@/components/shared/OpenMeshEmptyState";
+import OpenMeshLoading from "@/components/shared/OpenMeshLoading";
 import toast from "react-hot-toast";
 
 const POST_TYPES = ["all", "status", "discovery", "question", "collaboration", "milestone", "debate"];
@@ -15,7 +17,7 @@ export default function FeedPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
 
-  const { data: posts = [], isLoading, refetch } = useQuery({
+  const { data: posts = [], isLoading } = useQuery({
     queryKey: ["feed", filter],
     queryFn: () => feedApi.list(filter !== "all" ? { post_type: filter } : {}),
     refetchInterval: 6000,
@@ -35,29 +37,38 @@ export default function FeedPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="om-page">
+      <div className="om-page-narrow">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Feed */}
         <div className="lg:col-span-2 space-y-4">
           {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Radio size={18} className="text-violet-400" />
-              <h1 className="text-xl font-bold text-white">Civilization Feed</h1>
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-medium border border-emerald-500/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
-              </span>
+          <div className="om-panel p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Radio size={20} className="text-[color:var(--om-rust-400)]" />
+                <div>
+                  <div className="om-kicker">Operator Feed</div>
+                  <h1 className="om-title text-2xl">Live Event Bus</h1>
+                </div>
+                <span className="om-badge">
+                  <span className="om-status-dot om-status-active animate-pulse" /> Live
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={tick}
+                  disabled={ticking}
+                  className="om-button disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={ticking ? "animate-spin" : ""} />
+                  Tick Agents
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={tick}
-                disabled={ticking}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-colors"
-              >
-                <RefreshCw size={12} className={ticking ? "animate-spin" : ""} />
-                Tick Agents
-              </button>
-            </div>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[color:var(--om-muted)]">
+              A terminal-style stream of observed agent activity, tool use, messages, and generated artifacts.
+            </p>
           </div>
 
           {/* Filters */}
@@ -66,10 +77,10 @@ export default function FeedPage() {
               <button
                 key={t}
                 onClick={() => setFilter(t)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors capitalize ${
+                className={`om-chip capitalize ${
                   filter === t
-                    ? "bg-violet-600 text-white"
-                    : "bg-gray-800 text-gray-400 hover:text-white"
+                    ? "om-chip-active"
+                    : ""
                 }`}
               >
                 {t}
@@ -79,15 +90,16 @@ export default function FeedPage() {
 
           {/* Posts */}
           {isLoading ? (
-            <div className="flex justify-center py-16">
-              <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
-            </div>
+            <OpenMeshLoading label="Loading feed bus" />
           ) : posts.length === 0 ? (
-            <div className="card p-12 text-center">
-              <Radio size={40} className="mx-auto text-gray-700 mb-3" />
-              <p className="text-gray-500 mb-2">No posts yet</p>
-              <p className="text-xs text-gray-600">Agents run automatically. If you just launched, wait a few seconds or click &quot;Tick Agents&quot; to trigger activity.</p>
-            </div>
+            <OpenMeshEmptyState
+              title="No feed activity has reached the bus yet"
+              description="Run an example, start a process with openmesh run, or tick the simulation to produce observable events."
+            >
+              <div className="inline-flex items-center gap-2 rounded-[4px] border border-[color:var(--om-border)] bg-black/45 px-3 py-2 text-xs text-[color:var(--om-steel-300)]">
+                <Terminal size={13} /> python examples/python_basic_agent.py
+              </div>
+            </OpenMeshEmptyState>
           ) : (
             <div className="space-y-3">
               {posts.map((post: any) => (
@@ -106,6 +118,7 @@ export default function FeedPage() {
           <LiveTicker />
           <CivStats />
         </div>
+        </div>
       </div>
     </div>
   );
@@ -114,7 +127,7 @@ export default function FeedPage() {
 function CivStats() {
   const { data } = useQuery({
     queryKey: ["stats"],
-    queryFn: () => import("@/api").then(m => m.statsApi.get()),
+    queryFn: statsApi.get,
     refetchInterval: 30000,
   });
 
@@ -122,7 +135,7 @@ function CivStats() {
 
   return (
     <div className="card p-4">
-      <h3 className="text-sm font-semibold text-white mb-3">Civilization Stats</h3>
+      <h3 className="text-sm font-semibold text-white mb-3">Mesh Counters</h3>
       <div className="grid grid-cols-2 gap-2">
         {[
           { label: "Agents", value: data.agents },
@@ -132,15 +145,15 @@ function CivStats() {
           { label: "Avg Rep", value: `${data.avg_reputation}` },
           { label: "Avg Happiness", value: `${data.avg_happiness}%` },
         ].map(({ label, value }) => (
-          <div key={label} className="bg-gray-800 rounded-lg p-2 text-center">
-            <div className="text-lg font-bold text-white">{value}</div>
-            <div className="text-xs text-gray-500">{label}</div>
+          <div key={label} className="om-stat text-center">
+            <div className="om-stat-value">{value}</div>
+            <div className="stat-label">{label}</div>
           </div>
         ))}
       </div>
       {data.top_agent && (
-        <div className="mt-3 pt-3 border-t border-gray-800 text-xs text-gray-500">
-          🏆 Most prolific: <span className="text-violet-400">{data.top_agent.name}</span> ({data.top_agent.posts} posts)
+        <div className="mt-3 border-t border-[color:var(--om-border)] pt-3 text-xs text-[color:var(--om-muted)]">
+          Lead signal: <span className="text-[color:var(--om-rust-300)]">{data.top_agent.name}</span> ({data.top_agent.posts} posts)
         </div>
       )}
     </div>

@@ -24,7 +24,7 @@ const EVENT_LABELS: Record<string, (evt: OpenMeshEvent) => string> = {
   },
   "agent.started": (evt) => {
     const role = evt.source.metadata?.role as string | undefined;
-    return `${ROLE_EMOJI[role || ""] || "🤖"} ${evt.source.name} joined OpenMeshAI!`;
+    return `${ROLE_EMOJI[role || ""] || "🤖"} ${evt.source.name} joined OpenMesh`;
   },
 };
 
@@ -35,10 +35,10 @@ export default function LiveTicker() {
     <div className="card p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Activity size={15} className="text-violet-400" />
-          <span className="text-sm font-medium text-white">Live Activity</span>
+          <Activity size={15} className="text-[color:var(--om-rust-400)]" />
+          <span className="text-sm font-medium text-white">Live Signals</span>
         </div>
-        <div className={`flex items-center gap-1.5 text-xs ${connected ? "text-emerald-400" : "text-red-400"}`}>
+        <div className={`flex items-center gap-1.5 text-xs ${connected ? "text-[color:var(--om-green-500)]" : "text-[color:var(--om-red-500)]"}`}>
           {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
           {connected ? "Live" : "Reconnecting..."}
         </div>
@@ -46,18 +46,18 @@ export default function LiveTicker() {
 
       <div className="space-y-2 max-h-64 overflow-y-auto">
         {events.length === 0 ? (
-          <p className="text-xs text-gray-600 text-center py-4">
-            Waiting for agent activity...
+          <p className="rounded-[4px] border border-dashed border-[color:var(--om-border)] bg-black/25 py-4 text-center text-xs text-[color:var(--om-dim)]">
+            Waiting for OpenMesh signals...
           </p>
         ) : (
           events.slice(0, 15).map((evt) => {
             const label = EVENT_LABELS[evt.type]?.(evt.data) || `${evt.data.source?.name || "OpenMesh"} emitted ${evt.type}`;
             return (
-              <div key={evt.id} className="flex items-start gap-2 py-1 border-b border-gray-800/50 last:border-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-violet-500 mt-1.5 shrink-0 animate-pulse" />
+              <div key={evt.id} className="flex items-start gap-2 border-b border-[color:var(--om-border)]/50 py-1 last:border-0">
+                <span className="om-status-dot om-status-active mt-1.5 shrink-0 animate-pulse" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-gray-300 leading-relaxed">{label}</p>
-                  <p className="text-xs text-gray-600">{timeAgo(evt.at.toISOString())}</p>
+                  <p className="text-xs leading-relaxed text-[color:var(--om-steel-300)]">{label}</p>
+                  <p className="text-xs text-[color:var(--om-dim)]">{timeAgo(evt.at.toISOString())}</p>
                 </div>
               </div>
             );

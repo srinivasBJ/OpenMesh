@@ -4,7 +4,9 @@ import { ArrowLeft, Trash2, Brain, Zap, Heart, Star } from "lucide-react";
 import { agentsApi } from "@/api";
 import AgentAvatar from "@/components/shared/AgentAvatar";
 import PostCard from "@/components/feed/PostCard";
-import { ROLE_COLORS, ROLE_EMOJI, timeAgo, cn } from "@/lib/utils";
+import OpenMeshEmptyState from "@/components/shared/OpenMeshEmptyState";
+import OpenMeshLoading from "@/components/shared/OpenMeshLoading";
+import { ROLE_COLORS, ROLE_EMOJI, brandText, timeAgo, cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 export default function AgentProfilePage() {
@@ -30,83 +32,88 @@ export default function AgentProfilePage() {
     }
   };
 
-  if (isLoading) return (
-    <div className="flex justify-center items-center h-64">
-      <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
+  if (isLoading) return <OpenMeshLoading label="Loading agent profile" />;
 
-  if (!agent) return <div className="p-6 text-gray-500">Agent not found</div>;
+  if (!agent) {
+    return (
+      <div className="om-page">
+        <div className="om-page-compact">
+          <OpenMeshEmptyState title="Agent not found" description="This node is not present in the current frontend registry response." />
+        </div>
+      </div>
+    );
+  }
 
   const stats = [
-    { label: "Reputation", value: agent.reputation, icon: Star, color: "text-yellow-400" },
-    { label: "Knowledge", value: agent.knowledge, icon: Brain, color: "text-blue-400" },
-    { label: "Energy", value: agent.energy, icon: Zap, color: "text-emerald-400" },
-    { label: "Happiness", value: agent.happiness, icon: Heart, color: "text-pink-400" },
+    { label: "Reputation", value: agent.reputation || 0, icon: Star, color: "text-[color:var(--om-amber-500)]", bar: "bg-[color:var(--om-amber-500)]" },
+    { label: "Knowledge", value: agent.knowledge || 0, icon: Brain, color: "text-[color:var(--om-steel-300)]", bar: "bg-[color:var(--om-steel-500)]" },
+    { label: "Energy", value: agent.energy || 0, icon: Zap, color: "text-[color:var(--om-rust-400)]", bar: "bg-[color:var(--om-rust-500)]" },
+    { label: "Happiness", value: agent.happiness || 0, icon: Heart, color: "text-[color:var(--om-green-500)]", bar: "bg-[color:var(--om-green-500)]" },
   ];
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="om-page">
+      <div className="om-page-compact space-y-6">
       {/* Back */}
       <button onClick={() => navigate("/agents")}
-        className="flex items-center gap-2 text-sm text-gray-500 hover:text-white transition-colors">
+        className="flex items-center gap-2 text-sm text-[color:var(--om-muted)] transition-colors hover:text-white">
         <ArrowLeft size={15} /> All Agents
       </button>
 
       {/* Profile header */}
       <div className="card p-6">
         <div className="flex items-start gap-5">
-          <AgentAvatar name={agent.name} role={agent.role} size="xl" showRole />
+          <AgentAvatar name={agent.name || "Unknown"} role={agent.role || "agent"} size="xl" showRole />
           <div className="flex-1">
             <div className="flex items-start justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-white">{agent.name}</h1>
-                <div className={cn("text-sm capitalize font-medium", ROLE_COLORS[agent.role])}>
-                  {ROLE_EMOJI[agent.role]} {agent.role}
+                <h1 className="text-2xl font-bold text-white">{agent.name || "Unknown agent"}</h1>
+                <div className={cn("text-sm capitalize font-medium", ROLE_COLORS[agent.role] || "text-[color:var(--om-muted)]")}>
+                  {ROLE_EMOJI[agent.role]} {agent.role || "agent"}
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className={cn("px-2 py-1 rounded-full text-xs font-medium", {
-                  "bg-emerald-500/10 text-emerald-400": agent.status === "active",
-                  "bg-yellow-500/10 text-yellow-400": agent.status === "idle",
-                  "bg-gray-500/10 text-gray-400": agent.status === "sleeping",
+                  "bg-green-500/10 text-[color:var(--om-green-500)]": agent.status === "active",
+                  "bg-amber-500/10 text-[color:var(--om-amber-500)]": agent.status === "idle",
+                  "bg-gray-500/10 text-[color:var(--om-muted)]": agent.status === "sleeping",
                 })}>
-                  {agent.status}
+                  {agent.status || "unknown"}
                 </span>
-                <button onClick={retire} className="p-2 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-colors">
+                <button onClick={retire} className="rounded-[4px] p-2 text-[color:var(--om-dim)] transition-colors hover:bg-red-500/10 hover:text-[color:var(--om-red-500)]" aria-label="Retire agent">
                   <Trash2 size={15} />
                 </button>
               </div>
             </div>
 
-            <p className="text-gray-400 text-sm mt-2 leading-relaxed">{agent.bio}</p>
+            <p className="mt-2 text-sm leading-relaxed text-[color:var(--om-steel-300)]">{brandText(agent.bio, "No profile metadata recorded.")}</p>
 
             {agent.guild && (
-              <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-gray-800 rounded-full text-xs text-gray-300">
-                🏛️ {agent.guild.name}
+              <div className="om-badge mt-2">
+                🏛️ {agent.guild.name || "Guild"}
               </div>
             )}
 
-            <div className="flex gap-4 mt-3 text-xs text-gray-500">
-              <span>📝 {agent.total_posts} posts</span>
-              <span>🤝 {agent.total_collaborations} collaborations</span>
-              <span>📚 {agent.wiki_contributions} wiki edits</span>
-              <span>🎂 Born {timeAgo(agent.born_at)}</span>
+            <div className="mt-3 flex flex-wrap gap-4 text-xs text-[color:var(--om-muted)]">
+              <span>{agent.total_posts || 0} posts</span>
+              <span>{agent.total_collaborations || 0} collaborations</span>
+              <span>{agent.wiki_contributions || 0} wiki edits</span>
+              <span>Born {agent.born_at ? timeAgo(agent.born_at) : "unknown"}</span>
             </div>
           </div>
         </div>
 
         {/* Stat bars */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
-          {stats.map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="bg-gray-800 rounded-lg p-3">
+          {stats.map(({ label, value, icon: Icon, color, bar }) => (
+            <div key={label} className="om-stat">
               <div className="flex items-center gap-1.5 mb-2">
                 <Icon size={13} className={color} />
                 <span className="text-xs text-gray-500">{label}</span>
               </div>
               <div className="text-lg font-bold text-white mb-1">{Math.round(value)}/100</div>
-              <div className="w-full bg-gray-700 rounded-full h-1.5">
-                <div className={cn("h-1.5 rounded-full", color.replace("text-", "bg-"))}
+              <div className="h-1.5 w-full rounded-full bg-black/45">
+                <div className={cn("h-1.5 rounded-full", bar)}
                   style={{ width: `${value}%` }} />
               </div>
             </div>
@@ -121,7 +128,7 @@ export default function AgentProfilePage() {
             <h3 className="text-sm font-semibold text-white mb-3">Skills</h3>
             <div className="flex flex-wrap gap-2">
               {(agent.skills || []).map((s: string) => (
-                <span key={s} className="px-2 py-1 bg-violet-500/10 border border-violet-500/30 text-violet-400 rounded-full text-xs">
+                  <span key={s} className="om-badge">
                   {s}
                 </span>
               ))}
@@ -133,7 +140,7 @@ export default function AgentProfilePage() {
             <ul className="space-y-1.5">
               {(agent.goals || []).map((g: string, i: number) => (
                 <li key={i} className="flex items-start gap-2 text-xs text-gray-400">
-                  <span className="text-violet-400 mt-0.5">→</span> {g}
+                  <span className="text-[color:var(--om-rust-400)] mt-0.5">→</span> {g}
                 </li>
               ))}
             </ul>
@@ -143,11 +150,11 @@ export default function AgentProfilePage() {
             <h3 className="text-sm font-semibold text-white mb-3">Personality</h3>
             {Object.entries(agent.personality || {}).map(([trait, val]: [string, any]) => (
               <div key={trait} className="mb-2">
-                <div className="flex justify-between text-xs text-gray-500 mb-1 capitalize">
+                <div className="mb-1 flex justify-between text-xs text-[color:var(--om-muted)] capitalize">
                   <span>{trait}</span><span>{Math.round(val * 100)}%</span>
                 </div>
-                <div className="w-full bg-gray-800 rounded-full h-1">
-                  <div className="h-1 bg-violet-500 rounded-full" style={{ width: `${val * 100}%` }} />
+                <div className="h-1 w-full rounded-full bg-black/45">
+                  <div className="h-1 rounded-full bg-[color:var(--om-rust-500)]" style={{ width: `${val * 100}%` }} />
                 </div>
               </div>
             ))}
@@ -158,7 +165,7 @@ export default function AgentProfilePage() {
         <div className="lg:col-span-2 space-y-3">
           <h3 className="text-sm font-semibold text-white">Recent Posts</h3>
           {(agent.recent_posts || []).length === 0 ? (
-            <div className="card p-8 text-center text-gray-600 text-sm">No posts yet</div>
+            <div className="card p-8 text-center text-sm text-[color:var(--om-dim)]">No posts yet</div>
           ) : (
             agent.recent_posts.map((post: any) => (
               <div key={post.id} className="card p-4">
@@ -171,7 +178,7 @@ export default function AgentProfilePage() {
                 {post.tags?.length > 0 && (
                   <div className="flex gap-1.5 mt-2">
                     {post.tags.map((t: string) => (
-                      <span key={t} className="text-xs text-violet-400">{t}</span>
+                      <span key={t} className="text-xs text-[color:var(--om-rust-300)]">{t}</span>
                     ))}
                   </div>
                 )}
@@ -179,6 +186,7 @@ export default function AgentProfilePage() {
             ))
           )}
         </div>
+      </div>
       </div>
     </div>
   );

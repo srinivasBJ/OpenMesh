@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { MessageCircle, Heart, Zap, ChevronDown, ChevronUp } from "lucide-react";
 import { feedApi } from "@/api";
-import { cn, timeAgo, ROLE_COLORS, ROLE_EMOJI, POST_TYPE_EMOJI, POST_TYPE_COLOR } from "@/lib/utils";
+import { cn, timeAgo, ROLE_COLORS, ROLE_EMOJI, POST_TYPE_EMOJI, POST_TYPE_COLOR, brandText } from "@/lib/utils";
 import AgentAvatar from "@/components/shared/AgentAvatar";
 import { useQuery } from "@tanstack/react-query";
 
@@ -24,6 +24,7 @@ const QUICK_REACTIONS = ["🧠", "🔥", "💡", "🤝", "⚡", "✨"];
 export default function PostCard({ post, onAgentClick }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [reactions, setReactions] = useState(post.reactions || {});
+  const author = post.author || { id: "", name: "Unknown agent", role: "agent", reputation: 0 };
 
   const { data: comments } = useQuery({
     queryKey: ["comments", post.id],
@@ -37,27 +38,28 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
   };
 
   const postEmoji = POST_TYPE_EMOJI[post.post_type] || "💬";
-  const postColor = POST_TYPE_COLOR[post.post_type] || "text-gray-400";
+  const postColor = POST_TYPE_COLOR[post.post_type] || "text-[color:var(--om-steel-400)]";
 
   return (
-    <div className="card p-4 hover:border-gray-700 transition-colors">
+    <div className="card p-4 transition-colors hover:border-[color:var(--om-border-strong)]">
       {/* Header */}
       <div className="flex items-start gap-3 mb-3">
-        <button onClick={() => onAgentClick?.(post.author.id)}>
-          <AgentAvatar name={post.author.name} role={post.author.role} showRole />
+        <button type="button" onClick={() => author.id && onAgentClick?.(author.id)} aria-label={`Open ${author.name}`}>
+          <AgentAvatar name={author.name} role={author.role} showRole />
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={() => onAgentClick?.(post.author.id)}
-              className="font-semibold text-white hover:text-violet-400 transition-colors text-sm"
+              type="button"
+              onClick={() => author.id && onAgentClick?.(author.id)}
+              className="text-sm font-semibold text-white transition-colors hover:text-[color:var(--om-rust-300)]"
             >
-              {post.author.name}
+              {author.name}
             </button>
-            <span className={cn("text-xs", ROLE_COLORS[post.author.role] || "text-gray-400")}>
-              {ROLE_EMOJI[post.author.role]} {post.author.role}
+            <span className={cn("text-xs", ROLE_COLORS[author.role] || "text-[color:var(--om-muted)]")}>
+              {ROLE_EMOJI[author.role]} {author.role}
             </span>
-            <span className="text-xs text-gray-600 ml-auto">{timeAgo(post.created_at)}</span>
+            <span className="ml-auto text-xs text-[color:var(--om-dim)]">{post.created_at ? timeAgo(post.created_at) : "time unknown"}</span>
           </div>
           <div className={cn("text-xs flex items-center gap-1 mt-0.5", postColor)}>
             <span>{postEmoji}</span>
@@ -67,13 +69,13 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
       </div>
 
       {/* Content */}
-      <p className="text-gray-200 text-sm leading-relaxed mb-3">{post.content}</p>
+      <p className="text-sm leading-relaxed text-[color:var(--om-steel-200)] mb-3">{brandText(post.content, "No content recorded.")}</p>
 
       {/* Tags */}
       {post.tags?.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-3">
           {post.tags.map((tag) => (
-            <span key={tag} className="text-xs text-violet-400 hover:text-violet-300 cursor-pointer">
+            <span key={tag} className="cursor-pointer text-xs text-[color:var(--om-rust-300)] hover:text-[color:var(--om-rust-400)]">
               {tag}
             </span>
           ))}
@@ -87,7 +89,7 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
             <button
               key={e}
               onClick={() => react(e)}
-              className="text-sm hover:scale-125 transition-transform px-1 py-0.5 rounded hover:bg-gray-800"
+              className="rounded px-1 py-0.5 text-sm transition-transform hover:scale-125 hover:bg-black/40"
               title={`React with ${e}`}
             >
               {e}
@@ -100,12 +102,12 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
         {Object.entries(reactions)
           .filter(([e]) => !QUICK_REACTIONS.includes(e))
           .map(([e, count]) => (
-            <span key={e} className="text-xs text-gray-500">{e} {count}</span>
+            <span key={e} className="text-xs text-[color:var(--om-muted)]">{e} {count}</span>
           ))}
 
         <button
           onClick={() => setShowComments(!showComments)}
-          className="ml-auto flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+          className="ml-auto flex items-center gap-1.5 text-xs text-[color:var(--om-muted)] transition-colors hover:text-[color:var(--om-rust-300)]"
         >
           <MessageCircle size={13} />
           {post.comment_count} {showComments ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -114,21 +116,21 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
 
       {/* Comments */}
       {showComments && (
-        <div className="mt-3 pt-3 border-t border-gray-800 space-y-3">
+        <div className="mt-3 space-y-3 border-t border-[color:var(--om-border)] pt-3">
           {!comments ? (
-            <div className="text-xs text-gray-600 text-center py-2">Loading...</div>
+            <div className="py-2 text-center text-xs text-[color:var(--om-dim)]">Loading comments...</div>
           ) : comments.length === 0 ? (
-            <div className="text-xs text-gray-600 text-center py-2">No comments yet</div>
+            <div className="py-2 text-center text-xs text-[color:var(--om-dim)]">No comments recorded</div>
           ) : (
             comments.map((c: { id: string; content: string; created_at: string; author: { name: string; role: string } }) => (
               <div key={c.id} className="flex gap-2">
                 <AgentAvatar name={c.author.name} role={c.author.role} size="sm" />
-                <div className="flex-1 bg-gray-800/50 rounded-lg px-3 py-2">
+                <div className="flex-1 rounded-[4px] border border-[color:var(--om-border)] bg-black/35 px-3 py-2">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-xs font-medium text-white">{c.author.name}</span>
-                    <span className="text-xs text-gray-600">{timeAgo(c.created_at)}</span>
+                    <span className="text-xs text-[color:var(--om-dim)]">{timeAgo(c.created_at)}</span>
                   </div>
-                  <p className="text-xs text-gray-300">{c.content}</p>
+                  <p className="text-xs text-[color:var(--om-steel-300)]">{brandText(c.content)}</p>
                 </div>
               </div>
             ))

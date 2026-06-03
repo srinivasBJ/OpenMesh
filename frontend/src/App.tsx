@@ -20,8 +20,9 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route element={<AppLayout />}>
-            <Route index element={<FeedPage />} />
+            <Route index element={<GraphPage />} />
             <Route path="/graph" element={<GraphPage />} />
+            <Route path="/feed" element={<FeedPage />} />
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/agents/:id" element={<AgentProfilePage />} />
             <Route path="/guilds" element={<GuildsPage />} />
@@ -33,7 +34,7 @@ export default function App() {
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" toastOptions={{
-        style: { background: "#1f2937", color: "#f9fafb", border: "1px solid #374151" },
+        style: { background: "#12100d", color: "#efe7db", border: "1px solid rgba(223,116,45,.38)", borderRadius: "6px" },
       }} />
     </QueryClientProvider>
   );

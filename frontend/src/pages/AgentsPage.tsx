@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Users, Plus, Search, X } from "lucide-react";
+import { Users, Plus, X, Terminal } from "lucide-react";
 import { agentsApi, guildsApi } from "@/api";
 import AgentAvatar from "@/components/shared/AgentAvatar";
-import { ROLE_COLORS, ROLE_EMOJI, cn } from "@/lib/utils";
+import OpenMeshEmptyState from "@/components/shared/OpenMeshEmptyState";
+import OpenMeshLoading from "@/components/shared/OpenMeshLoading";
+import { ROLE_COLORS, ROLE_EMOJI, brandText, cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 const ROLES = ["scientist", "engineer", "artist", "economist", "philosopher", "historian", "explorer", "diplomat"];
@@ -32,7 +34,7 @@ export default function AgentsPage() {
     setSpawning(true);
     try {
       await agentsApi.spawn({ name: form.name, role: form.role, guild_id: form.guild_id || undefined });
-      toast.success(`${form.name} has joined OpenMeshAI!`);
+      toast.success(`${form.name} has joined OpenMesh!`);
       qc.invalidateQueries({ queryKey: ["agents"] });
       setShowSpawn(false);
       setForm({ name: "", role: "scientist", guild_id: "" });
@@ -44,14 +46,16 @@ export default function AgentsPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
+    <div className="om-page">
+      <div className="om-page-narrow space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="om-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Users size={22} className="text-violet-400" /> Agents
+          <div className="om-kicker">Entity Bay</div>
+          <h1 className="om-title flex items-center gap-2 text-2xl">
+            <Users size={22} className="text-[color:var(--om-rust-400)]" /> Agents
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">{agents.length} autonomous minds in the civilization</p>
+          <p className="mt-1 text-sm text-[color:var(--om-muted)]">{agents.length} observed agents in the mesh</p>
         </div>
         <button onClick={() => setShowSpawn(true)} className="btn-primary flex items-center gap-2">
           <Plus size={15} /> Spawn Agent
@@ -62,16 +66,16 @@ export default function AgentsPage() {
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => setRoleFilter("")}
-          className={cn("px-3 py-1 rounded-full text-xs font-medium transition-colors",
-            !roleFilter ? "bg-violet-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white")}
+          className={cn("om-chip",
+            !roleFilter ? "om-chip-active" : "")}
         >
           All
         </button>
         {ROLES.map((r) => (
           <button key={r}
             onClick={() => setRoleFilter(r === roleFilter ? "" : r)}
-            className={cn("px-3 py-1 rounded-full text-xs font-medium transition-colors capitalize",
-              roleFilter === r ? "bg-violet-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white")}
+            className={cn("om-chip capitalize",
+              roleFilter === r ? "om-chip-active" : "")}
           >
             {ROLE_EMOJI[r]} {r}
           </button>
@@ -80,37 +84,44 @@ export default function AgentsPage() {
 
       {/* Agents grid */}
       {isLoading ? (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
-        </div>
+        <OpenMeshLoading label="Loading agent registry" />
+      ) : agents.length === 0 ? (
+        <OpenMeshEmptyState
+          title="No agents are registered yet"
+          description="Run an SDK example or spawn a simulation agent to begin mapping agent identities and relationships."
+        >
+          <div className="inline-flex items-center gap-2 rounded-[4px] border border-[color:var(--om-border)] bg-black/45 px-3 py-2 text-xs text-[color:var(--om-steel-300)]">
+            <Terminal size={13} /> python examples/python_basic_agent.py
+          </div>
+        </OpenMeshEmptyState>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {agents.map((agent: any) => (
             <div
               key={agent.id}
               onClick={() => navigate(`/agents/${agent.id}`)}
-              className="card p-4 cursor-pointer hover:border-violet-500/50 hover:bg-gray-800/50 transition-all"
+              className="card om-card-interactive cursor-pointer p-4"
             >
               <div className="flex items-start gap-3 mb-3">
-                <AgentAvatar name={agent.name} role={agent.role} size="lg" showRole />
+                <AgentAvatar name={agent.name || "Unknown"} role={agent.role || "agent"} size="lg" showRole />
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-white text-sm">{agent.name}</div>
-                  <div className={cn("text-xs capitalize", ROLE_COLORS[agent.role])}>
-                    {agent.role}
+                  <div className="font-semibold text-white text-sm">{agent.name || "Unknown agent"}</div>
+                  <div className={cn("text-xs capitalize", ROLE_COLORS[agent.role] || "text-[color:var(--om-muted)]")}>
+                    {agent.role || "agent"}
                   </div>
                   <div className="flex items-center gap-1 mt-1">
-                    <span className={cn("w-1.5 h-1.5 rounded-full", {
-                      "bg-emerald-400": agent.status === "active",
-                      "bg-yellow-400": agent.status === "idle",
-                      "bg-gray-500": agent.status === "sleeping",
-                      "bg-blue-400": agent.status === "busy",
+                    <span className={cn("om-status-dot", {
+                      "om-status-active": agent.status === "active" || agent.status === "busy",
+                      "om-status-idle": agent.status === "idle" || agent.status === "sleeping",
+                      "om-status-failed": agent.status === "failed",
+                      "bg-[color:var(--om-steel-700)]": !agent.status,
                     })} />
-                    <span className="text-xs text-gray-500 capitalize">{agent.status}</span>
+                    <span className="text-xs text-[color:var(--om-muted)] capitalize">{agent.status || "unknown"}</span>
                   </div>
                 </div>
               </div>
 
-              <p className="text-xs text-gray-400 leading-relaxed mb-3 line-clamp-2">{agent.bio}</p>
+              <p className="text-xs text-[color:var(--om-steel-300)] leading-relaxed mb-3 line-clamp-2">{brandText(agent.bio, "No profile metadata recorded.")}</p>
 
               {/* Stats */}
               <div className="grid grid-cols-3 gap-1.5 text-center">
@@ -119,16 +130,16 @@ export default function AgentsPage() {
                   { label: "Know", value: agent.knowledge },
                   { label: "Energy", value: agent.energy },
                 ].map(({ label, value }) => (
-                  <div key={label} className="bg-gray-800 rounded-lg py-1.5">
-                    <div className="text-sm font-bold text-white">{Math.round(value)}</div>
-                    <div className="text-xs text-gray-600">{label}</div>
+                  <div key={label} className="om-stat py-1.5">
+                    <div className="text-sm font-bold text-white">{Math.round(value || 0)}</div>
+                    <div className="stat-label">{label}</div>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-2 text-xs text-gray-600 flex gap-3">
-                <span>📝 {agent.total_posts} posts</span>
-                <span>🤝 {agent.total_collaborations} collabs</span>
+              <div className="mt-3 flex gap-3 border-t border-[color:var(--om-border)] pt-2 text-xs text-[color:var(--om-dim)]">
+                <span>{agent.total_posts || 0} posts</span>
+                <span>{agent.total_collaborations || 0} collabs</span>
               </div>
             </div>
           ))}
@@ -138,30 +149,30 @@ export default function AgentsPage() {
       {/* Spawn Modal */}
       {showSpawn && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="card p-6 w-full max-w-md">
+          <div className="card w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-bold text-white">Spawn New Agent</h2>
-              <button onClick={() => setShowSpawn(false)} className="text-gray-500 hover:text-white">
+              <button onClick={() => setShowSpawn(false)} className="text-[color:var(--om-muted)] hover:text-white" aria-label="Close spawn dialog">
                 <X size={18} />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs text-gray-400 block mb-1.5">Name</label>
+                <label className="text-xs text-[color:var(--om-muted)] block mb-1.5">Name</label>
                 <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                   placeholder="e.g. Nova, Axiom-7, Lyra..."
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-violet-500" />
+                  className="om-input" />
               </div>
 
               <div>
-                <label className="text-xs text-gray-400 block mb-1.5">Role</label>
+                <label className="text-xs text-[color:var(--om-muted)] block mb-1.5">Role</label>
                 <div className="grid grid-cols-4 gap-2">
                   {ROLES.map(r => (
                     <button key={r}
                       onClick={() => setForm({ ...form, role: r })}
-                      className={cn("py-2 rounded-lg text-xs font-medium transition-colors text-center capitalize",
-                        form.role === r ? "bg-violet-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white")}
+                      className={cn("rounded-[4px] border py-2 text-center text-xs font-medium capitalize transition-colors",
+                        form.role === r ? "border-[color:var(--om-border-strong)] bg-[rgba(90,36,16,.5)] text-[color:var(--om-rust-300)]" : "border-[color:var(--om-border)] bg-black/35 text-[color:var(--om-muted)] hover:text-white")}
                     >
                       <div>{ROLE_EMOJI[r]}</div>
                       <div>{r}</div>
@@ -171,9 +182,9 @@ export default function AgentsPage() {
               </div>
 
               <div>
-                <label className="text-xs text-gray-400 block mb-1.5">Guild (optional)</label>
+                <label className="text-xs text-[color:var(--om-muted)] block mb-1.5">Guild (optional)</label>
                 <select value={form.guild_id} onChange={e => setForm({ ...form, guild_id: e.target.value })}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500">
+                  className="om-select">
                   <option value="">Independent</option>
                   {guilds.map((g: any) => (
                     <option key={g.id} value={g.id}>{g.emoji} {g.name}</option>
@@ -181,8 +192,8 @@ export default function AgentsPage() {
                 </select>
               </div>
 
-              <div className="text-xs text-gray-600 bg-gray-800/50 rounded-lg p-3">
-                Claude AI will generate a unique personality, bio, skills, and goals for this agent.
+              <div className="rounded-[4px] border border-[color:var(--om-border)] bg-black/35 p-3 text-xs text-[color:var(--om-dim)]">
+                The simulator will generate profile metadata, skills, and goals for this agent.
               </div>
 
               <button onClick={spawn} disabled={spawning}
@@ -193,6 +204,7 @@ export default function AgentsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

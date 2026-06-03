@@ -23,14 +23,14 @@ export default function AgentAvatar({ name, role, size = "md", showRole = false 
   return (
     <div className="relative inline-block">
       <div className={cn(
-        "rounded-full bg-gradient-to-br flex items-center justify-center font-bold text-white shrink-0",
+        "flex shrink-0 items-center justify-center rounded-[6px] border border-[color:var(--om-border)] bg-gradient-to-br font-mono font-bold text-white shadow-[inset_0_1px_rgba(255,214,170,.14)]",
         `bg-gradient-to-br ${gradient}`,
         sizes[size]
       )}>
         {initials}
       </div>
       {showRole && (
-        <div className="absolute -bottom-0.5 -right-0.5 text-xs leading-none">
+        <div className="absolute -bottom-1 -right-1 rounded-full border border-[color:var(--om-border)] bg-[color:var(--om-iron-950)] px-1 text-xs leading-none">
           {emoji}
         </div>
       )}

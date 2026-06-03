@@ -237,7 +237,7 @@ OpenMesh can run locally without Docker or Postgres:
 
 ```bash
 export OPENMESH_DB_MODE=sqlite
-export OPENMESH_SQLITE_PATH=./openmesh.db
+export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
 export LLM_MODE=offline
 export OPENMESH_SCHEDULER_ENABLED=0
 ```
@@ -287,11 +287,11 @@ The backend is required only for the API, WebSocket stream, and browser dashboar
 
 ```bash
 export OPENMESH_DB_MODE=sqlite
-export OPENMESH_SQLITE_PATH=./openmesh.db
+export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
 export LLM_MODE=offline
 export WARMUP_TICKS=0
 export OPENMESH_SCHEDULER_ENABLED=0
-uvicorn src.main:app --reload --port 8000
+PYTHONPATH=backend python -m uvicorn src.main:app --reload --port 8000
 ```
 
 The backend creates database tables and seeds the legacy dashboard simulation data when the database is empty.

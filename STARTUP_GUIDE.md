@@ -34,7 +34,7 @@ openmesh --help
 
 ```bash
 export OPENMESH_DB_MODE=sqlite
-export OPENMESH_SQLITE_PATH=./openmesh.db
+export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
 export LLM_MODE=offline
 export OPENMESH_SCHEDULER_ENABLED=0
 ```
@@ -116,11 +116,11 @@ WebSocket streaming, or the browser dashboard.
 
 ```bash
 export OPENMESH_DB_MODE=sqlite
-export OPENMESH_SQLITE_PATH=./openmesh.db
+export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
 export LLM_MODE=offline
 export WARMUP_TICKS=0
 export OPENMESH_SCHEDULER_ENABLED=0
-uvicorn src.main:app --reload --port 8000
+PYTHONPATH=backend python -m uvicorn src.main:app --reload --port 8000
 ```
 
 Check:

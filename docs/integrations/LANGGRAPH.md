@@ -25,10 +25,10 @@ Each LangGraph node is represented as an OpenMesh `service` node with `runtime: 
 Events use the normal OpenMesh collector path, so they appear in:
 
 ```bash
-python -m src.cli.openmesh events
-python -m src.cli.openmesh traces
-python -m src.cli.openmesh graph
-python -m src.cli.openmesh tui
+openmesh events
+openmesh traces
+openmesh graph
+openmesh tui
 ```
 
 Run the example:

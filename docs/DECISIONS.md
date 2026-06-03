@@ -26,6 +26,18 @@ LangGraph is the first framework integration because its node and edge execution
 
 LangGraph nodes emit lifecycle events. LangGraph transitions emit graph relationships. This proves the SDK -> collector -> persistence -> traces -> graph path without adding a parallel pipeline.
 
+## CrewAI Is The Second Reference Integration
+
+CrewAI is the second official integration because its agent, task, tool, and crew workflow concepts map directly onto OpenMesh nodes, spans, traces, and graph relationships.
+
+The CrewAI adapter observes metadata and lifecycle boundaries only. It does not execute tools, inspect credentials, analyze results, or create a parallel event pipeline.
+
+## Event-Derived Registries
+
+Discovery, workflow, MCP metadata, capability, and ecosystem registries are derived from stored OpenMesh events.
+
+OpenMesh v0.1 avoids manual registry mutation as the primary source of truth. This keeps the collector and event store at the center of the architecture.
+
 ## Active Analysis Is Future Work
 
 MCP endpoint health checks, capability discovery, tool inventory generation, authentication analysis, permission visibility, dependency mapping, trust-chain mapping, and security posture insights belong on the roadmap.

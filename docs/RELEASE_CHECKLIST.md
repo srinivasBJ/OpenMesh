@@ -23,7 +23,18 @@ python -m pip install -e .
 openmesh doctor
 openmesh discover
 openmesh ecosystem
+openmesh graph
+openmesh integrations
 openmesh tui --once
+```
+
+Example checks:
+
+```bash
+python examples/python_basic_agent.py
+python examples/python_async_agent.py
+python examples/crewai_basic.py
+python examples/langgraph_basic.py
 ```
 
 Backend checks:
@@ -84,6 +95,12 @@ python -m twine upload dist/*
 - [ ] Verify `openmesh doctor`.
 - [ ] Verify `openmesh discover`.
 - [ ] Verify `openmesh ecosystem`.
+- [ ] Verify `openmesh graph`.
+- [ ] Verify `openmesh trace <trace_id>`.
+- [ ] Verify `openmesh workflows`.
+- [ ] Verify `openmesh capabilities`.
+- [ ] Verify `openmesh integrations`.
 - [ ] Verify `openmesh tui --once`.
+- [ ] Verify SDK, async SDK, LangGraph, and CrewAI examples.
 - [ ] Tag the release in Git.
 - [ ] Update release notes.

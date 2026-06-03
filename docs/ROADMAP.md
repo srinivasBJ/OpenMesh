@@ -2,29 +2,27 @@
 
 ## Now
 
-- Stabilize collector validation and persistence.
-- Keep API, dashboard, and CLI reading from shared query services.
-- Make local development work without Docker through SQLite mode.
-- Add tests around the protocol core.
-- Keep the LangGraph reference integration small, SDK-backed, and observable through existing CLI/TUI/API consumers.
+- Prepare the v0.1 release package and documentation.
+- Keep API, dashboard, CLI, and TUI reading from shared query services.
+- Keep LangGraph and CrewAI integrations SDK-backed and observable through the existing collector path.
+- Keep tests focused on protocol, trace, graph, discovery, diagnostics, SDK, and integration behavior.
 
 ## Next
 
-- Package the CLI as a console script named `openmesh`.
+- Publish the Python package after clean wheel and TestPyPI validation.
 - Add richer process observation metadata such as working directory, duration, and environment hints.
 - Add trace/session filtering to CLI commands.
 - Add API tests around OpenMesh routes.
-- Add integration registry surfaces to CLI/API after the SDK registry shape settles.
+- Add release automation for package build, artifact inspection, and smoke tests.
 
 ## Later
 
-- Harden Python SDK packaging and configuration.
-- Add CrewAI, AutoGen, and OpenHands integrations after LangGraph proves the reference pattern.
-- Improve terminal UI after the plain CLI workflows are reliable.
-- Explore Active Analysis & MCP Discovery as a future layer:
+- Add AutoGen and OpenHands integrations after v0.1 stabilizes.
+- Improve terminal UI inspection depth after the plain CLI workflows are reliable.
+- Explore Active Analysis and MCP intelligence as a future layer:
   - MCP endpoint health checks
-  - Capability discovery
-  - Tool inventory generation
+  - Live capability discovery
+  - Tool inventory generation from live endpoints
   - Authentication analysis
   - Permission visibility
   - Dependency and trust-chain mapping

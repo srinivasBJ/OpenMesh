@@ -24,6 +24,11 @@ from openmesh import OpenMeshClient
 openmesh doctor
 openmesh discover
 openmesh ecosystem
+openmesh graph
+openmesh trace <trace_id>
+openmesh workflows
+openmesh capabilities
+openmesh integrations
 openmesh tui
 ```
 
@@ -64,6 +69,7 @@ Then validate:
 openmesh doctor
 openmesh discover
 openmesh ecosystem
+openmesh graph
 openmesh tui --once
 ```
 
@@ -76,6 +82,7 @@ python -m pip install -e .
 openmesh doctor
 openmesh discover
 openmesh ecosystem
+openmesh integrations
 openmesh tui --once
 python -c "from openmesh import OpenMeshClient; print(OpenMeshClient.__name__)"
 ```
@@ -87,3 +94,20 @@ Expected result:
 - `openmesh discover` and `openmesh ecosystem` render terminal inventories.
 - `openmesh tui --once` prints a terminal capture.
 - `from openmesh import OpenMeshClient` imports successfully.
+
+## Examples
+
+Run examples from the repository root after installing OpenMesh:
+
+```bash
+python examples/python_basic_agent.py
+python examples/python_async_agent.py
+python examples/crewai_basic.py
+```
+
+The LangGraph example requires LangGraph:
+
+```bash
+python -m pip install langgraph
+python examples/langgraph_basic.py
+```

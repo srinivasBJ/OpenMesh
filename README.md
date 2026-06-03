@@ -76,6 +76,8 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - `openmesh run -- <command>` process observation with process lifecycle events
 - Python SDK v0.1 for external programs to register agents and emit task/tool events through the collector
 - LangGraph reference integration for node lifecycle and transition observability
+- CrewAI reference integration for agent, task, tool, and workflow observability
+- Discovery, workflow, capability, MCP metadata, and unified ecosystem registries derived from observed events
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
@@ -279,8 +281,12 @@ openmesh run -- python3 -c "print('hello openmesh')"
 openmesh events
 openmesh traces
 openmesh graph
+openmesh trace <trace_id>
 openmesh discover
 openmesh ecosystem
+openmesh workflows
+openmesh capabilities
+openmesh integrations
 openmesh tui
 ```
 
@@ -300,6 +306,7 @@ Run the basic Python SDK example from the repository root:
 python examples/python_basic_agent.py
 python examples/python_async_agent.py
 python examples/langgraph_basic.py
+python examples/crewai_basic.py
 ```
 
 ## Development Workflow
@@ -356,6 +363,20 @@ This repository includes public-project workflow scaffolding:
 - `GET /api/stats`
 - `POST /api/simulation/tick`
 - `WS /ws`
+- `GET /api/openmesh/events`
+- `GET /api/openmesh/traces`
+- `GET /api/openmesh/traces/{trace_id}`
+- `GET /api/openmesh/graph`
+- `GET /api/openmesh/sessions`
+- `GET /api/openmesh/discovery`
+- `GET /api/openmesh/ecosystem`
+- `GET /api/openmesh/integrations`
+- `GET /api/openmesh/workflows`
+- `GET /api/openmesh/capabilities`
+- `GET /api/openmesh/mcp`
+- `GET /api/openmesh/mcp-config`
+- `GET /api/openmesh/registry`
+- `GET /api/openmesh/node-types`
 
 ## Roadmap
 

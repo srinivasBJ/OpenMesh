@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -14,7 +14,11 @@ from ..db.openmesh_events import list_openmesh_events
 from ..db.session import AsyncSessionLocal
 from ..services.discovery import get_discovery
 from ..services.ecosystem_registry import get_ecosystem_registry
-from ..services.ecosystem_snapshot import list_ecosystem_snapshots
+from ..services.ecosystem_snapshot import (
+    compare_snapshot_payloads,
+    inspect_ecosystem_snapshot,
+    list_ecosystem_snapshots,
+)
 from ..services.mcp_capabilities import get_capability_registry
 from ..services.mcp_config_discovery import get_mcp_config_registry
 from ..services.mcp_discovery import get_mcp_registry
@@ -65,11 +69,21 @@ class TuiSnapshot:
     ecosystem: dict[str, Any]
     registry_status: dict[str, Any]
     loaded_at: datetime
+    snapshot_details: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 async def load_snapshot() -> TuiSnapshot:
     async with AsyncSessionLocal() as db:
         registry_records = await list_openmesh_events(db, limit=5000)
+        snapshots = await list_ecosystem_snapshots(db, limit=100)
+        snapshot_details: dict[str, dict[str, Any]] = {}
+        for snapshot in snapshots[:5]:
+            snapshot_id = snapshot.get("snapshot_id")
+            if not snapshot_id:
+                continue
+            detail = await inspect_ecosystem_snapshot(db, snapshot_id)
+            if detail:
+                snapshot_details[snapshot_id] = detail
         return TuiSnapshot(
             health=await get_health(db),
             graph=await get_graph(db, limit=1000),
@@ -82,10 +96,11 @@ async def load_snapshot() -> TuiSnapshot:
             mcp_configs=await get_mcp_config_registry(db, limit=5000),
             capabilities=await get_capability_registry(db, limit=5000),
             workflows=await list_workflows(db, limit=5000),
-            snapshots=await list_ecosystem_snapshots(db, limit=100),
+            snapshots=snapshots,
             ecosystem=await get_ecosystem_registry(db, limit=5000),
             registry_status=build_registry_status(registry_records),
             loaded_at=datetime.utcnow(),
+            snapshot_details=snapshot_details,
         )
 
 
@@ -401,7 +416,7 @@ def workflow_rows(snapshot: TuiSnapshot) -> list[str]:
 def snapshot_rows(snapshot: TuiSnapshot) -> list[str]:
     if not snapshot.snapshots:
         return ["No ecosystem snapshots saved", "Run: openmesh snapshot create"]
-    rows = ["Snapshots"]
+    rows = ["Snapshots", "Press d for diff. In diff view, a/b cycle selection."]
     for item in snapshot.snapshots[:12]:
         counts = item.get("counts", {})
         rows.append(f"  {_short(item.get('snapshot_id'), 34)}")
@@ -427,6 +442,74 @@ def snapshot_rows(snapshot: TuiSnapshot) -> list[str]:
         ]
     )
     return rows
+
+
+def snapshot_diff_rows(
+    snapshot: TuiSnapshot, a_index: int = 1, b_index: int = 0
+) -> list[str]:
+    detail_ids = [
+        item.get("snapshot_id")
+        for item in snapshot.snapshots[:5]
+        if item.get("snapshot_id") in snapshot.snapshot_details
+    ]
+    if len(detail_ids) < 2:
+        return [
+            "Snapshot Diff",
+            "Need at least two saved snapshots.",
+            "Run: openmesh snapshot create",
+        ]
+    snapshot_a = detail_ids[a_index % len(detail_ids)]
+    snapshot_b = detail_ids[b_index % len(detail_ids)]
+    if snapshot_a == snapshot_b:
+        snapshot_b = detail_ids[(b_index + 1) % len(detail_ids)]
+    diff = compare_snapshot_payloads(
+        snapshot.snapshot_details[snapshot_a], snapshot.snapshot_details[snapshot_b]
+    )
+    summary = diff["summary"]
+    rows = [
+        "Snapshot Diff",
+        f"A {_short(snapshot_a, 32)}",
+        f"B {_short(snapshot_b, 32)}",
+        "Press a/b to cycle selections.",
+        "",
+        f"Nodes +{summary['nodes_added']} -{summary['nodes_removed']} ~{summary['nodes_changed']}",
+        f"Relationships +{summary['relationships_added']} -{summary['relationships_removed']} ~{summary['relationships_changed']}",
+        f"Workflows +{summary['workflows_added']} -{summary['workflows_removed']}",
+        f"MCP +{summary['mcp_servers_added']} -{summary['mcp_servers_removed']}",
+        f"Capabilities +{summary['capabilities_added']} -{summary['capabilities_removed']}",
+        f"Traces Δ{summary['trace_count_delta']:+}",
+        f"Sessions Δ{summary['session_count_delta']:+}",
+        f"Graph nodes Δ{summary['graph_node_delta']:+}",
+        f"Graph edges Δ{summary['graph_edge_delta']:+}",
+        "",
+        "Recent Relationship Changes",
+    ]
+    changed_relationships = (
+        diff["relationships"]["added"]
+        + diff["relationships"]["removed"]
+        + diff["relationships"]["changed"]
+    )
+    if not changed_relationships:
+        rows.append("  none")
+    for item in changed_relationships[:6]:
+        if "changed_fields" in item:
+            after = item.get("after", {})
+            rows.append(
+                f"  ~ {_short(_diff_row_title(after), 32)} "
+                f"{_short(','.join(item['changed_fields']), 18)}"
+            )
+        else:
+            rows.append(f"  - {_short(_diff_row_title(item), 48)}")
+    return rows
+
+
+def _diff_row_title(item: dict[str, Any]) -> str:
+    if item.get("source") and item.get("target") and item.get("type"):
+        return f"{item['source']} {item['type']} {item['target']}"
+    for key in ("name", "workflow", "server", "capability", "id"):
+        if item.get(key):
+            return str(item[key])
+    return "unknown"
 
 
 def ecosystem_rows(snapshot: TuiSnapshot) -> list[str]:
@@ -797,6 +880,9 @@ class OpenMeshTui(App):
         ("w", "show_workflows", "Workflows"),
         ("e", "show_ecosystem", "Ecosystem"),
         ("s", "show_snapshots", "Snapshots"),
+        ("d", "show_snapshot_diff", "Snapshot Diff"),
+        ("a", "select_snapshot_a", "Select A"),
+        ("b", "select_snapshot_b", "Select B"),
         ("enter", "inspect_selected", "Inspect"),
         ("q", "quit", "Quit"),
     ]
@@ -809,6 +895,8 @@ class OpenMeshTui(App):
         self.selected_trace_id: str | None = None
         self.selected_edge_id: str | None = None
         self.selected_node_id: str | None = None
+        self.snapshot_diff_a_index = 1
+        self.snapshot_diff_b_index = 0
         self.agent_node_rows: list[dict[str, Any]] = []
         self.network_edge_rows: list[dict[str, Any]] = []
 
@@ -855,7 +943,7 @@ class OpenMeshTui(App):
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [d diff] [a/b select] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -971,6 +1059,18 @@ class OpenMeshTui(App):
                 "\n".join(snapshot_rows(self.snapshot))
             )
             return
+        if self.lower_right_mode == "snapshot_diff":
+            self.query_one("#event-title", Static).update("SNAPSHOT DIFF")
+            self.query_one("#event-body", Static).update(
+                "\n".join(
+                    snapshot_diff_rows(
+                        self.snapshot,
+                        self.snapshot_diff_a_index,
+                        self.snapshot_diff_b_index,
+                    )
+                )
+            )
+            return
         if self.lower_right_mode == "trace" and self.selected_trace_id:
             self.query_one("#event-title", Static).update("TRACE DETAIL")
             self.query_one("#event-body", Static).update(
@@ -1048,6 +1148,37 @@ class OpenMeshTui(App):
 
     def action_show_snapshots(self) -> None:
         self.lower_right_mode = "snapshots"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_show_snapshot_diff(self) -> None:
+        self.lower_right_mode = "snapshot_diff"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_select_snapshot_a(self) -> None:
+        if self.snapshot and len(self.snapshot.snapshots) > 1:
+            self.snapshot_diff_a_index = (self.snapshot_diff_a_index + 1) % len(
+                self.snapshot.snapshots[:5]
+            )
+            if self.snapshot_diff_a_index == self.snapshot_diff_b_index:
+                self.snapshot_diff_a_index = (self.snapshot_diff_a_index + 1) % len(
+                    self.snapshot.snapshots[:5]
+                )
+        self.lower_right_mode = "snapshot_diff"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_select_snapshot_b(self) -> None:
+        if self.snapshot and len(self.snapshot.snapshots) > 1:
+            self.snapshot_diff_b_index = (self.snapshot_diff_b_index + 1) % len(
+                self.snapshot.snapshots[:5]
+            )
+            if self.snapshot_diff_b_index == self.snapshot_diff_a_index:
+                self.snapshot_diff_b_index = (self.snapshot_diff_b_index + 1) % len(
+                    self.snapshot.snapshots[:5]
+                )
+        self.lower_right_mode = "snapshot_diff"
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
 

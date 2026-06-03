@@ -86,6 +86,7 @@ from src.services.openmesh_queries import (
     trace_summary,
 )
 from src.services.ecosystem_snapshot import build_ecosystem_snapshot
+from src.services.ecosystem_snapshot import compare_snapshot_payloads
 from src.services.relationship_types import (
     relationship_definition,
     relationship_registry,
@@ -115,6 +116,7 @@ from src.cli.openmesh import (
     _print_mcp,
     _print_mcp_config,
     _print_snapshot_detail,
+    _print_snapshot_diff,
     _print_snapshots,
     _print_workflow_inspection,
     _print_workflows,
@@ -129,6 +131,7 @@ from src.cli.tui import (
     registry_rows,
     render_plain,
     ecosystem_rows,
+    snapshot_diff_rows,
     snapshot_rows,
     workflow_detail_rows,
     workflow_rows,
@@ -230,6 +233,87 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             session_id="sess_test",
             trace_id="trace_test",
         )
+
+    def make_snapshot_payload(
+        self,
+        snapshot_id: str,
+        *,
+        created_at: str,
+        nodes: list[dict],
+        relationships: list[dict],
+        workflows: list[dict] | None = None,
+        mcp_servers: list[dict] | None = None,
+        capabilities: list[dict] | None = None,
+        traces: list[dict] | None = None,
+        sessions: list[dict] | None = None,
+    ) -> dict:
+        workflows = workflows or []
+        mcp_servers = mcp_servers or []
+        capabilities = capabilities or []
+        traces = traces or []
+        sessions = sessions or []
+        counts = {
+            "events": sum(item.get("event_count", 0) for item in nodes),
+            "traces": len(traces),
+            "sessions": len(sessions),
+            "nodes": len(nodes),
+            "edges": len(relationships),
+            "relationships": len(relationships),
+            "agents": len([item for item in nodes if item.get("type") == "agent"]),
+            "tools": len([item for item in nodes if item.get("type") == "tool"]),
+            "workflows": len(workflows),
+            "processes": len([item for item in nodes if item.get("type") == "process"]),
+            "services": len([item for item in nodes if item.get("type") == "service"]),
+            "mcp_servers": len(mcp_servers),
+            "capabilities": len(capabilities),
+        }
+        return {
+            "snapshot_id": snapshot_id,
+            "schema_version": "0.1",
+            "created_at": created_at,
+            "counts": counts,
+            "graph_statistics": {
+                "node_count": len(nodes),
+                "edge_count": len(relationships),
+                "node_types": self._count_by_type(nodes),
+                "relationship_types": self._count_by_type(relationships),
+                "validation_status": "OK",
+            },
+            "ecosystem_statistics": {
+                "entity_count": len(nodes),
+                "relationship_count": len(relationships),
+                "groups": {"workflows": len(workflows)},
+                "validation_status": "OK",
+            },
+            "contents": {
+                "agents": [item for item in nodes if item.get("type") == "agent"],
+                "tools": [item for item in nodes if item.get("type") == "tool"],
+                "workflows": workflows,
+                "processes": [item for item in nodes if item.get("type") == "process"],
+                "services": [item for item in nodes if item.get("type") == "service"],
+                "mcp_servers": mcp_servers,
+                "mcp_configs": [],
+                "capabilities": capabilities,
+                "relationships": relationships,
+                "graph_provenance": {
+                    item["id"]: item.get("provenance", {}) for item in relationships
+                },
+                "traces": traces,
+                "sessions": sessions,
+                "graph": {"nodes": nodes, "edges": relationships},
+                "discovery": {},
+                "ecosystem": {},
+                "events": [],
+                "registry": {},
+            },
+        }
+
+    def _count_by_type(self, items: list[dict]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for item in items:
+            item_type = item.get("type") or "unknown"
+            counts[item_type] = counts.get(item_type, 0) + 1
+        return counts
 
     async def test_collector_accept_persists_valid_event(self):
         db = FakeAsyncSession()
@@ -1211,6 +1295,218 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(summary["counts"]["nodes"], 2)
         self.assertEqual(detail["contents"]["relationships"][0]["id"], "edge-1")
 
+    def test_snapshot_diff_reports_nodes_relationships_and_deltas(self):
+        before = self.make_snapshot_payload(
+            "snap_before",
+            created_at="2026-06-03T10:00:00Z",
+            nodes=[
+                {
+                    "id": "agent-a",
+                    "type": "agent",
+                    "name": "Research Agent",
+                    "event_count": 1,
+                    "trace_ids": ["trace_a"],
+                    "last_seen": "2026-06-03T10:00:00Z",
+                },
+                {
+                    "id": "tool:web_search",
+                    "type": "tool",
+                    "name": "web_search",
+                    "event_count": 1,
+                    "trace_ids": ["trace_a"],
+                    "last_seen": "2026-06-03T10:00:00Z",
+                },
+            ],
+            relationships=[
+                {
+                    "id": "agent-a:uses:tool:web_search",
+                    "source": "agent-a",
+                    "target": "tool:web_search",
+                    "type": "uses",
+                    "event_count": 1,
+                    "observation_count": 1,
+                    "trace_ids": ["trace_a"],
+                    "event_ids": ["evt_a"],
+                    "provenance": {
+                        "trace_ids": ["trace_a"],
+                        "event_ids": ["evt_a"],
+                        "first_seen": "2026-06-03T10:00:00Z",
+                        "last_seen": "2026-06-03T10:00:00Z",
+                    },
+                },
+                {
+                    "id": "agent-a:connects_to:mcp:old",
+                    "source": "agent-a",
+                    "target": "mcp:old",
+                    "type": "connects_to",
+                    "event_count": 1,
+                    "observation_count": 1,
+                    "trace_ids": ["trace_a"],
+                    "event_ids": ["evt_old"],
+                    "provenance": {
+                        "trace_ids": ["trace_a"],
+                        "event_ids": ["evt_old"],
+                    },
+                },
+            ],
+            workflows=[
+                {
+                    "id": "workflow:old",
+                    "workflow": "Old Flow",
+                    "framework": "LangGraph",
+                }
+            ],
+            mcp_servers=[{"id": "mcp:old", "server": "Old MCP"}],
+            capabilities=[{"server": "Old MCP", "capability": "old_tool"}],
+            traces=[{"trace_id": "trace_a"}],
+            sessions=[{"session_id": "sess_a"}],
+        )
+        after = self.make_snapshot_payload(
+            "snap_after",
+            created_at="2026-06-03T11:00:00Z",
+            nodes=[
+                {
+                    "id": "agent-a",
+                    "type": "agent",
+                    "name": "Research Agent",
+                    "event_count": 2,
+                    "trace_ids": ["trace_a", "trace_b"],
+                    "last_seen": "2026-06-03T11:00:00Z",
+                },
+                {
+                    "id": "process:pytest",
+                    "type": "process",
+                    "name": "pytest",
+                    "event_count": 1,
+                    "trace_ids": ["trace_b"],
+                    "last_seen": "2026-06-03T11:00:00Z",
+                },
+            ],
+            relationships=[
+                {
+                    "id": "agent-a:uses:tool:web_search",
+                    "source": "agent-a",
+                    "target": "tool:web_search",
+                    "type": "uses",
+                    "event_count": 2,
+                    "observation_count": 2,
+                    "trace_ids": ["trace_a", "trace_b"],
+                    "event_ids": ["evt_a", "evt_b"],
+                    "provenance": {
+                        "trace_ids": ["trace_a", "trace_b"],
+                        "event_ids": ["evt_a", "evt_b"],
+                        "first_seen": "2026-06-03T10:00:00Z",
+                        "last_seen": "2026-06-03T11:00:00Z",
+                    },
+                },
+                {
+                    "id": "agent-a:spawns:process:pytest",
+                    "source": "agent-a",
+                    "target": "process:pytest",
+                    "type": "spawns",
+                    "event_count": 1,
+                    "observation_count": 1,
+                    "trace_ids": ["trace_b"],
+                    "event_ids": ["evt_spawn"],
+                    "provenance": {
+                        "trace_ids": ["trace_b"],
+                        "event_ids": ["evt_spawn"],
+                    },
+                },
+            ],
+            workflows=[
+                {
+                    "id": "workflow:new",
+                    "workflow": "New Flow",
+                    "framework": "CrewAI",
+                }
+            ],
+            mcp_servers=[{"id": "mcp:new", "server": "New MCP"}],
+            capabilities=[{"server": "New MCP", "capability": "new_tool"}],
+            traces=[{"trace_id": "trace_a"}, {"trace_id": "trace_b"}],
+            sessions=[
+                {"session_id": "sess_a"},
+                {"session_id": "sess_b"},
+            ],
+        )
+
+        diff = compare_snapshot_payloads(before, after)
+
+        self.assertEqual(diff["summary"]["nodes_added"], 1)
+        self.assertEqual(diff["summary"]["nodes_removed"], 1)
+        self.assertEqual(diff["summary"]["nodes_changed"], 1)
+        self.assertEqual(diff["summary"]["relationships_added"], 1)
+        self.assertEqual(diff["summary"]["relationships_removed"], 1)
+        self.assertEqual(diff["summary"]["relationships_changed"], 1)
+        self.assertEqual(diff["trace_count_delta"], 1)
+        self.assertEqual(diff["session_count_delta"], 1)
+        self.assertEqual(diff["summary"]["graph_node_delta"], 0)
+        self.assertEqual(diff["summary"]["graph_edge_delta"], 0)
+        self.assertEqual(diff["workflows"]["added"][0]["workflow"], "New Flow")
+        self.assertEqual(diff["workflows"]["removed"][0]["workflow"], "Old Flow")
+        self.assertEqual(diff["mcp_servers"]["added"][0]["server"], "New MCP")
+        self.assertEqual(diff["capabilities"]["removed"][0]["capability"], "old_tool")
+
+    def test_snapshot_diff_preserves_relationship_provenance(self):
+        before = self.make_snapshot_payload(
+            "snap_before",
+            created_at="2026-06-03T10:00:00Z",
+            nodes=[],
+            relationships=[
+                {
+                    "id": "agent-a:uses:tool:web_search",
+                    "source": "agent-a",
+                    "target": "tool:web_search",
+                    "type": "uses",
+                    "event_count": 1,
+                    "observation_count": 1,
+                    "trace_ids": ["trace_a"],
+                    "event_ids": ["evt_a"],
+                    "provenance": {
+                        "trace_ids": ["trace_a"],
+                        "event_ids": ["evt_a"],
+                    },
+                }
+            ],
+        )
+        after = self.make_snapshot_payload(
+            "snap_after",
+            created_at="2026-06-03T11:00:00Z",
+            nodes=[],
+            relationships=[
+                {
+                    "id": "agent-a:uses:tool:web_search",
+                    "source": "agent-a",
+                    "target": "tool:web_search",
+                    "type": "uses",
+                    "event_count": 2,
+                    "observation_count": 2,
+                    "trace_ids": ["trace_a", "trace_b"],
+                    "event_ids": ["evt_a", "evt_b"],
+                    "provenance": {
+                        "trace_ids": ["trace_a", "trace_b"],
+                        "event_ids": ["evt_a", "evt_b"],
+                        "observations": [
+                            {"event_id": "evt_a", "trace_id": "trace_a"},
+                            {"event_id": "evt_b", "trace_id": "trace_b"},
+                        ],
+                    },
+                }
+            ],
+        )
+
+        diff = compare_snapshot_payloads(before, after)
+        changed = diff["relationships"]["changed"][0]
+
+        self.assertIn("provenance", changed["changed_fields"])
+        self.assertEqual(
+            changed["after"]["provenance"]["event_ids"], ["evt_a", "evt_b"]
+        )
+        self.assertEqual(
+            changed["after"]["provenance"]["trace_ids"], ["trace_a", "trace_b"]
+        )
+        self.assertEqual(len(changed["after"]["provenance"]["observations"]), 2)
+
     def test_workflow_validation_detects_duplicates_and_missing_metadata(self):
         validation = validate_workflow_entries(
             [
@@ -2142,6 +2438,104 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("snap_test", snapshot_output)
         self.assertIn("Latest Snapshot", snapshot_output)
 
+    def test_tui_snapshot_diff_rows_display_selected_pair(self):
+        before = self.make_snapshot_payload(
+            "snap_before",
+            created_at="2026-06-03T10:00:00Z",
+            nodes=[
+                {
+                    "id": "agent-a",
+                    "type": "agent",
+                    "name": "Research Agent",
+                    "event_count": 1,
+                }
+            ],
+            relationships=[],
+            traces=[{"trace_id": "trace_a"}],
+            sessions=[{"session_id": "sess_a"}],
+        )
+        after = self.make_snapshot_payload(
+            "snap_after",
+            created_at="2026-06-03T11:00:00Z",
+            nodes=[
+                {
+                    "id": "agent-a",
+                    "type": "agent",
+                    "name": "Research Agent",
+                    "event_count": 1,
+                },
+                {
+                    "id": "process:pytest",
+                    "type": "process",
+                    "name": "pytest",
+                    "event_count": 1,
+                },
+            ],
+            relationships=[],
+            traces=[{"trace_id": "trace_a"}, {"trace_id": "trace_b"}],
+            sessions=[{"session_id": "sess_a"}],
+        )
+        snapshot = TuiSnapshot(
+            health={"events": 2, "traces": 2, "nodes": 2, "edges": 0},
+            graph={"nodes": [], "edges": []},
+            traces=[],
+            events=[],
+            sessions=[],
+            integrations=[],
+            discovery={
+                "frameworks": [],
+                "agents": [],
+                "tools": [],
+                "capabilities": [],
+                "workflows": [],
+                "processes": [],
+                "services": [],
+            },
+            mcp_servers=[],
+            mcp_configs=[],
+            capabilities=[],
+            workflows=[],
+            snapshots=[
+                {
+                    "snapshot_id": after["snapshot_id"],
+                    "created_at": after["created_at"],
+                    "counts": after["counts"],
+                },
+                {
+                    "snapshot_id": before["snapshot_id"],
+                    "created_at": before["created_at"],
+                    "counts": before["counts"],
+                },
+            ],
+            ecosystem={
+                "entities": {
+                    "agents": [],
+                    "tools": [],
+                    "processes": [],
+                    "workflows": [],
+                    "mcp_servers": [],
+                    "mcp_configs": [],
+                    "capabilities": [],
+                },
+                "summary": {"entity_count": 0, "relationship_count": 0},
+                "validation": {"status": "OK"},
+            },
+            registry_status=build_registry_status([]),
+            loaded_at=datetime.utcnow(),
+            snapshot_details={
+                before["snapshot_id"]: before,
+                after["snapshot_id"]: after,
+            },
+        )
+
+        output = "\n".join(snapshot_diff_rows(snapshot))
+
+        self.assertIn("Snapshot Diff", output)
+        self.assertIn("snap_before", output)
+        self.assertIn("snap_after", output)
+        self.assertIn("Nodes +1 -0 ~0", output)
+        self.assertIn("Traces Δ+1", output)
+
     def test_cli_mcp_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
             _print_mcp(
@@ -2322,6 +2716,56 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Graph Statistics", printed)
         self.assertIn("Ecosystem Statistics", printed)
         self.assertIn("Relationships: 4", printed)
+
+    def test_cli_snapshot_diff_printer_displays_changes(self):
+        before = self.make_snapshot_payload(
+            "snap_before",
+            created_at="2026-06-03T10:00:00Z",
+            nodes=[
+                {
+                    "id": "agent-a",
+                    "type": "agent",
+                    "name": "Research Agent",
+                    "event_count": 1,
+                }
+            ],
+            relationships=[],
+            traces=[{"trace_id": "trace_a"}],
+            sessions=[{"session_id": "sess_a"}],
+        )
+        after = self.make_snapshot_payload(
+            "snap_after",
+            created_at="2026-06-03T11:00:00Z",
+            nodes=[
+                {
+                    "id": "agent-a",
+                    "type": "agent",
+                    "name": "Research Agent",
+                    "event_count": 1,
+                },
+                {
+                    "id": "process:pytest",
+                    "type": "process",
+                    "name": "pytest",
+                    "event_count": 1,
+                },
+            ],
+            relationships=[],
+            traces=[{"trace_id": "trace_a"}, {"trace_id": "trace_b"}],
+            sessions=[{"session_id": "sess_a"}],
+        )
+        diff = compare_snapshot_payloads(before, after)
+
+        with patch("builtins.print") as printer:
+            _print_snapshot_diff(diff)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Snapshot Diff", printed)
+        self.assertIn("nodes_added: 1", printed)
+        self.assertIn("Nodes Added", printed)
+        self.assertIn("pytest", printed)
 
     def test_cli_ecosystem_printer_displays_grouped_inventory(self):
         with patch("builtins.print") as printer:

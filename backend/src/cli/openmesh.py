@@ -17,6 +17,7 @@ from ..services.discovery import get_discovery
 from ..services.ecosystem_registry import get_ecosystem_registry
 from ..services.ecosystem_snapshot import (
     create_ecosystem_snapshot,
+    diff_ecosystem_snapshots,
     inspect_ecosystem_snapshot,
     list_ecosystem_snapshots,
 )
@@ -689,6 +690,128 @@ def _print_snapshot_summary(snapshot: dict[str, Any]) -> None:
         print(f"  {key}: {counts.get(key, 0)}")
 
 
+def _print_snapshot_diff(diff: dict[str, Any]) -> None:
+    snapshot_a = diff["snapshot_a"]
+    snapshot_b = diff["snapshot_b"]
+    summary = diff["summary"]
+    print("OpenMesh Snapshot Diff")
+    print()
+    print(
+        f"{snapshot_a.get('snapshot_id')} ({snapshot_a.get('created_at')}) "
+        f"-> {snapshot_b.get('snapshot_id')} ({snapshot_b.get('created_at')})"
+    )
+    print()
+    print("Summary")
+    for key in [
+        "nodes_added",
+        "nodes_removed",
+        "nodes_changed",
+        "relationships_added",
+        "relationships_removed",
+        "relationships_changed",
+        "workflows_added",
+        "workflows_removed",
+        "mcp_servers_added",
+        "mcp_servers_removed",
+        "capabilities_added",
+        "capabilities_removed",
+        "trace_count_delta",
+        "session_count_delta",
+        "graph_node_delta",
+        "graph_edge_delta",
+    ]:
+        print(f"  {key}: {summary.get(key, 0)}")
+    print()
+    _print_diff_items("Nodes Added", diff["nodes"].get("added", []))
+    _print_diff_items("Nodes Removed", diff["nodes"].get("removed", []))
+    _print_changed_items("Nodes Changed", diff["nodes"].get("changed", []))
+    _print_diff_items("Relationships Added", diff["relationships"].get("added", []))
+    _print_diff_items("Relationships Removed", diff["relationships"].get("removed", []))
+    _print_changed_items(
+        "Relationships Changed", diff["relationships"].get("changed", [])
+    )
+    _print_diff_items("Workflows Added", diff["workflows"].get("added", []))
+    _print_diff_items("Workflows Removed", diff["workflows"].get("removed", []))
+    _print_diff_items("MCP Servers Added", diff["mcp_servers"].get("added", []))
+    _print_diff_items("MCP Servers Removed", diff["mcp_servers"].get("removed", []))
+    _print_diff_items("Capabilities Added", diff["capabilities"].get("added", []))
+    _print_diff_items("Capabilities Removed", diff["capabilities"].get("removed", []))
+    print("Graph Statistics Delta")
+    for key, value in diff.get("graph_statistics_delta", {}).items():
+        if isinstance(value, dict) and {"before", "after", "delta"} <= set(value):
+            print(
+                f"  {key}: {value['before']} -> {value['after']} ({value['delta']:+})"
+            )
+        elif isinstance(value, dict):
+            print(f"  {key}:")
+            for nested_key, nested_value in value.items():
+                if isinstance(nested_value, dict) and "delta" in nested_value:
+                    print(
+                        f"    {nested_key}: {nested_value['before']} -> "
+                        f"{nested_value['after']} ({nested_value['delta']:+})"
+                    )
+                else:
+                    print(f"    {nested_key}: {nested_value}")
+        else:
+            print(f"  {key}: {value}")
+
+
+def _print_diff_items(title: str, items: list[dict[str, Any]]) -> None:
+    print(title)
+    if not items:
+        print("  none")
+        print()
+        return
+    for item in items[:20]:
+        print(f"  - {_diff_item_title(item)}")
+        provenance = item.get("provenance") or {}
+        if provenance:
+            print(
+                f"    traces: {_join_short(provenance.get('trace_ids', []), limit=3)}"
+            )
+            print(
+                f"    events: {_join_short(provenance.get('event_ids', []), limit=3)}"
+            )
+    if len(items) > 20:
+        print(f"  ... {len(items) - 20} more")
+    print()
+
+
+def _print_changed_items(title: str, items: list[dict[str, Any]]) -> None:
+    print(title)
+    if not items:
+        print("  none")
+        print()
+        return
+    for item in items[:20]:
+        print(f"  - {_diff_item_title(item)}")
+        print(f"    changed: {', '.join(item.get('changed_fields', []))}")
+        after = item.get("after", {})
+        provenance = after.get("provenance") or {}
+        if provenance:
+            print(
+                f"    traces: {_join_short(provenance.get('trace_ids', []), limit=3)}"
+            )
+            print(
+                f"    events: {_join_short(provenance.get('event_ids', []), limit=3)}"
+            )
+    if len(items) > 20:
+        print(f"  ... {len(items) - 20} more")
+    print()
+
+
+def _diff_item_title(item: dict[str, Any]) -> str:
+    source = item.get("source")
+    target = item.get("target")
+    relationship = item.get("type") or item.get("relationship_type")
+    if source and target and relationship:
+        return f"{source} {relationship} {target}"
+    for key in ("name", "workflow", "server", "capability", "id", "workflow_id"):
+        if item.get(key):
+            return str(item[key])
+    return str(item)
+
+
 def _utc_now() -> datetime:
     return datetime.utcnow()
 
@@ -893,6 +1016,21 @@ async def _snapshot_inspect(args: argparse.Namespace) -> int:
             print(f"OpenMesh snapshot not found: {args.snapshot_id}")
             return 1
         _print_snapshot_detail(snapshot)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _snapshot_diff(args: argparse.Namespace) -> int:
+    async def run(db):
+        diff = await diff_ecosystem_snapshots(db, args.snapshot_a, args.snapshot_b)
+        if not diff:
+            print(
+                "OpenMesh snapshot diff failed: "
+                f"{args.snapshot_a} or {args.snapshot_b} was not found"
+            )
+            return 1
+        _print_snapshot_diff(diff)
         return 0
 
     return await _with_db(run)
@@ -1226,6 +1364,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     snapshot_inspect.add_argument("snapshot_id", help="Snapshot id to inspect.")
     snapshot_inspect.set_defaults(func=_snapshot_inspect)
+    snapshot_diff = snapshot_subparsers.add_parser(
+        "diff", help="Compare two saved ecosystem snapshots."
+    )
+    snapshot_diff.add_argument("snapshot_a", help="Earlier/base snapshot id.")
+    snapshot_diff.add_argument("snapshot_b", help="Later/compare snapshot id.")
+    snapshot_diff.set_defaults(func=_snapshot_diff)
 
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
     doctor.set_defaults(func=_doctor)

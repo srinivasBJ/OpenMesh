@@ -67,6 +67,18 @@ stored events and sessions
 
 Snapshots are point-in-time exports of existing OpenMesh state. They do not create a second graph system and do not perform analysis. Snapshot contents preserve graph provenance, traces, sessions, relationships, and ecosystem registry outputs exactly as derived by the current reducers.
 
+Snapshot diff flow:
+
+```text
+openmesh_snapshots
+  -> snapshot payload A
+  -> snapshot payload B
+  -> compare nodes, relationships, workflows, MCP servers, capabilities, traces, sessions, and graph statistics
+  -> CLI, TUI, and API diff views
+```
+
+Snapshot diffs are derived from stored snapshot payloads. They preserve relationship provenance in diff output and do not create new storage, graph models, recommendations, or analysis layers.
+
 Registry flow:
 
 ```text

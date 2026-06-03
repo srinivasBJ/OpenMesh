@@ -42,6 +42,7 @@ The snapshot engine reuses existing reducers. It does not create a parallel grap
 openmesh snapshot create
 openmesh snapshot list
 openmesh snapshot inspect <snapshot_id>
+openmesh snapshot diff <snapshot_a> <snapshot_b>
 ```
 
 ## API
@@ -49,6 +50,7 @@ openmesh snapshot inspect <snapshot_id>
 ```text
 GET /api/openmesh/snapshots
 GET /api/openmesh/snapshots/{snapshot_id}
+GET /api/openmesh/snapshots/{snapshot_a}/diff/{snapshot_b}
 ```
 
 ## Storage
@@ -69,3 +71,5 @@ Each record includes:
 Press `s` in `openmesh tui` to browse saved snapshots.
 
 The snapshot view shows snapshot ids, creation time, node counts, relationship counts, trace counts, session counts, and latest snapshot statistics.
+
+Press `d` to view a snapshot diff. The TUI keeps the Network panel visible while the lower-right panel shows the selected A/B snapshot pair and high-level node, relationship, workflow, MCP, capability, trace, session, and graph-stat deltas. Use `a` and `b` to cycle the selected snapshots.

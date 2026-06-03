@@ -34,6 +34,7 @@ from ...services.mcp_capabilities import get_capability_registry
 from ...services.mcp_config_discovery import get_mcp_config_registry
 from ...services.mcp_discovery import get_mcp_registry
 from ...services.ecosystem_snapshot import (
+    diff_ecosystem_snapshots,
     inspect_ecosystem_snapshot,
     list_ecosystem_snapshots,
 )
@@ -709,6 +710,18 @@ async def inspect_openmesh_snapshot(
     if not snapshot:
         raise HTTPException(404, "OpenMesh snapshot not found")
     return snapshot
+
+
+@router.get("/openmesh/snapshots/{snapshot_a}/diff/{snapshot_b}")
+async def diff_openmesh_snapshots(
+    snapshot_a: str,
+    snapshot_b: str,
+    db: AsyncSession = Depends(get_db),
+):
+    diff = await diff_ecosystem_snapshots(db, snapshot_a, snapshot_b)
+    if not diff:
+        raise HTTPException(404, "OpenMesh snapshot not found")
+    return diff
 
 
 @router.get("/openmesh/ecosystem")

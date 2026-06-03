@@ -185,6 +185,8 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
         self.assertIn("crewai", integrations)
         self.assertIn("autogen", integrations)
         self.assertIn("openhands", integrations)
+        self.assertIn("claude-code", integrations)
+        self.assertIn("opencode", integrations)
         self.assertEqual(get_integration("langgraph")["name"], "LangGraph")
 
     def test_plugin_registry_discovers_integration_plugins(self):
@@ -195,11 +197,17 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
         self.assertIn("autogen", plugins)
         self.assertIn("openhands", plugins)
         self.assertIn("claude-code", plugins)
+        self.assertIn("opencode", plugins)
         self.assertEqual(plugins["langgraph"]["entrypoint"], "OpenMeshLangGraph")
         self.assertEqual(plugins["crewai"]["entrypoint"], "OpenMeshCrewAI")
-        self.assertEqual(plugins["autogen"]["status"], "planned")
-        self.assertEqual(plugins["openhands"]["status"], "planned")
-        self.assertEqual(plugins["claude-code"]["status"], "planned")
+        self.assertEqual(plugins["autogen"]["entrypoint"], "OpenMeshAutoGen")
+        self.assertEqual(plugins["openhands"]["entrypoint"], "OpenMeshOpenHands")
+        self.assertEqual(plugins["claude-code"]["entrypoint"], "OpenMeshClaudeCode")
+        self.assertEqual(plugins["opencode"]["entrypoint"], "OpenMeshOpenCode")
+        self.assertEqual(plugins["autogen"]["status"], "reference")
+        self.assertEqual(plugins["openhands"]["status"], "reference")
+        self.assertEqual(plugins["claude-code"]["status"], "reference")
+        self.assertEqual(plugins["opencode"]["status"], "reference")
         self.assertEqual(
             plugins["langgraph"]["registry_version"], PLUGIN_REGISTRY_VERSION
         )
@@ -214,7 +222,7 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
         self.assertEqual(metadata["registry_version"], PLUGIN_REGISTRY_VERSION)
         self.assertEqual(metadata["plugin_api_version"], PLUGIN_API_VERSION)
         self.assertEqual(metadata["entry_point_group"], "openmesh.plugins")
-        self.assertGreaterEqual(metadata["plugin_count"], 5)
+        self.assertGreaterEqual(metadata["plugin_count"], 6)
 
     def test_plugin_loader_loads_reference_integration_entrypoint(self):
         loaded = load_plugin("langgraph")

@@ -77,6 +77,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Python SDK v0.1 for external programs to register agents and emit task/tool events through the collector
 - LangGraph reference integration for node lifecycle and transition observability
 - CrewAI reference integration for agent, task, tool, and workflow observability
+- AutoGen, OpenHands, Claude Code, and OpenCode integration plugins for real-world ecosystem coverage
 - Plugin registry for discovering, validating, loading, and inspecting OpenMesh integrations
 - Discovery, workflow, capability, MCP metadata, and unified ecosystem registries derived from observed events
 - Ecosystem snapshots for freezing graph, discovery, traces, sessions, registries, and provenance at a point in time
@@ -349,6 +350,7 @@ Plugin metadata and validation are documented in [docs/PLUGINS.md](docs/PLUGINS.
 Graph exploration is documented in [docs/GRAPH_EXPLORATION.md](docs/GRAPH_EXPLORATION.md).
 Federation metadata exchange is documented in [docs/FEDERATION.md](docs/FEDERATION.md).
 Evaluation benchmarks are documented in [docs/EVALUATION.md](docs/EVALUATION.md).
+Integration guides are documented in [docs/integrations](docs/integrations).
 
 Run the basic Python SDK example from the repository root:
 
@@ -357,6 +359,10 @@ python examples/python_basic_agent.py
 python examples/python_async_agent.py
 python examples/langgraph_basic.py
 python examples/crewai_basic.py
+python examples/autogen_basic.py
+python examples/openhands_basic.py
+python examples/claude_code_basic.py
+python examples/opencode_basic.py
 ```
 
 ## Development Workflow

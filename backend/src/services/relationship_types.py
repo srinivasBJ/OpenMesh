@@ -48,6 +48,13 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
         source_types=("process",),
         target_types=("command",),
     ),
+    "modifies": RelationshipType(
+        type="modifies",
+        label="modifies",
+        description="An agent, process, workflow, or service modifies a file.",
+        source_types=("agent", "process", "workflow", "service"),
+        target_types=("file",),
+    ),
     "connects_to": RelationshipType(
         type="connects_to",
         label="connects_to",
@@ -104,6 +111,8 @@ EVENT_RELATIONSHIPS = {
     "process.started": "spawns",
     "process.completed": "executes",
     "process.failed": "executes",
+    "command.executed": "executes",
+    "file.modified": "modifies",
     "tool.call.started": "uses",
     "tool.call.completed": "uses",
     "tool.call.failed": "uses",

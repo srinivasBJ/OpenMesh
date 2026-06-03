@@ -9,14 +9,14 @@ from .registry import mark_integration_active
 
 
 OPENMESH_PLUGIN = {
-    "plugin_id": "claude-code",
-    "name": "Claude Code",
+    "plugin_id": "opencode",
+    "name": "OpenCode",
     "version": "0.1.0",
     "plugin_api_version": "1.0",
     "kind": "integration",
     "status": "reference",
-    "entrypoint": "OpenMeshClaudeCode",
-    "description": "Observe Claude Code sessions through command, file, tool, message, and hook metadata.",
+    "entrypoint": "OpenMeshOpenCode",
+    "description": "Observe OpenCode sessions through command, file, tool, and message metadata.",
     "capabilities": [
         "agent.lifecycle",
         "workflow.lifecycle",
@@ -28,56 +28,51 @@ OPENMESH_PLUGIN = {
         "graph.relationships",
     ],
     "metadata": {
-        "framework": "Claude Code",
+        "framework": "OpenCode",
         "protocol_version": "v1",
         "integration_mode": "cli_metadata",
     },
 }
 
 
-class OpenMeshClaudeCode(OpenMeshFrameworkRuntime):
-    """Claude Code integration for CLI-visible metadata and hook payloads."""
+class OpenMeshOpenCode(OpenMeshFrameworkRuntime):
+    """OpenCode integration for observable terminal coding-agent metadata."""
 
     def __init__(
         self,
         *,
         client: Optional[OpenMeshClient] = None,
-        workflow_name: str = "Claude Code Session",
+        workflow_name: str = "OpenCode Session",
         trace_id: Optional[str] = None,
         version: Optional[str] = None,
-        source: str = "claude-code",
+        source: str = "opencode",
     ) -> None:
         super().__init__(
-            framework_name="Claude Code",
-            runtime="claude-code",
+            framework_name="OpenCode",
+            runtime="opencode",
             workflow_name=workflow_name,
             client=client,
             trace_id=trace_id,
             version=version,
             source=source,
         )
-        mark_integration_active("claude-code")
+        mark_integration_active("opencode")
 
     def coding_agent(
         self,
         *,
-        id: str = "claude-code-agent",
-        name: str = "Claude Code Agent",
+        id: str = "opencode-agent",
+        name: str = "OpenCode Agent",
         role: str = "coding_agent",
     ) -> FrameworkAgentHandle:
         return self.agent(id=id, name=name, role=role)
 
-    def observe_hook_event(
+    def observe_event(
         self,
         payload: dict[str, Any],
         *,
         agent: Optional[FrameworkAgentHandle] = None,
     ) -> list[dict[str, Any]]:
-        """Convert a Claude Code hook-style payload into OpenMesh events.
-
-        The method records metadata only. It does not execute tools or inspect
-        credentials.
-        """
         active_agent = agent or self.coding_agent()
         events: list[dict[str, Any]] = []
         tool_name = payload.get("tool_name") or payload.get("tool")
@@ -86,9 +81,7 @@ class OpenMeshClaudeCode(OpenMeshFrameworkRuntime):
         message = payload.get("message") or payload.get("prompt")
         with self.workflow():
             if message:
-                peer = self.agent(
-                    id="claude-code-user", name="Claude Code User", role="user"
-                )
+                peer = self.agent(id="opencode-user", name="OpenCode User", role="user")
                 events.append(
                     self.message(source=peer, target=active_agent, content=message)
                 )

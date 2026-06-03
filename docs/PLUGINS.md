@@ -20,6 +20,15 @@ openmesh plugins validate langgraph
 `openmesh integrations` remains available as a compatibility view over plugins
 whose `kind` is `integration`.
 
+Current bundled integration plugins:
+
+- `langgraph`
+- `crewai`
+- `autogen`
+- `openhands`
+- `claude-code`
+- `opencode`
+
 ## Metadata
 
 ```python

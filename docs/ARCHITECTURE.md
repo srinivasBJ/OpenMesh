@@ -29,6 +29,10 @@ Core backend pieces:
 - `backend/src/sdk/client.py`: Python SDK entry point for agent, task, and tool events.
 - `backend/src/sdk/integrations/langgraph.py`: LangGraph reference integration.
 - `backend/src/sdk/integrations/crewai.py`: CrewAI reference integration.
+- `backend/src/sdk/integrations/autogen.py`: AutoGen reference integration.
+- `backend/src/sdk/integrations/openhands.py`: OpenHands reference integration.
+- `backend/src/sdk/integrations/claude_code.py`: Claude Code metadata integration.
+- `backend/src/sdk/integrations/opencode.py`: OpenCode metadata integration.
 - `backend/src/cli/openmesh.py`: terminal consumer and process observer.
 - `backend/src/cli/tui.py`: terminal control-room UI.
 

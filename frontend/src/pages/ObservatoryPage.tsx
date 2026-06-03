@@ -18,6 +18,12 @@ import { useWSStore } from "@/store/wsStore";
 type GraphNode = { id: string; name?: string; type?: string; event_count?: number; last_seen?: string };
 type GraphEdge = { id: string; source: string; target: string; type?: string; event_count?: number; last_seen?: string };
 type TraceSummary = { trace_id: string; status?: string; event_count?: number; started_at?: string };
+type LocalLlmMetrics = {
+  active_model_count?: number;
+  average_latency_ms?: number | null;
+  average_tokens_per_second?: number | null;
+  provider_uptime?: { connected?: number; total?: number; ratio?: number };
+};
 
 export default function ObservatoryPage() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: statsApi.get, refetchInterval: 30000 });
@@ -30,6 +36,11 @@ export default function ObservatoryPage() {
   const { data: traces = [] } = useQuery({
     queryKey: ["openmesh-traces"],
     queryFn: () => openmeshApi.traces(),
+    refetchInterval: 15000,
+  });
+  const { data: localLlm = {} } = useQuery<LocalLlmMetrics>({
+    queryKey: ["openmesh-local-llm-metrics"],
+    queryFn: () => openmeshApi.localLlmMetrics(),
     refetchInterval: 15000,
   });
   const { events } = useWSStore();
@@ -86,6 +97,13 @@ export default function ObservatoryPage() {
                 <MetricCell label="Workflows" value={workflowNodes.length} />
                 <MetricCell label="Processes" value={processNodes.length} />
                 <MetricCell label="Rel Activity" value={relationshipActivity} />
+                <MetricCell label="Local Models" value={localLlm.active_model_count || 0} />
+                <MetricCell label="LLM Latency" value={formatMetric(localLlm.average_latency_ms, "ms")} />
+                <MetricCell label="Tok/Sec" value={formatMetric(localLlm.average_tokens_per_second)} />
+                <MetricCell
+                  label="Provider Up"
+                  value={`${localLlm.provider_uptime?.connected || 0}/${localLlm.provider_uptime?.total || 0}`}
+                />
               </div>
             </div>
           </ControlPanel>
@@ -218,6 +236,12 @@ function MetricCell({ label, value }: { label: string; value: string | number })
       <div className="stat-label">{label}</div>
     </div>
   );
+}
+
+function formatMetric(value?: number | null, suffix = "") {
+  if (value === null || value === undefined) return "-";
+  const formatted = Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return suffix ? `${formatted}${suffix}` : formatted;
 }
 
 function StatusPill({ status, label }: { status: "active" | "idle" | "failed"; label: string }) {

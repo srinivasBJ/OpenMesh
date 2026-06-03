@@ -107,8 +107,9 @@ from src.services.openmesh_queries import (
     inspect_graph_workflow,
     trace_summary,
 )
-from src.providers.base import LLMResponse
+from src.providers.base import LLMResponse, ProviderModel, ProviderStatus
 from src.providers.settings import load_provider_settings
+from src.services.local_llm_metrics import get_local_llm_metrics
 from src.services.ecosystem_snapshot import build_ecosystem_snapshot
 from src.services.ecosystem_snapshot import compare_snapshot_payloads
 from src.services.evaluation import generate_synthetic_ecosystem, run_evaluation_suite
@@ -377,6 +378,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "OPENAI_MODEL": "openai-model",
                 "ANTHROPIC_MODEL": "anthropic-model",
                 "OPENROUTER_MODEL": "openrouter-model",
+                "OLLAMA_BASE_URL": "http://localhost:11434",
+                "LMSTUDIO_BASE_URL": "http://localhost:1234",
+                "VLLM_BASE_URL": "http://localhost:8000",
+                "OLLAMA_MODEL": "hermes3",
+                "LMSTUDIO_MODEL": "qwen3",
+                "VLLM_MODEL": "deepseek-r1",
             },
         ):
             settings = load_provider_settings()
@@ -387,6 +394,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(settings.openai_model, "openai-model")
         self.assertEqual(settings.anthropic_model, "anthropic-model")
         self.assertEqual(settings.openrouter_model, "openrouter-model")
+        self.assertEqual(settings.ollama_base_url, "http://localhost:11434")
+        self.assertEqual(settings.lmstudio_base_url, "http://localhost:1234")
+        self.assertEqual(settings.vllm_base_url, "http://localhost:8000")
+        self.assertEqual(settings.ollama_model, "hermes3")
+        self.assertEqual(settings.lmstudio_model, "qwen3")
+        self.assertEqual(settings.vllm_model, "deepseek-r1")
 
     async def test_research_demo_emits_llm_trace_and_graph_events(self):
         class FakeProvider:
@@ -395,6 +408,8 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             env_var = "OPENAI_API_KEY"
             model = "gpt-test"
             configured = True
+            endpoint = ""
+            is_local = False
 
             async def complete(self, **kwargs):
                 self.kwargs = kwargs
@@ -448,6 +463,130 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(uses_edges)
         self.assertEqual(uses_edges[0]["validation_status"], "valid")
         self.assertIn(result["trace_id"], uses_edges[0]["provenance"]["trace_ids"])
+
+    async def test_research_demo_emits_local_model_served_by_provider(self):
+        class FakeLocalProvider:
+            provider_id = "ollama"
+            display_name = "Ollama"
+            env_var = "OLLAMA_BASE_URL"
+            model = "hermes3"
+            configured = True
+            endpoint = "http://localhost:11434"
+            is_local = True
+
+            async def complete(self, **kwargs):
+                return LLMResponse(
+                    provider=self.provider_id,
+                    model=self.model,
+                    content="Local finding",
+                    usage={"eval_count": 20},
+                    latency_ms=100,
+                    tokens_per_second=200.0,
+                )
+
+        async def fake_complete_session(*args, **kwargs):
+            return None
+
+        db = FakeSessionStore()
+        with patch(
+            "src.services.llm_demo.complete_openmesh_session",
+            fake_complete_session,
+        ):
+            result = await run_research_demo(
+                db,
+                query="Map local model ecosystems",
+                provider=FakeLocalProvider(),  # type: ignore[arg-type]
+                model="hermes3",
+            )
+
+        records = [record for record in db.added if hasattr(record, "event_type")]
+        event_types = [record.event_type for record in records]
+        self.assertIn("model.loaded", event_types)
+        self.assertEqual(result["tokens_per_second"], 200.0)
+        graph = reduce_graph_state(records)
+        served_by_edges = [edge for edge in graph["edges"] if edge["type"] == "served_by"]
+        self.assertEqual(len(served_by_edges), 1)
+        self.assertEqual(served_by_edges[0]["validation_status"], "valid")
+        self.assertIn(result["trace_id"], served_by_edges[0]["provenance"]["trace_ids"])
+
+    async def test_local_llm_metrics_derives_latency_and_uptime(self):
+        provider_statuses = [
+            ProviderStatus(
+                provider="ollama",
+                name="Ollama",
+                configured=True,
+                connected=True,
+                status="connected",
+                message="connected",
+                endpoint="http://localhost:11434",
+                local=True,
+            ),
+            ProviderStatus(
+                provider="vllm",
+                name="vLLM",
+                configured=True,
+                connected=False,
+                status="failed",
+                message="unavailable",
+                endpoint="http://localhost:8000",
+                local=True,
+            ),
+        ]
+        local_models = [
+            ProviderModel(
+                provider="ollama",
+                provider_name="Ollama",
+                model="hermes3",
+                endpoint="http://localhost:11434",
+            )
+        ]
+
+        async def fake_discover():
+            return provider_statuses
+
+        async def fake_models():
+            return local_models
+
+        db = FakeAsyncSession()
+        event = make_openmesh_event(
+            "llm.response",
+            {
+                "node_id": "agent:local",
+                "node_type": "agent",
+                "name": "Local Agent",
+                "runtime": "test",
+            },
+            {"provider": "ollama", "model": "hermes3", "local": True},
+            target={
+                "node_id": "model:ollama:hermes3",
+                "node_type": "model",
+                "name": "hermes3",
+                "runtime": "ollama",
+                "metadata": {
+                    "provider": "ollama",
+                    "endpoint": "http://localhost:11434",
+                    "local": True,
+                },
+            },
+            metrics={"latency_ms": 100, "tokens_per_second": 200.0},
+        )
+        records = [record_from_event(event)]
+
+        async def fake_list_events(*args, **kwargs):
+            return records
+
+        with (
+            patch("src.services.local_llm_metrics.list_openmesh_events", fake_list_events),
+            patch("src.services.local_llm_metrics.discover_local_providers", fake_discover),
+            patch("src.services.local_llm_metrics.list_local_models", fake_models),
+        ):
+            metrics = await get_local_llm_metrics(db)  # type: ignore[arg-type]
+
+        self.assertEqual(metrics["active_model_count"], 1)
+        self.assertEqual(metrics["average_latency_ms"], 100)
+        self.assertEqual(metrics["average_tokens_per_second"], 200)
+        self.assertEqual(metrics["provider_uptime"]["connected"], 1)
+        self.assertEqual(metrics["provider_uptime"]["total"], 2)
 
     def make_exploration_graph(self):
         pairs = [

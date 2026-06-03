@@ -77,4 +77,5 @@ export const openmeshApi = {
   traceTimeline: (traceId: string, limit?: number) =>
     api.get<OpenMeshTimeline>(`/openmesh/timeline/trace/${encodeURIComponent(traceId)}`, { params: { limit } }).then(r => r.data),
   ecosystem: () => api.get("/openmesh/ecosystem").then(r => r.data),
+  localLlmMetrics: () => api.get("/openmesh/local-llm/metrics").then(r => r.data),
 };

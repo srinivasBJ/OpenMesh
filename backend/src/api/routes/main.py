@@ -30,6 +30,7 @@ from ...shared.openmesh_events import agent_node, make_openmesh_event
 from ...services.openmesh_collector import collector
 from ...services.discovery import get_discovery
 from ...services.ecosystem_registry import get_ecosystem_registry
+from ...services.local_llm_metrics import get_local_llm_metrics
 from ...services.mcp_capabilities import get_capability_registry
 from ...services.mcp_config_discovery import get_mcp_config_registry
 from ...services.mcp_discovery import get_mcp_registry
@@ -951,6 +952,14 @@ async def get_openmesh_ecosystem(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_ecosystem_registry(db, limit=limit)
+
+
+@router.get("/openmesh/local-llm/metrics")
+async def get_openmesh_local_llm_metrics(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_local_llm_metrics(db, limit=limit)
 
 
 # ── STATS ─────────────────────────────────────────────────────────────────────

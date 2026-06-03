@@ -35,6 +35,7 @@ async def run_research_demo(
     *,
     query: str,
     provider_id: str = "auto",
+    model: str | None = None,
     max_tokens: int = 500,
     provider: LLMProvider | None = None,
     broadcast: bool = False,
@@ -43,15 +44,21 @@ async def run_research_demo(
     if not selected_provider:
         raise ProviderConfigurationError(
             "No configured LLM provider found. Set OPENAI_API_KEY, "
-            "ANTHROPIC_API_KEY, or OPENROUTER_API_KEY."
+            "ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or start Ollama, "
+            "LM Studio, or vLLM locally."
         )
+    if model:
+        selected_provider.model = model.strip()
 
     session_id = f"sess_{uuid4().hex}"
     trace_id = f"trace_{uuid4().hex}"
     trace_span_id = f"span_{uuid4().hex}"
     llm_span_id = f"span_{uuid4().hex}"
     tool_span_id = f"span_{uuid4().hex}"
-    command = f"openmesh run-demo research --provider {selected_provider.provider_id}"
+    command = (
+        f"openmesh run-demo research --provider {selected_provider.provider_id} "
+        f"--model {selected_provider.model}"
+    )
     started_at = datetime.utcnow()
     model_node = _model_node(selected_provider)
     events: list[dict[str, Any]] = []
@@ -77,6 +84,29 @@ async def run_research_demo(
     )
     events.append(trace_started)
     root_event_id = trace_started["event_id"]
+    parent_event_id = root_event_id
+
+    if selected_provider.is_local:
+        loaded_event = await _emit(
+            db,
+            "model.loaded",
+            session_id=session_id,
+            trace_id=trace_id,
+            span_id=trace_span_id,
+            parent_event_id=root_event_id,
+            root_event_id=root_event_id,
+            source=model_node,
+            target=_provider_node(selected_provider),
+            payload={
+                "provider": selected_provider.provider_id,
+                "model": selected_provider.model,
+                "endpoint": selected_provider.endpoint,
+                "local": True,
+            },
+            broadcast=broadcast,
+        )
+        events.append(loaded_event)
+        parent_event_id = loaded_event["event_id"]
 
     request_event = await _emit(
         db,
@@ -85,7 +115,7 @@ async def run_research_demo(
         trace_id=trace_id,
         span_id=llm_span_id,
         parent_span_id=trace_span_id,
-        parent_event_id=root_event_id,
+        parent_event_id=parent_event_id,
         root_event_id=root_event_id,
         source=DEMO_AGENT,
         target=model_node,
@@ -94,6 +124,7 @@ async def run_research_demo(
             "model": selected_provider.model,
             "query": query,
             "prompt": _research_prompt(query),
+            "local": selected_provider.is_local,
         },
         metrics={"max_tokens": max_tokens, "temperature": 0.2},
         broadcast=broadcast,
@@ -130,8 +161,13 @@ async def run_research_demo(
                 "provider": response.provider,
                 "model": response.model,
                 "response": answer,
+                "local": selected_provider.is_local,
             },
-            metrics={"usage": usage, "latency_ms": latency_ms},
+            metrics={
+                "usage": usage,
+                "latency_ms": latency_ms,
+                "tokens_per_second": response.tokens_per_second,
+            },
             broadcast=broadcast,
         )
         events.append(response_event)
@@ -184,6 +220,7 @@ async def run_research_demo(
                 "provider": selected_provider.provider_id,
                 "model": selected_provider.model,
                 "error": str(exc),
+                "local": selected_provider.is_local,
             },
             severity="error",
             broadcast=broadcast,
@@ -232,6 +269,7 @@ async def run_research_demo(
         "response": answer,
         "usage": usage,
         "latency_ms": latency_ms,
+        "tokens_per_second": response.tokens_per_second if "response" in locals() else None,
         "events": events,
         "started_at": started_at.isoformat() + "Z",
         "ended_at": ended_at.isoformat() + "Z",
@@ -279,7 +317,25 @@ def _model_node(provider: LLMProvider) -> dict[str, Any]:
         "node_type": "model",
         "name": provider.model,
         "runtime": provider.provider_id,
-        "metadata": {"provider": provider.provider_id},
+        "metadata": {
+            "provider": provider.provider_id,
+            "endpoint": provider.endpoint,
+            "local": provider.is_local,
+        },
+    }
+
+
+def _provider_node(provider: LLMProvider) -> dict[str, Any]:
+    return {
+        "node_id": f"provider:{provider.provider_id}",
+        "node_type": "service",
+        "name": provider.display_name,
+        "runtime": provider.provider_id,
+        "metadata": {
+            "provider": provider.provider_id,
+            "endpoint": provider.endpoint,
+            "source": "local-llm" if provider.is_local else "llm-provider",
+        },
     }
 
 

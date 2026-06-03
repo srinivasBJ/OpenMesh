@@ -12,7 +12,7 @@ from uuid import uuid4
 from ..db.session import AsyncSessionLocal, init_db
 from ..db.openmesh_events import list_openmesh_events
 from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_session
-from ..providers import verify_providers
+from ..providers import discover_local_providers, list_local_models, verify_providers
 from ..services.openmesh_collector import collector
 from ..services.discovery import get_discovery
 from ..services.ecosystem_registry import get_ecosystem_registry
@@ -1423,6 +1423,26 @@ def _print_provider_statuses(statuses: list[Any]) -> None:
         print(f"{marker} {status.name} {status.message}")
 
 
+def _print_provider_discovery(statuses: list[Any]) -> None:
+    print("Local LLM Providers")
+    print()
+    for status in statuses:
+        marker = "✓" if status.connected else "✗"
+        endpoint = status.endpoint or status.message
+        print(f"{status.name:<11} {marker} {endpoint}")
+
+
+def _print_models(models: list[Any]) -> None:
+    if not models:
+        print("No local models discovered.")
+        print("Start Ollama, LM Studio, or vLLM and rerun: openmesh models list")
+        return
+    print("Local Models")
+    print()
+    for model in models:
+        print(f"{model.model:<32} {model.provider_name}  {model.endpoint or '-'}")
+
+
 def _print_research_demo_result(result: dict[str, Any]) -> None:
     print("OpenMesh Research Demo")
     print()
@@ -1432,6 +1452,8 @@ def _print_research_demo_result(result: dict[str, Any]) -> None:
     print(f"Session: {result['session_id']}")
     if result.get("latency_ms") is not None:
         print(f"Latency: {result['latency_ms']}ms")
+    if result.get("tokens_per_second") is not None:
+        print(f"Tokens/sec: {result['tokens_per_second']}")
     print()
     print("Events")
     for event_type in event_types_for_cli(result):
@@ -1860,10 +1882,33 @@ async def _providers(args: argparse.Namespace) -> int:
 async def _providers_verify(args: argparse.Namespace) -> int:
     statuses = await verify_providers()
     _print_provider_statuses(statuses)
-    configured_failures = [status for status in statuses if status.configured and not status.connected]
-    missing = [status for status in statuses if not status.configured]
-    if configured_failures or (getattr(args, "strict", False) and missing):
+    configured_failures = [
+        status
+        for status in statuses
+        if status.configured and not status.connected and not status.local
+    ]
+    strict = getattr(args, "strict", False)
+    strict_failures = [
+        status for status in statuses if not status.connected
+    ] if strict else []
+    if configured_failures or (strict and strict_failures):
         return 1
+    return 0
+
+
+async def _providers_discover(args: argparse.Namespace) -> int:
+    statuses = await discover_local_providers()
+    _print_provider_discovery(statuses)
+    return 0
+
+
+async def _models(args: argparse.Namespace) -> int:
+    return await _models_list(args)
+
+
+async def _models_list(args: argparse.Namespace) -> int:
+    models = await list_local_models()
+    _print_models(models)
     return 0
 
 
@@ -1979,6 +2024,7 @@ async def _run_demo_research(args: argparse.Namespace) -> int:
                 db,
                 query=args.query,
                 provider_id=args.provider,
+                model=args.model,
                 max_tokens=args.max_tokens,
                 broadcast=False,
             )
@@ -2493,6 +2539,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail when any provider is missing an API key.",
     )
     providers_verify.set_defaults(func=_providers_verify)
+    providers_discover = provider_subparsers.add_parser(
+        "discover", help="Discover local LLM providers on localhost."
+    )
+    providers_discover.set_defaults(func=_providers_discover)
+
+    models = subparsers.add_parser("models", help="Show locally served LLM models.")
+    models.set_defaults(func=_models)
+    model_subparsers = models.add_subparsers(dest="model_command")
+    models_list = model_subparsers.add_parser(
+        "list", help="List models exposed by local LLM providers."
+    )
+    models_list.set_defaults(func=_models_list)
 
     plugins = subparsers.add_parser("plugins", help="Show OpenMesh plugin status.")
     plugins.set_defaults(func=_plugins)
@@ -2614,9 +2672,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     research_demo.add_argument(
         "--provider",
-        choices=("auto", "openai", "anthropic", "openrouter"),
+        choices=(
+            "auto",
+            "openai",
+            "anthropic",
+            "openrouter",
+            "ollama",
+            "lmstudio",
+            "vllm",
+        ),
         default="auto",
         help="LLM provider to use. Defaults to first configured provider.",
+    )
+    research_demo.add_argument(
+        "--model",
+        default=None,
+        help="Override the provider model, for example hermes3 or qwen3.",
     )
     research_demo.add_argument(
         "--query",

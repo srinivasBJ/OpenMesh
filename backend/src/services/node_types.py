@@ -107,7 +107,7 @@ NODE_TYPES: dict[str, NodeType] = {
         "Model",
         "An AI model used by an agent or service.",
         "models",
-        COMMON_METADATA,
+        COMMON_METADATA + ("endpoint", "local"),
     ),
     "memory": NodeType(
         "memory",

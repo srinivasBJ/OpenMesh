@@ -76,6 +76,13 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
         source_types=("service", "mcp_server"),
         target_types=("capability",),
     ),
+    "served_by": RelationshipType(
+        type="served_by",
+        label="served_by",
+        description="A model is served by a local or remote provider service.",
+        source_types=("model",),
+        target_types=("service",),
+    ),
     "communicates_with": RelationshipType(
         type="communicates_with",
         label="communicates_with",
@@ -125,6 +132,7 @@ EVENT_RELATIONSHIPS = {
     "tool.call.failed": "uses",
     "llm.request": "uses",
     "llm.response": "uses",
+    "model.loaded": "served_by",
     "message.sent": "communicates_with",
     "collaboration.created": "collaborates_with",
     "delegation.created": "delegates_to",

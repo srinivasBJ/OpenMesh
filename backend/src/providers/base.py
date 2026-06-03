@@ -18,6 +18,17 @@ class ProviderStatus:
     connected: bool
     status: str
     message: str
+    endpoint: str | None = None
+    local: bool = False
+
+
+@dataclass(frozen=True)
+class ProviderModel:
+    provider: str
+    provider_name: str
+    model: str
+    endpoint: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -27,6 +38,7 @@ class LLMResponse:
     content: str
     usage: dict[str, Any] = field(default_factory=dict)
     latency_ms: int | None = None
+    tokens_per_second: float | None = None
 
 
 class LLMProvider:
@@ -34,6 +46,8 @@ class LLMProvider:
     display_name: str = ""
     env_var: str = ""
     default_model: str = ""
+    default_endpoint: str | None = None
+    is_local: bool = False
 
     def __init__(
         self,
@@ -41,10 +55,12 @@ class LLMProvider:
         api_key: str | None = None,
         model: str | None = None,
         timeout: float = 30.0,
+        endpoint: str | None = None,
     ) -> None:
         self.api_key = (api_key or "").strip()
         self.model = (model or self.default_model).strip()
         self.timeout = timeout
+        self.endpoint = (endpoint or self.default_endpoint or "").rstrip("/")
 
     @property
     def configured(self) -> bool:
@@ -69,6 +85,9 @@ class LLMProvider:
     ) -> LLMResponse:
         raise NotImplementedError
 
+    async def list_models(self) -> list[ProviderModel]:
+        return []
+
     def missing_status(self) -> ProviderStatus:
         return ProviderStatus(
             provider=self.provider_id,
@@ -77,6 +96,8 @@ class LLMProvider:
             connected=False,
             status="missing",
             message=f"{self.env_var} is not set",
+            endpoint=self.endpoint or None,
+            local=self.is_local,
         )
 
     def connected_status(self, message: str = "connected") -> ProviderStatus:
@@ -87,6 +108,8 @@ class LLMProvider:
             connected=True,
             status="connected",
             message=message,
+            endpoint=self.endpoint or None,
+            local=self.is_local,
         )
 
     def failed_status(self, error: Exception) -> ProviderStatus:
@@ -100,6 +123,8 @@ class LLMProvider:
             connected=False,
             status="failed",
             message=message,
+            endpoint=self.endpoint or None,
+            local=self.is_local,
         )
 
 

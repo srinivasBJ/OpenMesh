@@ -74,6 +74,11 @@ from src.services.ecosystem_registry import (
     build_ecosystem_registry,
     validate_ecosystem_entities,
 )
+from src.services.federation import (
+    build_federation_registry,
+    discover_federation_peers,
+    query_federation_registry,
+)
 from src.services.openmesh_doctor import (
     build_capability_diagnostics,
     build_ecosystem_diagnostics,
@@ -135,6 +140,9 @@ from src.shared.openmesh_events import agent_node, make_openmesh_event
 from src.cli.openmesh import (
     _print_capabilities,
     _print_ecosystem,
+    _print_federation,
+    _print_federation_inspection,
+    _print_federation_peers,
     _print_mcp,
     _print_mcp_config,
     _print_plugin_detail,
@@ -851,7 +859,18 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("uses", relationship_types)
         self.assertIn("spawns", relationship_types)
+        self.assertIn("federates_with", relationship_types)
+        self.assertEqual(
+            node_type_definition("federation_node")["display_name"],
+            "Federation Node",
+        )
         self.assertEqual(relationship_definition("uses")["name"], "uses")
+        self.assertEqual(
+            validate_relationship(
+                "federates_with", "federation_node", "federation_node"
+            )["status"],
+            "valid",
+        )
         self.assertEqual(
             relationship_type_for(
                 "tool.call.started", source_type="agent", target_type="tool"
@@ -864,6 +883,47 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             ),
             "spawns",
         )
+
+    def test_federation_registry_builds_metadata_only_views(self):
+        event = self.make_event("message.sent")
+        records = [record_from_event(event, timestamp=datetime(2026, 6, 3, 10, 0, 0))]
+        registry = build_federation_registry(
+            records,
+            [],
+            [],
+            peers=[
+                {
+                    "instance_id": "remote-a",
+                    "name": "Remote A",
+                    "organization": "research",
+                    "cluster": "agents",
+                    "endpoint": "https://remote-a.example/openmesh",
+                }
+            ],
+        )
+        peer_query = query_federation_registry(registry, "federation peers")
+
+        self.assertEqual(registry["local_node"]["type"], "federation_node")
+        self.assertEqual(registry["peers"][0]["id"], "federation:remote-a")
+        self.assertEqual(registry["relationships"][0]["type"], "federates_with")
+        self.assertTrue(registry["policy"]["metadata_only"])
+        self.assertFalse(registry["policy"]["remote_execution"])
+        self.assertEqual(registry["snapshot"]["counts"]["instances"], 2)
+        self.assertEqual(registry["timeline"]["scope"], "federation")
+        self.assertTrue(registry["replay"]["source"]["metadata_only"])
+        self.assertEqual(peer_query["count"], 1)
+
+    def test_federation_discovery_parses_json_and_csv_peers(self):
+        json_peers = discover_federation_peers(
+            '[{"peer_id":"remote-json","endpoint":"https://remote.example"}]'
+        )
+        csv_peers = discover_federation_peers(
+            "https://one.example, https://two.example"
+        )
+
+        self.assertEqual(json_peers[0]["instance_id"], "remote-json")
+        self.assertEqual(len(csv_peers), 2)
+        self.assertEqual(csv_peers[0]["status"], "configured")
 
     def test_relationship_registry_validates_types_and_pairs(self):
         valid = validate_relationship("uses", "agent", "tool")
@@ -3586,6 +3646,47 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("OpenMesh Plugin Validation: langgraph", printed)
         self.assertIn("node.lifecycle", printed)
         self.assertIn("loadable: yes", printed)
+
+    def test_cli_federation_printers_display_metadata(self):
+        registry = build_federation_registry(
+            [],
+            [],
+            [],
+            peers=[
+                {
+                    "instance_id": "remote-a",
+                    "name": "Remote A",
+                    "organization": "research",
+                    "cluster": "agents",
+                    "endpoint": "https://remote-a.example/openmesh",
+                }
+            ],
+        )
+        inspection = {
+            "node": registry["peers"][0],
+            "node_id": registry["peers"][0]["id"],
+            "name": registry["peers"][0]["name"],
+            "status": registry["peers"][0]["status"],
+            "organization": registry["peers"][0]["organization"],
+            "cluster": registry["peers"][0]["cluster"],
+            "endpoint": registry["peers"][0]["endpoint"],
+            "capabilities": registry["peers"][0]["capabilities"],
+            "relationships": registry["relationships"],
+            "snapshot": registry["snapshot"],
+            "policy": registry["policy"],
+        }
+        with patch("builtins.print") as printer:
+            _print_federation(registry)
+            _print_federation_peers(registry["peers"])
+            _print_federation_inspection(inspection)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Federation", printed)
+        self.assertIn("OpenMesh Federation Peers", printed)
+        self.assertIn("Remote A", printed)
+        self.assertIn("metadata_only", printed)
 
     def test_cli_workflow_printer_displays_metadata(self):
         with patch("builtins.print") as printer:

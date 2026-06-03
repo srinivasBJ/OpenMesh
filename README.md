@@ -84,6 +84,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Historical timelines for navigating ecosystem, node, workflow, and trace evolution over time
 - Ecosystem replays for playing back timeline, snapshot, trace, and workflow evolution without creating a second graph model
 - Structured query engine for asking graph, trace, session, snapshot, MCP, and capability questions from existing OpenMesh state
+- Federation metadata registry for multiple OpenMesh instances, peers, snapshots, timelines, and replay summaries
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
@@ -327,6 +328,10 @@ openmesh plugins
 openmesh plugins list
 openmesh plugins inspect langgraph
 openmesh plugins validate langgraph
+openmesh federation
+openmesh federation list
+openmesh federation inspect
+openmesh federation peers
 openmesh tui
 ```
 
@@ -341,6 +346,7 @@ python -m pip install openmesh
 See [docs/INSTALLATION.md](docs/INSTALLATION.md) and [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
 Plugin metadata and validation are documented in [docs/PLUGINS.md](docs/PLUGINS.md).
 Graph exploration is documented in [docs/GRAPH_EXPLORATION.md](docs/GRAPH_EXPLORATION.md).
+Federation metadata exchange is documented in [docs/FEDERATION.md](docs/FEDERATION.md).
 
 Run the basic Python SDK example from the repository root:
 
@@ -416,6 +422,9 @@ This repository includes public-project workflow scaffolding:
 - `GET /api/openmesh/discovery`
 - `GET /api/openmesh/ecosystem`
 - `GET /api/openmesh/integrations`
+- `GET /api/openmesh/federation`
+- `GET /api/openmesh/federation/peers`
+- `GET /api/openmesh/federation/inspect/{node_id}`
 - `GET /api/openmesh/workflows`
 - `GET /api/openmesh/capabilities`
 - `GET /api/openmesh/mcp`

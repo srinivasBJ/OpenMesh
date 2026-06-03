@@ -73,6 +73,21 @@ NODE_TYPES: dict[str, NodeType] = {
         "frameworks",
         COMMON_METADATA,
     ),
+    "federation_node": NodeType(
+        "federation_node",
+        "Federation Node",
+        "An OpenMesh instance participating in metadata federation.",
+        "federation",
+        COMMON_METADATA
+        + (
+            "instance_id",
+            "organization",
+            "cluster",
+            "endpoint",
+            "protocol_version",
+            "federation_schema_version",
+        ),
+    ),
     "mcp_server": NodeType(
         "mcp_server",
         "MCP Server",

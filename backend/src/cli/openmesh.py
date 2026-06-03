@@ -21,6 +21,11 @@ from ..services.ecosystem_snapshot import (
     inspect_ecosystem_snapshot,
     list_ecosystem_snapshots,
 )
+from ..services.federation import (
+    get_federation_peers,
+    get_federation_registry,
+    inspect_federation_node,
+)
 from ..services.mcp_config_discovery import (
     get_mcp_config_registry,
     register_discovered_mcp_configs,
@@ -1028,6 +1033,96 @@ def _replay_frame(frame: dict[str, Any]) -> str:
     return f"[{index}] {timestamp} {action} {description}"
 
 
+def _print_federation(registry: dict[str, Any]) -> None:
+    local = registry.get("local_node", {})
+    snapshot = registry.get("snapshot", {})
+    counts = snapshot.get("counts", {})
+    replay = registry.get("replay", {})
+    replay_state = replay.get("state", {})
+    policy = registry.get("policy", {})
+    print("OpenMesh Federation")
+    print()
+    print(f"schema_version: {registry.get('schema_version')}")
+    print(f"protocol_version: {registry.get('protocol_version')}")
+    print(f"local_node: {local.get('name')} ({local.get('id')})")
+    print(f"organization: {local.get('organization')}")
+    print(f"cluster: {local.get('cluster')}")
+    print()
+    print(f"peers: {len(registry.get('peers', []))}")
+    print(f"relationships: {len(registry.get('relationships', []))}")
+    print(f"snapshot_instances: {counts.get('instances', 0)}")
+    print(f"timeline_entries: {len(registry.get('timeline', {}).get('timeline', []))}")
+    print(f"replay_frames: {replay_state.get('frame_count', 0)}")
+    print()
+    print("Policy")
+    for key in (
+        "metadata_only",
+        "remote_execution",
+        "remote_control",
+        "code_execution",
+        "security_analysis",
+    ):
+        print(f"  {key}: {policy.get(key)}")
+
+
+def _print_federation_peers(
+    peers: list[dict[str, Any]], *, title: str = "OpenMesh Federation Peers"
+) -> None:
+    print(title)
+    print()
+    if not peers:
+        print("No federation peers configured.")
+        return
+    print(f"{'peer':<34} {'status':<12} {'org':<16} {'cluster':<16} endpoint")
+    for peer in peers:
+        print(
+            f"{_short(peer.get('id'), 34):<34} "
+            f"{_short(peer.get('status'), 12):<12} "
+            f"{_short(peer.get('organization'), 16):<16} "
+            f"{_short(peer.get('cluster'), 16):<16} "
+            f"{peer.get('endpoint') or '-'}"
+        )
+
+
+def _print_federation_inspection(inspection: dict[str, Any]) -> None:
+    node = inspection.get("node", {})
+    policy = inspection.get("policy", {})
+    print(f"OpenMesh Federation Node: {inspection.get('name')}")
+    print()
+    print(f"node_id: {inspection.get('node_id')}")
+    print(f"status: {inspection.get('status')}")
+    print(f"organization: {inspection.get('organization')}")
+    print(f"cluster: {inspection.get('cluster')}")
+    print(f"endpoint: {inspection.get('endpoint') or '-'}")
+    print(f"type: {node.get('type') or node.get('node_type')}")
+    print()
+    print("Capabilities")
+    capabilities = inspection.get("capabilities", [])
+    if not capabilities:
+        print("  none")
+    for capability in capabilities:
+        print(f"  - {capability}")
+    print()
+    print("Relationships")
+    relationships = inspection.get("relationships", [])
+    if not relationships:
+        print("  none")
+    for relationship in relationships[:20]:
+        print(
+            f"  {relationship.get('source')} --{relationship.get('type')}--> "
+            f"{relationship.get('target')}"
+        )
+    print()
+    print("Snapshot")
+    counts = inspection.get("snapshot", {}).get("counts", {})
+    for key, value in counts.items():
+        print(f"  {key}: {value}")
+    print()
+    print("Policy")
+    for key, value in policy.items():
+        print(f"  {key}: {value}")
+
+
 def _print_saved_queries() -> None:
     print("OpenMesh Saved Queries")
     print()
@@ -1488,6 +1583,48 @@ async def _plugins_validate(args: argparse.Namespace) -> int:
     return 1 if validation.get("status") == "invalid" else 0
 
 
+async def _federation(args: argparse.Namespace) -> int:
+    async def run(db):
+        registry = await get_federation_registry(db, limit=args.limit)
+        _print_federation(registry)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _federation_list(args: argparse.Namespace) -> int:
+    async def run(db):
+        registry = await get_federation_registry(db, limit=args.limit)
+        _print_federation_peers(
+            [registry.get("local_node", {}), *registry.get("peers", [])],
+            title="OpenMesh Federation Nodes",
+        )
+        return 0
+
+    return await _with_db(run)
+
+
+async def _federation_peers(args: argparse.Namespace) -> int:
+    async def run(db):
+        peers = await get_federation_peers(db, limit=args.limit)
+        _print_federation_peers(peers)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _federation_inspect(args: argparse.Namespace) -> int:
+    async def run(db):
+        inspection = await inspect_federation_node(db, args.node_id, limit=args.limit)
+        if not inspection:
+            print(f"OpenMesh federation node not found: {args.node_id}")
+            return 1
+        _print_federation_inspection(inspection)
+        return 0
+
+    return await _with_db(run)
+
+
 async def _discover(args: argparse.Namespace) -> int:
     async def run(db):
         discovery = await get_discovery(db, limit=args.limit)
@@ -1939,6 +2076,54 @@ def build_parser() -> argparse.ArgumentParser:
     )
     plugins_validate.add_argument("plugin_id", help="Plugin id to validate.")
     plugins_validate.set_defaults(func=_plugins_validate)
+
+    federation = subparsers.add_parser(
+        "federation", help="Show OpenMesh federation metadata."
+    )
+    federation.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive federation metadata from.",
+    )
+    federation.set_defaults(func=_federation)
+    federation_subparsers = federation.add_subparsers(dest="federation_command")
+    federation_list = federation_subparsers.add_parser(
+        "list", help="List local and peer federation nodes."
+    )
+    federation_list.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive federation metadata from.",
+    )
+    federation_list.set_defaults(func=_federation_list)
+    federation_inspect = federation_subparsers.add_parser(
+        "inspect", help="Inspect the local or a peer federation node."
+    )
+    federation_inspect.add_argument(
+        "node_id",
+        nargs="?",
+        default=None,
+        help="Federation node id, name, or instance id. Defaults to local node.",
+    )
+    federation_inspect.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive federation metadata from.",
+    )
+    federation_inspect.set_defaults(func=_federation_inspect)
+    federation_peers = federation_subparsers.add_parser(
+        "peers", help="List configured federation peers."
+    )
+    federation_peers.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive federation metadata from.",
+    )
+    federation_peers.set_defaults(func=_federation_peers)
 
     discover = subparsers.add_parser(
         "discover", help="Show observed OpenMesh ecosystem registry."

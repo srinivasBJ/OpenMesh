@@ -38,6 +38,11 @@ from ...services.ecosystem_snapshot import (
     inspect_ecosystem_snapshot,
     list_ecosystem_snapshots,
 )
+from ...services.federation import (
+    get_federation_peers,
+    get_federation_registry,
+    inspect_federation_node,
+)
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
 from ...services.openmesh_queries import (
     explore_node,
@@ -728,6 +733,34 @@ async def get_openmesh_session(session_id: str, db: AsyncSession = Depends(get_d
 @router.get("/openmesh/integrations")
 async def get_openmesh_integrations():
     return {"integrations": list_integrations()}
+
+
+@router.get("/openmesh/federation")
+async def get_openmesh_federation(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_federation_registry(db, limit=limit)
+
+
+@router.get("/openmesh/federation/peers")
+async def get_openmesh_federation_peers(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"peers": await get_federation_peers(db, limit=limit)}
+
+
+@router.get("/openmesh/federation/inspect/{node_id:path}")
+async def inspect_openmesh_federation_node(
+    node_id: str,
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    inspection = await inspect_federation_node(db, node_id, limit=limit)
+    if not inspection:
+        raise HTTPException(404, "OpenMesh federation node not found")
+    return inspection
 
 
 @router.get("/openmesh/discovery")

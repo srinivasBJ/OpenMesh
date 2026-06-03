@@ -90,6 +90,13 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
         source_types=("service", "workflow"),
         target_types=("service", "workflow"),
     ),
+    "federates_with": RelationshipType(
+        type="federates_with",
+        label="federates_with",
+        description="One OpenMesh federation node exchanges ecosystem metadata with another federation node.",
+        source_types=("federation_node",),
+        target_types=("federation_node",),
+    ),
 }
 
 
@@ -105,6 +112,7 @@ EVENT_RELATIONSHIPS = {
     "node.transition": "transitions_to",
     "mcp.config.discovered": "defines",
     "mcp.capability.discovered": "exposes",
+    "federation.peer.discovered": "federates_with",
 }
 
 

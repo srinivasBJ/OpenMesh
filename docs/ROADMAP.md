@@ -12,6 +12,7 @@
 - Keep replays derived from timeline and snapshot payloads rather than introducing a second timeline or graph model.
 - Keep structured queries derived from graph, discovery, provenance, trace, session, timeline, and snapshot read models.
 - Keep federation metadata-only and derived from protocol, graph, snapshot, timeline, and replay read models.
+- Keep evaluation measurement-only until baseline costs are understood.
 
 ## Next
 
@@ -23,6 +24,7 @@
 - Add replay filtering and richer TUI playback controls after the stateless replay read model stabilizes.
 - Add query filters, aliases, and saved-query management after the structured query grammar stabilizes.
 - Add federation import/export and signed metadata exchange after metadata-only federation stabilizes.
+- Establish performance baselines from synthetic 100, 1,000, and 10,000 node ecosystem evaluations.
 - Add API tests around OpenMesh routes.
 - Add release automation for package build, artifact inspection, and smoke tests.
 

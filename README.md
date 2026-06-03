@@ -332,6 +332,7 @@ openmesh federation
 openmesh federation list
 openmesh federation inspect
 openmesh federation peers
+openmesh evaluate --sizes 100 1000 10000
 openmesh tui
 ```
 
@@ -347,6 +348,7 @@ See [docs/INSTALLATION.md](docs/INSTALLATION.md) and [docs/RELEASE_CHECKLIST.md]
 Plugin metadata and validation are documented in [docs/PLUGINS.md](docs/PLUGINS.md).
 Graph exploration is documented in [docs/GRAPH_EXPLORATION.md](docs/GRAPH_EXPLORATION.md).
 Federation metadata exchange is documented in [docs/FEDERATION.md](docs/FEDERATION.md).
+Evaluation benchmarks are documented in [docs/EVALUATION.md](docs/EVALUATION.md).
 
 Run the basic Python SDK example from the repository root:
 

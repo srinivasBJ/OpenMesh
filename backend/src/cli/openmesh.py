@@ -21,6 +21,11 @@ from ..services.ecosystem_snapshot import (
     inspect_ecosystem_snapshot,
     list_ecosystem_snapshots,
 )
+from ..services.evaluation import (
+    DEFAULT_EVALUATION_SIZES,
+    report_to_json,
+    run_evaluation_suite,
+)
 from ..services.federation import (
     get_federation_peers,
     get_federation_registry,
@@ -1123,6 +1128,37 @@ def _print_federation_inspection(inspection: dict[str, Any]) -> None:
         print(f"  {key}: {value}")
 
 
+def _print_evaluation(report: dict[str, Any]) -> None:
+    print("OpenMesh Evaluation")
+    print()
+    print(f"schema_version: {report.get('schema_version')}")
+    print(f"generated_at: {report.get('generated_at')}")
+    print(f"sizes: {', '.join(str(size) for size in report.get('sizes', []))}")
+    print()
+    for benchmark in report.get("benchmarks", []):
+        graph_size = benchmark.get("graph_size", {})
+        print(
+            f"Synthetic ecosystem: {benchmark.get('node_count')} nodes, "
+            f"{benchmark.get('event_count')} events, "
+            f"{benchmark.get('trace_count')} traces, "
+            f"graph {graph_size.get('nodes', 0)} nodes / {graph_size.get('edges', 0)} edges"
+        )
+        print(f"{'metric':<24} {'time_ms':>12} {'peak_mb':>10} details")
+        for metric in benchmark.get("metrics", []):
+            print(
+                f"{metric.get('name', '-'):<24} "
+                f"{metric.get('elapsed_ms', 0):>12.3f} "
+                f"{metric.get('peak_memory_mb', 0):>10.3f} "
+                f"{_short(metric.get('details', {}), 72)}"
+            )
+        print()
+    notes = report.get("notes", [])
+    if notes:
+        print("Notes")
+        for note in notes:
+            print(f"  - {note}")
+
+
 def _print_saved_queries() -> None:
     print("OpenMesh Saved Queries")
     print()
@@ -1625,6 +1661,18 @@ async def _federation_inspect(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _evaluate(args: argparse.Namespace) -> int:
+    report = await run_evaluation_suite(
+        args.sizes,
+        include_ingestion=not args.skip_ingestion,
+    )
+    if args.json:
+        print(report_to_json(report))
+    else:
+        _print_evaluation(report)
+    return 0
+
+
 async def _discover(args: argparse.Namespace) -> int:
     async def run(db):
         discovery = await get_discovery(db, limit=args.limit)
@@ -2124,6 +2172,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum events to derive federation metadata from.",
     )
     federation_peers.set_defaults(func=_federation_peers)
+
+    evaluate = subparsers.add_parser(
+        "evaluate", help="Run synthetic OpenMesh performance benchmarks."
+    )
+    evaluate.add_argument(
+        "--sizes",
+        type=int,
+        nargs="+",
+        default=list(DEFAULT_EVALUATION_SIZES),
+        help="Synthetic ecosystem node counts to benchmark.",
+    )
+    evaluate.add_argument(
+        "--skip-ingestion",
+        action="store_true",
+        help="Skip collector ingestion benchmarks.",
+    )
+    evaluate.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the benchmark report as JSON.",
+    )
+    evaluate.set_defaults(func=_evaluate)
 
     discover = subparsers.add_parser(
         "discover", help="Show observed OpenMesh ecosystem registry."

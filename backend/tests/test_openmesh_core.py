@@ -106,6 +106,7 @@ from src.services.openmesh_queries import (
 )
 from src.services.ecosystem_snapshot import build_ecosystem_snapshot
 from src.services.ecosystem_snapshot import compare_snapshot_payloads
+from src.services.evaluation import generate_synthetic_ecosystem, run_evaluation_suite
 from src.services.timeline import (
     build_node_timeline,
     build_timeline,
@@ -140,6 +141,7 @@ from src.shared.openmesh_events import agent_node, make_openmesh_event
 from src.cli.openmesh import (
     _print_capabilities,
     _print_ecosystem,
+    _print_evaluation,
     _print_federation,
     _print_federation_inspection,
     _print_federation_peers,
@@ -924,6 +926,47 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json_peers[0]["instance_id"], "remote-json")
         self.assertEqual(len(csv_peers), 2)
         self.assertEqual(csv_peers[0]["status"], "configured")
+
+    def test_evaluation_synthetic_ecosystem_builds_graph_inputs(self):
+        synthetic = generate_synthetic_ecosystem(14)
+        graph = reduce_graph_state(synthetic["records"])
+
+        self.assertEqual(len(synthetic["nodes"]), 14)
+        self.assertEqual(len(synthetic["events"]), 14)
+        self.assertEqual(synthetic["trace_count"], 1)
+        self.assertGreaterEqual(len(graph["nodes"]), 14)
+        self.assertGreater(len(graph["edges"]), 0)
+
+    async def test_evaluation_suite_measures_core_operations(self):
+        report = await run_evaluation_suite([14], include_ingestion=True)
+        benchmark = report["benchmarks"][0]
+        metric_names = {metric["name"] for metric in benchmark["metrics"]}
+
+        self.assertEqual(report["schema_version"], "0.1")
+        self.assertEqual(benchmark["node_count"], 14)
+        self.assertEqual(benchmark["event_count"], 14)
+        self.assertIn("event_ingestion", metric_names)
+        self.assertIn("trace_reconstruction", metric_names)
+        self.assertIn("graph_reduction", metric_names)
+        self.assertIn("inspection", metric_names)
+        self.assertIn("query_engine", metric_names)
+        self.assertIn("snapshot_creation", metric_names)
+        self.assertIn("snapshot_diff", metric_names)
+        self.assertIn("timeline_generation", metric_names)
+        self.assertIn("replay_generation", metric_names)
+        self.assertIn("federation_aggregation", metric_names)
+        for metric in benchmark["metrics"]:
+            self.assertIn("elapsed_ms", metric)
+            self.assertIn("peak_memory_bytes", metric)
+            self.assertIn("peak_memory_mb", metric)
+
+        query_metric = next(
+            metric
+            for metric in benchmark["metrics"]
+            if metric["name"] == "query_engine"
+        )
+        self.assertEqual(query_metric["details"]["queries"], 4)
+        self.assertGreaterEqual(query_metric["details"]["max_latency_ms"], 0)
 
     def test_relationship_registry_validates_types_and_pairs(self):
         valid = validate_relationship("uses", "agent", "tool")
@@ -3687,6 +3730,40 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("OpenMesh Federation Peers", printed)
         self.assertIn("Remote A", printed)
         self.assertIn("metadata_only", printed)
+
+    def test_cli_evaluation_printer_displays_metrics(self):
+        report = {
+            "schema_version": "0.1",
+            "generated_at": "2026-06-03T00:00:00Z",
+            "sizes": [14],
+            "benchmarks": [
+                {
+                    "node_count": 14,
+                    "event_count": 14,
+                    "trace_count": 1,
+                    "graph_size": {"nodes": 14, "edges": 7},
+                    "metrics": [
+                        {
+                            "name": "graph_reduction",
+                            "elapsed_ms": 1.23,
+                            "peak_memory_mb": 0.5,
+                            "details": {"nodes": 14, "edges": 7},
+                        }
+                    ],
+                }
+            ],
+            "notes": ["synthetic test"],
+        }
+        with patch("builtins.print") as printer:
+            _print_evaluation(report)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Evaluation", printed)
+        self.assertIn("Synthetic ecosystem: 14 nodes", printed)
+        self.assertIn("graph_reduction", printed)
+        self.assertIn("synthetic test", printed)
 
     def test_cli_workflow_printer_displays_metadata(self):
         with patch("builtins.print") as printer:

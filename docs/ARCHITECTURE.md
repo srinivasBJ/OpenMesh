@@ -24,6 +24,7 @@ Core backend pieces:
 - `backend/src/services/discovery.py`: derives observed frameworks, agents, tools, workflows, services, and processes.
 - `backend/src/services/ecosystem_registry.py`: aggregates observed entities into one ecosystem inventory.
 - `backend/src/services/federation.py`: derives metadata-only federation registry, peer, snapshot, timeline, and replay views from existing OpenMesh state.
+- `backend/src/services/evaluation.py`: generates synthetic ecosystems and measures collector, trace, graph, inspection, query, snapshot, diff, timeline, replay, and federation read-model costs.
 - `backend/src/services/plugins.py`: discovers, validates, and loads OpenMesh plugins.
 - `backend/src/sdk/client.py`: Python SDK entry point for agent, task, and tool events.
 - `backend/src/sdk/integrations/langgraph.py`: LangGraph reference integration.

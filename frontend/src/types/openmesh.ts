@@ -12,6 +12,10 @@ export type OpenMeshNodeType =
   | "process"
   | "workflow"
   | "capability"
+  | "framework"
+  | "mcp_server"
+  | "mcp_config"
+  | "federation_node"
   | "guild"
   | "wiki"
   | "post";
@@ -52,4 +56,119 @@ export interface OpenMeshEvent {
     [key: string]: unknown;
   }>;
   severity?: OpenMeshSeverity;
+}
+
+export interface OpenMeshGraphNode {
+  id: string;
+  type: string;
+  name: string;
+  category?: string;
+  runtime?: string;
+  metadata?: Record<string, unknown>;
+  event_count?: number;
+  relationship_count?: number;
+  first_seen?: string;
+  last_seen?: string;
+  lifecycle_state?: string;
+  validation_status?: string;
+  provenance?: {
+    event_ids?: string[];
+    trace_ids?: string[];
+    session_ids?: string[];
+    first_seen?: string;
+    last_seen?: string;
+    first_event_id?: string;
+    last_event_id?: string;
+    observations?: Array<Record<string, unknown>>;
+  };
+}
+
+export interface OpenMeshGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  relationship_type?: string;
+  event_count?: number;
+  observation_count?: number;
+  first_seen?: string;
+  last_seen?: string;
+  lifecycle_state?: string;
+  validation_status?: string;
+  provenance?: {
+    source?: string;
+    target?: string;
+    relationship_type?: string;
+    event_ids?: string[];
+    trace_ids?: string[];
+    session_ids?: string[];
+    span_ids?: string[];
+    first_seen?: string;
+    last_seen?: string;
+    first_event_id?: string;
+    last_event_id?: string;
+    observations?: Array<Record<string, unknown>>;
+  };
+}
+
+export interface OpenMeshGraph {
+  nodes: OpenMeshGraphNode[];
+  edges: OpenMeshGraphEdge[];
+  validation?: Record<string, unknown>;
+}
+
+export interface OpenMeshTraceSummary {
+  trace_id: string;
+  started_at?: string;
+  ended_at?: string;
+  event_count: number;
+  agents?: string[];
+  tools?: string[];
+  status: string;
+}
+
+export interface OpenMeshTraceDetail extends OpenMeshTraceSummary {
+  events: OpenMeshEvent[];
+  relationships?: Array<{
+    source: string;
+    target: string;
+    type: string;
+    relationship_type?: string;
+    trace_id?: string;
+    event_id?: string;
+    provenance?: OpenMeshGraphEdge["provenance"];
+  }>;
+}
+
+export interface OpenMeshNodeInspection {
+  node_id: string;
+  node_type: string;
+  node: OpenMeshGraphNode;
+  first_seen?: string;
+  last_seen?: string;
+  event_count: number;
+  relationship_count: number;
+  trace_ids: string[];
+  session_ids: string[];
+  incoming_relationships: OpenMeshGraphEdge[];
+  outgoing_relationships: OpenMeshGraphEdge[];
+  provenance?: OpenMeshGraphNode["provenance"] & {
+    relationship_event_count?: number;
+  };
+  validation?: Record<string, unknown>;
+}
+
+export interface OpenMeshTimeline {
+  scope?: string;
+  subject?: Record<string, unknown>;
+  first_appearance?: string;
+  last_appearance?: string;
+  relationship_changes?: Array<Record<string, unknown>>;
+  workflow_changes?: Array<Record<string, unknown>>;
+  capability_changes?: Array<Record<string, unknown>>;
+  mcp_changes?: Array<Record<string, unknown>>;
+  session_history?: Array<Record<string, unknown>>;
+  snapshot_history?: Array<Record<string, unknown>>;
+  timeline?: Array<Record<string, unknown>>;
+  summary?: Record<string, number>;
 }

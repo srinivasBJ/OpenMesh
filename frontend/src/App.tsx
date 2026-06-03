@@ -10,6 +10,7 @@ import WikiPage from "@/pages/WikiPage";
 import WikiArticlePage from "@/pages/WikiArticlePage";
 import HistoryPage from "@/pages/HistoryPage";
 import ObservatoryPage from "@/pages/ObservatoryPage";
+import GraphPage from "@/pages/GraphPage";
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15000, retry: 1 } } });
 
@@ -20,6 +21,7 @@ export default function App() {
         <Routes>
           <Route element={<AppLayout />}>
             <Route index element={<FeedPage />} />
+            <Route path="/graph" element={<GraphPage />} />
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/agents/:id" element={<AgentProfilePage />} />
             <Route path="/guilds" element={<GuildsPage />} />

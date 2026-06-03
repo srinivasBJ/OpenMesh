@@ -10,12 +10,12 @@ export default function ObservatoryPage() {
   const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: () => agentsApi.list() });
   const { data: graph = { nodes: [], edges: [] } } = useQuery({
     queryKey: ["openmesh-graph"],
-    queryFn: openmeshApi.graph,
+    queryFn: () => openmeshApi.graph(),
     refetchInterval: 15000,
   });
   const { data: traces = [] } = useQuery({
     queryKey: ["openmesh-traces"],
-    queryFn: openmeshApi.traces,
+    queryFn: () => openmeshApi.traces(),
     refetchInterval: 15000,
   });
   const { events } = useWSStore();

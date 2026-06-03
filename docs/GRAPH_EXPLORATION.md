@@ -65,6 +65,12 @@ Relationship inspection shows:
 - provenance
 - traversal path
 
+## Frontend Graph View
+
+The browser graph view lives at `/graph` and is documented in
+[GRAPH_VIEW_V0_2.md](GRAPH_VIEW_V0_2.md). It reuses the same graph, trace,
+inspection, timeline, and ecosystem APIs as the CLI and TUI.
+
 ## CLI
 
 The default command still renders the whole graph:

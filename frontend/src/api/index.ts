@@ -1,6 +1,13 @@
 import axios from "axios";
+import type {
+  OpenMeshGraph,
+  OpenMeshNodeInspection,
+  OpenMeshTimeline,
+  OpenMeshTraceDetail,
+  OpenMeshTraceSummary,
+} from "@/types/openmesh";
 
-const api = axios.create({ baseURL: "/api", timeout: 30000 });
+const api = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || "/api", timeout: 30000 });
 
 export const agentsApi = {
   list: (params?: Record<string, string>) => api.get("/agents", { params }).then(r => r.data),
@@ -44,7 +51,30 @@ export const simulationApi = {
 
 export const openmeshApi = {
   events: (limit?: number) => api.get("/openmesh/events", { params: { limit } }).then(r => r.data),
-  traces: () => api.get("/openmesh/traces").then(r => r.data),
-  trace: (traceId: string) => api.get(`/openmesh/traces/${traceId}`).then(r => r.data),
-  graph: () => api.get("/openmesh/graph").then(r => r.data),
+  traces: (limit?: number) =>
+    api.get<OpenMeshTraceSummary[]>("/openmesh/traces", { params: { limit } }).then(r => r.data),
+  trace: (traceId: string) =>
+    api.get<OpenMeshTraceDetail>(`/openmesh/traces/${encodeURIComponent(traceId)}`).then(r => r.data),
+  graph: (params?: { limit?: number }) =>
+    api.get<OpenMeshGraph>("/openmesh/graph", { params }).then(r => r.data),
+  graphSearch: (params: { q: string; node_type?: string; relationship_type?: string; limit?: number }) =>
+    api.get("/openmesh/graph/search", { params }).then(r => r.data),
+  graphFilter: (params?: {
+    node_type?: string;
+    relationship_type?: string;
+    q?: string;
+    lifecycle_state?: string;
+    limit?: number;
+  }) => api.get<OpenMeshGraph>("/openmesh/graph/filter", { params }).then(r => r.data),
+  graphExplore: (
+    nodeId: string,
+    params?: { depth?: number; direction?: string; relationship_type?: string; node_type?: string; q?: string; limit?: number },
+  ) => api.get(`/openmesh/graph/explore/${encodeURIComponent(nodeId)}`, { params }).then(r => r.data),
+  inspectNode: (nodeId: string, limit?: number) =>
+    api.get<OpenMeshNodeInspection>(`/openmesh/inspect/${encodeURIComponent(nodeId)}`, { params: { limit } }).then(r => r.data),
+  timeline: (limit?: number) =>
+    api.get<OpenMeshTimeline>("/openmesh/timeline", { params: { limit } }).then(r => r.data),
+  traceTimeline: (traceId: string, limit?: number) =>
+    api.get<OpenMeshTimeline>(`/openmesh/timeline/trace/${encodeURIComponent(traceId)}`, { params: { limit } }).then(r => r.data),
+  ecosystem: () => api.get("/openmesh/ecosystem").then(r => r.data),
 };

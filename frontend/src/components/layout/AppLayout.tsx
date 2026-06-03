@@ -3,11 +3,12 @@ import { cn } from "@/lib/utils";
 import { useWSStore } from "@/store/wsStore";
 import { useEffect } from "react";
 import {
-  Radio, Users, BookOpen, Layers, Clock, BarChart2, Zap, Settings
+  Radio, Users, BookOpen, Layers, Clock, BarChart2, Zap, Network
 } from "lucide-react";
 
 const NAV = [
   { to: "/", label: "Feed", icon: Radio, end: true },
+  { to: "/graph", label: "Graph", icon: Network },
   { to: "/agents", label: "Agents", icon: Users },
   { to: "/guilds", label: "Guilds", icon: Layers },
   { to: "/wiki", label: "Agentpedia", icon: BookOpen },

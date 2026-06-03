@@ -49,6 +49,12 @@ from ...services.openmesh_queries import (
     get_trace,
     get_traces,
 )
+from ...services.timeline import (
+    get_node_timeline,
+    get_timeline,
+    get_trace_timeline,
+    get_workflow_timeline,
+)
 from ...services.node_types import node_type_registry, node_type_validation_metadata
 from ...services.registry_status import build_registry_status
 from ...services.relationship_types import relationship_registry
@@ -722,6 +728,50 @@ async def diff_openmesh_snapshots(
     if not diff:
         raise HTTPException(404, "OpenMesh snapshot not found")
     return diff
+
+
+@router.get("/openmesh/timeline")
+async def get_openmesh_timeline(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_timeline(db, limit=limit)
+
+
+@router.get("/openmesh/timeline/node/{node_id}")
+async def get_openmesh_node_timeline(
+    node_id: str,
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    timeline = await get_node_timeline(db, node_id, limit=limit)
+    if not timeline:
+        raise HTTPException(404, "OpenMesh node timeline not found")
+    return timeline
+
+
+@router.get("/openmesh/timeline/workflow/{workflow_id}")
+async def get_openmesh_workflow_timeline(
+    workflow_id: str,
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    timeline = await get_workflow_timeline(db, workflow_id, limit=limit)
+    if not timeline:
+        raise HTTPException(404, "OpenMesh workflow timeline not found")
+    return timeline
+
+
+@router.get("/openmesh/timeline/trace/{trace_id}")
+async def get_openmesh_trace_timeline(
+    trace_id: str,
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    timeline = await get_trace_timeline(db, trace_id, limit=limit)
+    if not timeline:
+        raise HTTPException(404, "OpenMesh trace timeline not found")
+    return timeline
 
 
 @router.get("/openmesh/ecosystem")

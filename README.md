@@ -80,6 +80,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Discovery, workflow, capability, MCP metadata, and unified ecosystem registries derived from observed events
 - Ecosystem snapshots for freezing graph, discovery, traces, sessions, registries, and provenance at a point in time
 - Historical snapshot diffs for comparing nodes, relationships, workflows, MCP servers, capabilities, traces, sessions, and graph statistics across time
+- Historical timelines for navigating ecosystem, node, workflow, and trace evolution over time
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
@@ -304,6 +305,10 @@ openmesh snapshot create
 openmesh snapshot list
 openmesh snapshot inspect <snapshot_id>
 openmesh snapshot diff <snapshot_a> <snapshot_b>
+openmesh timeline
+openmesh timeline node <node_id>
+openmesh timeline workflow <workflow_id>
+openmesh timeline trace <trace_id>
 openmesh capabilities
 openmesh integrations
 openmesh tui

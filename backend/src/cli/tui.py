@@ -33,6 +33,7 @@ from ..services.openmesh_queries import (
     list_workflows,
 )
 from ..services.registry_status import build_registry_status
+from ..services.timeline import get_timeline
 from ..services.trace_semantics import (
     build_event_hierarchy,
     build_span_summary,
@@ -70,6 +71,7 @@ class TuiSnapshot:
     registry_status: dict[str, Any]
     loaded_at: datetime
     snapshot_details: dict[str, dict[str, Any]] = field(default_factory=dict)
+    timeline: dict[str, Any] = field(default_factory=dict)
 
 
 async def load_snapshot() -> TuiSnapshot:
@@ -101,6 +103,7 @@ async def load_snapshot() -> TuiSnapshot:
             registry_status=build_registry_status(registry_records),
             loaded_at=datetime.utcnow(),
             snapshot_details=snapshot_details,
+            timeline=await get_timeline(db, limit=5000),
         )
 
 
@@ -503,6 +506,60 @@ def snapshot_diff_rows(
     return rows
 
 
+def timeline_rows(snapshot: TuiSnapshot) -> list[str]:
+    timeline = snapshot.timeline or {}
+    if not timeline:
+        return ["No historical timeline loaded"]
+    summary = timeline.get("summary", {})
+    rows = [
+        "Timeline",
+        f"first {_time(timeline.get('first_appearance'))}",
+        f"last  {_time(timeline.get('last_appearance'))}",
+        (
+            "events "
+            f"{summary.get('events', 0)}  "
+            f"relationships {summary.get('relationship_changes', 0)}  "
+            f"snapshots {summary.get('snapshots', 0)}"
+        ),
+        "",
+        "Evolution",
+    ]
+    for item in timeline.get("timeline", [])[-14:]:
+        rows.append(
+            f"  {_time(item.get('timestamp'))} {_short(_timeline_label(item), 42)}"
+        )
+    if not timeline.get("timeline"):
+        rows.append("  none")
+    rows.extend(["", "Snapshot History"])
+    snapshots = timeline.get("snapshot_history", [])
+    if not snapshots:
+        rows.append("  none")
+    for item in snapshots[-5:]:
+        counts = item.get("counts", {})
+        rows.append(
+            f"  {_time(item.get('created_at'))} "
+            f"{_short(item.get('snapshot_id'), 24)} "
+            f"n:{counts.get('nodes', 0)} e:{counts.get('edges', 0)}"
+        )
+    return rows
+
+
+def _timeline_label(item: dict[str, Any]) -> str:
+    kind = item.get("kind") or item.get("event_type") or "item"
+    if item.get("source") and item.get("target"):
+        return (
+            f"{kind} {item.get('source')} -> {item.get('target')} "
+            f"{item.get('relationship_type') or ''}".strip()
+        )
+    if item.get("snapshot_id"):
+        return f"{kind} {item['snapshot_id']}"
+    if item.get("session_id"):
+        return f"{kind} {item['session_id']}"
+    if item.get("event_type"):
+        return f"{kind} {item['event_type']}"
+    return f"{kind} {item.get('name') or item.get('id') or ''}".strip()
+
+
 def _diff_row_title(item: dict[str, Any]) -> str:
     if item.get("source") and item.get("target") and item.get("type"):
         return f"{item['source']} {item['type']} {item['target']}"
@@ -881,6 +938,7 @@ class OpenMeshTui(App):
         ("e", "show_ecosystem", "Ecosystem"),
         ("s", "show_snapshots", "Snapshots"),
         ("d", "show_snapshot_diff", "Snapshot Diff"),
+        ("l", "show_timeline", "Timeline"),
         ("a", "select_snapshot_a", "Select A"),
         ("b", "select_snapshot_b", "Select B"),
         ("enter", "inspect_selected", "Inspect"),
@@ -943,7 +1001,7 @@ class OpenMeshTui(App):
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [d diff] [a/b select] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [d diff] [l timeline] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -1071,6 +1129,12 @@ class OpenMeshTui(App):
                 )
             )
             return
+        if self.lower_right_mode == "timeline":
+            self.query_one("#event-title", Static).update("TIMELINE")
+            self.query_one("#event-body", Static).update(
+                "\n".join(timeline_rows(self.snapshot))
+            )
+            return
         if self.lower_right_mode == "trace" and self.selected_trace_id:
             self.query_one("#event-title", Static).update("TRACE DETAIL")
             self.query_one("#event-body", Static).update(
@@ -1153,6 +1217,11 @@ class OpenMeshTui(App):
 
     def action_show_snapshot_diff(self) -> None:
         self.lower_right_mode = "snapshot_diff"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_show_timeline(self) -> None:
+        self.lower_right_mode = "timeline"
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
 

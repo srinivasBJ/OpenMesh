@@ -79,6 +79,17 @@ openmesh_snapshots
 
 Snapshot diffs are derived from stored snapshot payloads. They preserve relationship provenance in diff output and do not create new storage, graph models, recommendations, or analysis layers.
 
+Timeline flow:
+
+```text
+openmesh_events + openmesh_sessions + openmesh_snapshots
+  -> trace summaries, graph reducer, workflow inspection, snapshot diffs, and provenance
+  -> ecosystem, node, workflow, and trace timelines
+  -> CLI, TUI, and API timeline views
+```
+
+Timelines are derived read models over existing persisted history. They do not create a second timeline store, graph model, analysis system, recommendation engine, or health scoring layer.
+
 Registry flow:
 
 ```text

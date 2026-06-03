@@ -87,6 +87,12 @@ from src.services.openmesh_queries import (
 )
 from src.services.ecosystem_snapshot import build_ecosystem_snapshot
 from src.services.ecosystem_snapshot import compare_snapshot_payloads
+from src.services.timeline import (
+    build_node_timeline,
+    build_timeline,
+    build_trace_timeline,
+    build_workflow_timeline,
+)
 from src.services.relationship_types import (
     relationship_definition,
     relationship_registry,
@@ -118,6 +124,7 @@ from src.cli.openmesh import (
     _print_snapshot_detail,
     _print_snapshot_diff,
     _print_snapshots,
+    _print_timeline,
     _print_workflow_inspection,
     _print_workflows,
 )
@@ -133,6 +140,7 @@ from src.cli.tui import (
     ecosystem_rows,
     snapshot_diff_rows,
     snapshot_rows,
+    timeline_rows,
     workflow_detail_rows,
     workflow_rows,
 )
@@ -1507,6 +1515,173 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(changed["after"]["provenance"]["observations"]), 2)
 
+    def test_timeline_reconstructs_ecosystem_evolution(self):
+        agent = agent_node("agent-a", "Research Agent", "researcher")
+        workflow = workflow_node(
+            WorkflowEntry(
+                workflow="Research Flow",
+                framework="LangGraph",
+                source="examples/langgraph_basic.py",
+            )
+        )
+        tool = {
+            "node_id": "tool:web_search",
+            "node_type": "tool",
+            "name": "web_search",
+            "runtime": "mcp",
+        }
+        mcp = mcp_server_node(
+            name="Search MCP",
+            transport="stdio",
+            endpoint="stdio://search",
+        )
+        capability = capability_node(
+            MCPCapabilityEntry(
+                server="Search MCP",
+                capability="search",
+                category="web",
+            )
+        )
+        events = [
+            make_openmesh_event(
+                "workflow.registered",
+                agent,
+                {"workflow": "Research Flow", "framework": "LangGraph"},
+                target=workflow,
+                session_id="sess_timeline",
+                trace_id="trace_timeline",
+            ),
+            make_openmesh_event(
+                "workflow.tool.used",
+                workflow,
+                {"workflow": "Research Flow", "tool": "web_search"},
+                target=tool,
+                session_id="sess_timeline",
+                trace_id="trace_timeline",
+            ),
+            make_openmesh_event(
+                "mcp.capability.discovered",
+                mcp,
+                {"server": "Search MCP", "capability": "search", "category": "web"},
+                target=capability,
+                session_id="sess_timeline",
+                trace_id="trace_timeline",
+            ),
+        ]
+        records = [
+            record_from_event(event, timestamp=datetime(2026, 6, 3, 10, index, 0))
+            for index, event in enumerate(events)
+        ]
+        sessions = [
+            SimpleNamespace(
+                session_id="sess_timeline",
+                command="langgraph basic",
+                started_at=datetime(2026, 6, 3, 10, 0, 0),
+                ended_at=datetime(2026, 6, 3, 10, 3, 0),
+                status="completed",
+                exit_code=0,
+            )
+        ]
+        before = self.make_snapshot_payload(
+            "snap_before",
+            created_at="2026-06-03T09:55:00Z",
+            nodes=[],
+            relationships=[],
+        )
+        after = self.make_snapshot_payload(
+            "snap_after",
+            created_at="2026-06-03T10:04:00Z",
+            nodes=[
+                {"id": agent["node_id"], "type": "agent", "name": agent["name"]},
+                {
+                    "id": workflow["node_id"],
+                    "type": "workflow",
+                    "name": workflow["name"],
+                },
+                {"id": tool["node_id"], "type": "tool", "name": tool["name"]},
+                {"id": mcp["node_id"], "type": "mcp_server", "name": mcp["name"]},
+                {
+                    "id": capability["node_id"],
+                    "type": "capability",
+                    "name": capability["name"],
+                },
+            ],
+            relationships=[
+                {
+                    "id": f"{agent['node_id']}:runs:{workflow['node_id']}",
+                    "source": agent["node_id"],
+                    "target": workflow["node_id"],
+                    "type": "runs",
+                    "provenance": {"trace_ids": ["trace_timeline"]},
+                },
+                {
+                    "id": f"{workflow['node_id']}:uses:{tool['node_id']}",
+                    "source": workflow["node_id"],
+                    "target": tool["node_id"],
+                    "type": "uses",
+                    "provenance": {"trace_ids": ["trace_timeline"]},
+                },
+                {
+                    "id": f"{mcp['node_id']}:exposes:{capability['node_id']}",
+                    "source": mcp["node_id"],
+                    "target": capability["node_id"],
+                    "type": "exposes",
+                    "provenance": {"trace_ids": ["trace_timeline"]},
+                },
+            ],
+            workflows=[
+                {
+                    "id": workflow["node_id"],
+                    "workflow": "Research Flow",
+                    "framework": "LangGraph",
+                }
+            ],
+            mcp_servers=[{"id": mcp["node_id"], "server": "Search MCP"}],
+            capabilities=[{"server": "Search MCP", "capability": "search"}],
+            traces=[{"trace_id": "trace_timeline"}],
+            sessions=[{"session_id": "sess_timeline"}],
+        )
+
+        timeline = build_timeline(records, sessions, [before, after])
+
+        self.assertEqual(timeline["scope"], "ecosystem")
+        self.assertEqual(timeline["first_appearance"], "2026-06-03T09:55:00Z")
+        self.assertEqual(timeline["last_appearance"], "2026-06-03T10:04:00Z")
+        self.assertGreaterEqual(timeline["summary"]["relationship_changes"], 6)
+        self.assertGreaterEqual(timeline["summary"]["workflow_changes"], 2)
+        self.assertGreaterEqual(timeline["summary"]["mcp_changes"], 2)
+        self.assertGreaterEqual(timeline["summary"]["capability_changes"], 2)
+        self.assertEqual(timeline["session_history"][0]["session_id"], "sess_timeline")
+        self.assertEqual(len(timeline["snapshot_history"]), 2)
+
+        node_timeline = build_node_timeline(
+            records, sessions, [before, after], "agent-a"
+        )
+        assert node_timeline is not None
+        self.assertEqual(node_timeline["scope"], "node")
+        self.assertEqual(node_timeline["subject"]["id"], "agent-a")
+        self.assertEqual(node_timeline["summary"]["events"], 1)
+        self.assertTrue(node_timeline["relationship_changes"])
+
+        workflow_timeline = build_workflow_timeline(
+            records, sessions, [before, after], "Research Flow"
+        )
+        assert workflow_timeline is not None
+        self.assertEqual(workflow_timeline["scope"], "workflow")
+        self.assertEqual(workflow_timeline["subject"]["workflow"], "Research Flow")
+        self.assertTrue(workflow_timeline["relationship_changes"])
+
+        trace_timeline = build_trace_timeline(
+            records, sessions, [before, after], "trace_timeline"
+        )
+        assert trace_timeline is not None
+        self.assertEqual(trace_timeline["scope"], "trace")
+        self.assertEqual(trace_timeline["subject"]["trace_id"], "trace_timeline")
+        self.assertEqual(trace_timeline["summary"]["events"], 3)
+        self.assertEqual(
+            trace_timeline["session_history"][0]["session_id"], "sess_timeline"
+        )
+
     def test_workflow_validation_detects_duplicates_and_missing_metadata(self):
         validation = validate_workflow_entries(
             [
@@ -2536,6 +2711,79 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Nodes +1 -0 ~0", output)
         self.assertIn("Traces Δ+1", output)
 
+    def test_tui_timeline_rows_display_historical_evolution(self):
+        snapshot = TuiSnapshot(
+            health={"events": 1, "traces": 1, "nodes": 1, "edges": 0},
+            graph={"nodes": [], "edges": []},
+            traces=[],
+            events=[],
+            sessions=[],
+            integrations=[],
+            discovery={
+                "frameworks": [],
+                "agents": [],
+                "tools": [],
+                "capabilities": [],
+                "workflows": [],
+                "processes": [],
+                "services": [],
+            },
+            mcp_servers=[],
+            mcp_configs=[],
+            capabilities=[],
+            workflows=[],
+            snapshots=[],
+            ecosystem={
+                "entities": {
+                    "agents": [],
+                    "tools": [],
+                    "processes": [],
+                    "workflows": [],
+                    "mcp_servers": [],
+                    "mcp_configs": [],
+                    "capabilities": [],
+                },
+                "summary": {"entity_count": 0, "relationship_count": 0},
+                "validation": {"status": "OK"},
+            },
+            registry_status=build_registry_status([]),
+            loaded_at=datetime.utcnow(),
+            timeline={
+                "first_appearance": "2026-06-03T10:00:00Z",
+                "last_appearance": "2026-06-03T10:05:00Z",
+                "summary": {
+                    "events": 1,
+                    "relationship_changes": 1,
+                    "snapshots": 1,
+                },
+                "timeline": [
+                    {
+                        "timestamp": "2026-06-03T10:00:00Z",
+                        "kind": "event",
+                        "event_type": "workflow.registered",
+                    },
+                    {
+                        "timestamp": "2026-06-03T10:05:00Z",
+                        "kind": "snapshot.created",
+                        "snapshot_id": "snap_timeline",
+                    },
+                ],
+                "snapshot_history": [
+                    {
+                        "snapshot_id": "snap_timeline",
+                        "created_at": "2026-06-03T10:05:00Z",
+                        "counts": {"nodes": 2, "edges": 1},
+                    }
+                ],
+            },
+        )
+
+        output = "\n".join(timeline_rows(snapshot))
+
+        self.assertIn("Timeline", output)
+        self.assertIn("workflow.registered", output)
+        self.assertIn("snap_timeline", output)
+
     def test_cli_mcp_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
             _print_mcp(
@@ -2766,6 +3014,68 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("nodes_added: 1", printed)
         self.assertIn("Nodes Added", printed)
         self.assertIn("pytest", printed)
+
+    def test_cli_timeline_printer_displays_sections(self):
+        timeline = {
+            "scope": "ecosystem",
+            "subject": {"type": "ecosystem", "id": "openmesh.ecosystem"},
+            "first_appearance": "2026-06-03T10:00:00Z",
+            "last_appearance": "2026-06-03T10:05:00Z",
+            "summary": {
+                "events": 1,
+                "sessions": 1,
+                "snapshots": 1,
+                "relationship_changes": 1,
+            },
+            "relationship_changes": [
+                {
+                    "timestamp": "2026-06-03T10:00:00Z",
+                    "kind": "relationship.observed",
+                    "source": "agent-a",
+                    "target": "workflow:research",
+                    "relationship_type": "runs",
+                }
+            ],
+            "workflow_changes": [],
+            "capability_changes": [],
+            "mcp_changes": [],
+            "session_history": [
+                {
+                    "session_id": "sess_timeline",
+                    "command": "langgraph basic",
+                    "started_at": "2026-06-03T10:00:00Z",
+                    "status": "completed",
+                }
+            ],
+            "snapshot_history": [
+                {
+                    "snapshot_id": "snap_timeline",
+                    "created_at": "2026-06-03T10:05:00Z",
+                    "counts": {"nodes": 2, "edges": 1},
+                }
+            ],
+            "timeline": [
+                {
+                    "timestamp": "2026-06-03T10:00:00Z",
+                    "kind": "event",
+                    "event_type": "workflow.registered",
+                    "event_id": "evt_timeline",
+                    "source": "Research Agent",
+                    "target": "Research Flow",
+                }
+            ],
+        }
+
+        with patch("builtins.print") as printer:
+            _print_timeline(timeline)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Ecosystem Timeline", printed)
+        self.assertIn("Relationship Changes", printed)
+        self.assertIn("Snapshot History", printed)
+        self.assertIn("workflow.registered", printed)
 
     def test_cli_ecosystem_printer_displays_grouped_inventory(self):
         with patch("builtins.print") as printer:

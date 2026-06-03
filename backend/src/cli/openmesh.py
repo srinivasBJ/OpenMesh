@@ -38,6 +38,12 @@ from ..services.openmesh_queries import (
     inspect_workflow,
     list_workflows,
 )
+from ..services.timeline import (
+    get_node_timeline,
+    get_timeline,
+    get_trace_timeline,
+    get_workflow_timeline,
+)
 from ..services.registry_status import build_registry_status
 from ..shared.openmesh_events import make_openmesh_event
 from ..sdk.integrations import list_integrations
@@ -812,6 +818,83 @@ def _diff_item_title(item: dict[str, Any]) -> str:
     return str(item)
 
 
+def _print_timeline(timeline: dict[str, Any]) -> None:
+    subject = timeline.get("subject", {})
+    scope = timeline.get("scope", "ecosystem")
+    print(f"OpenMesh {scope.title()} Timeline")
+    print()
+    print(f"subject: {_timeline_subject(subject)}")
+    print(f"first_appearance: {timeline.get('first_appearance') or '-'}")
+    print(f"last_appearance: {timeline.get('last_appearance') or '-'}")
+    print()
+    print("Summary")
+    for key, value in timeline.get("summary", {}).items():
+        print(f"  {key}: {value}")
+    print()
+    _print_timeline_section(
+        "Relationship Changes", timeline.get("relationship_changes", [])
+    )
+    _print_timeline_section("Workflow Changes", timeline.get("workflow_changes", []))
+    _print_timeline_section(
+        "Capability Changes", timeline.get("capability_changes", [])
+    )
+    _print_timeline_section("MCP Changes", timeline.get("mcp_changes", []))
+    _print_timeline_section("Session History", timeline.get("session_history", []))
+    _print_timeline_section("Snapshot History", timeline.get("snapshot_history", []))
+    _print_timeline_section("Timeline", timeline.get("timeline", []), limit=25)
+
+
+def _print_timeline_section(
+    title: str, items: list[dict[str, Any]], *, limit: int = 12
+) -> None:
+    print(title)
+    if not items:
+        print("  none")
+        print()
+        return
+    for item in items[:limit]:
+        print(f"  - {_timeline_item(item)}")
+    if len(items) > limit:
+        print(f"  ... {len(items) - limit} more")
+    print()
+
+
+def _timeline_subject(subject: dict[str, Any]) -> str:
+    for key in ("workflow", "name", "trace_id", "id", "node_id"):
+        if subject.get(key):
+            return str(subject[key])
+    return str(subject.get("type") or "ecosystem")
+
+
+def _timeline_item(item: dict[str, Any]) -> str:
+    timestamp = (
+        item.get("timestamp") or item.get("started_at") or item.get("created_at") or "-"
+    )
+    kind = item.get("kind") or item.get("event_type") or item.get("status") or "item"
+    if item.get("event_id") and item.get("event_type"):
+        return (
+            f"{timestamp} {kind} {item.get('event_type')} "
+            f"{item.get('source') or '-'} -> {item.get('target') or '-'}"
+        )
+    if item.get("source") and item.get("target"):
+        return (
+            f"{timestamp} {kind} "
+            f"{item.get('source')} -> {item.get('target')} "
+            f"{item.get('relationship_type') or ''}".strip()
+        )
+    if item.get("snapshot_id"):
+        counts = item.get("counts", {})
+        return (
+            f"{timestamp} {kind} {item['snapshot_id']} "
+            f"nodes:{counts.get('nodes', 0)} edges:{counts.get('edges', 0)}"
+        )
+    if item.get("session_id"):
+        return (
+            f"{timestamp} {kind} {item['session_id']} {_short(item.get('command'), 36)}"
+        )
+    return f"{timestamp} {kind} {_timeline_subject(item)}"
+
+
 def _utc_now() -> datetime:
     return datetime.utcnow()
 
@@ -1031,6 +1114,51 @@ async def _snapshot_diff(args: argparse.Namespace) -> int:
             )
             return 1
         _print_snapshot_diff(diff)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _timeline(args: argparse.Namespace) -> int:
+    async def run(db):
+        timeline = await get_timeline(db, limit=args.limit)
+        _print_timeline(timeline)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _timeline_node(args: argparse.Namespace) -> int:
+    async def run(db):
+        timeline = await get_node_timeline(db, args.node_id, limit=args.limit)
+        if not timeline:
+            print(f"OpenMesh node timeline not found: {args.node_id}")
+            return 1
+        _print_timeline(timeline)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _timeline_workflow(args: argparse.Namespace) -> int:
+    async def run(db):
+        timeline = await get_workflow_timeline(db, args.workflow_id, limit=args.limit)
+        if not timeline:
+            print(f"OpenMesh workflow timeline not found: {args.workflow_id}")
+            return 1
+        _print_timeline(timeline)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _timeline_trace(args: argparse.Namespace) -> int:
+    async def run(db):
+        timeline = await get_trace_timeline(db, args.trace_id, limit=args.limit)
+        if not timeline:
+            print(f"OpenMesh trace timeline not found: {args.trace_id}")
+            return 1
+        _print_timeline(timeline)
         return 0
 
     return await _with_db(run)
@@ -1370,6 +1498,55 @@ def build_parser() -> argparse.ArgumentParser:
     snapshot_diff.add_argument("snapshot_a", help="Earlier/base snapshot id.")
     snapshot_diff.add_argument("snapshot_b", help="Later/compare snapshot id.")
     snapshot_diff.set_defaults(func=_snapshot_diff)
+
+    timeline = subparsers.add_parser(
+        "timeline", help="Show OpenMesh historical ecosystem evolution."
+    )
+    timeline.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive timeline from.",
+    )
+    timeline.set_defaults(func=_timeline)
+    timeline_subparsers = timeline.add_subparsers(dest="timeline_command")
+    timeline_node = timeline_subparsers.add_parser(
+        "node", help="Show historical evolution for one node."
+    )
+    timeline_node.add_argument(
+        "node_id", help="Node id, node name, or normalized node alias."
+    )
+    timeline_node.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive timeline from.",
+    )
+    timeline_node.set_defaults(func=_timeline_node)
+    timeline_workflow = timeline_subparsers.add_parser(
+        "workflow", help="Show historical evolution for one workflow."
+    )
+    timeline_workflow.add_argument(
+        "workflow_id", help="Workflow id, workflow name, or normalized workflow alias."
+    )
+    timeline_workflow.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive timeline from.",
+    )
+    timeline_workflow.set_defaults(func=_timeline_workflow)
+    timeline_trace = timeline_subparsers.add_parser(
+        "trace", help="Show historical evolution for one trace."
+    )
+    timeline_trace.add_argument("trace_id", help="Trace id to inspect.")
+    timeline_trace.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive timeline from.",
+    )
+    timeline_trace.set_defaults(func=_timeline_trace)
 
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
     doctor.set_defaults(func=_doctor)

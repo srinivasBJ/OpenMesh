@@ -371,6 +371,46 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(all(edge["relationship_definition"] for edge in graph["edges"]))
 
+    def test_graph_reduction_exposes_relationship_provenance(self):
+        first = self.make_event("process.started")
+        first["source"] = CLI_NODE
+        first["target"] = process_node("sess_test", "python hello.py")
+        second = self.make_event("process.started")
+        second["source"] = CLI_NODE
+        second["target"] = process_node("sess_test", "python hello.py")
+        second["trace_id"] = "trace_followup"
+        second["span_id"] = "span_followup"
+        records = [
+            record_from_event(first, timestamp=datetime(2026, 6, 3, 10, 0, 0)),
+            record_from_event(second, timestamp=datetime(2026, 6, 3, 10, 1, 0)),
+        ]
+
+        graph = reduce_graph_state(records)
+        edge = graph["edges"][0]
+        provenance = edge["provenance"]
+
+        self.assertEqual(edge["type"], "spawns")
+        self.assertEqual(edge["event_count"], 2)
+        self.assertEqual(edge["observation_count"], 2)
+        self.assertEqual(provenance["relationship_type"], "spawns")
+        self.assertEqual(provenance["source"], "openmesh.cli")
+        self.assertEqual(provenance["target"], "process:sess_test")
+        self.assertEqual(
+            provenance["event_ids"], [first["event_id"], second["event_id"]]
+        )
+        self.assertEqual(provenance["trace_ids"], ["trace_test", "trace_followup"])
+        self.assertEqual(provenance["span_ids"], [first["span_id"], "span_followup"])
+        self.assertEqual(provenance["first_seen"], "2026-06-03T10:00:00Z")
+        self.assertEqual(provenance["last_seen"], "2026-06-03T10:01:00Z")
+        self.assertEqual(len(provenance["observations"]), 2)
+        self.assertEqual(
+            provenance["observations"][0]["source"]["name"], "OpenMesh CLI"
+        )
+        self.assertEqual(
+            provenance["observations"][1]["target"]["name"], "python hello.py"
+        )
+        self.assertEqual(graph["validation"]["missing_provenance"], [])
+
     def test_relationship_registry_maps_protocol_events_to_canonical_types(self):
         relationship_types = {item["type"] for item in relationship_registry()}
 
@@ -1298,6 +1338,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(relationships[0]["event_id"], tool["event_id"])
         self.assertEqual(relationships[0]["type"], "uses")
+        self.assertEqual(
+            relationships[0]["provenance"]["event_ids"], [tool["event_id"]]
+        )
+        self.assertEqual(
+            relationships[0]["provenance"]["trace_ids"], [tool["trace_id"]]
+        )
         self.assertEqual(validation["status"], "OK")
 
     def test_span_semantics_build_lifecycle_tree_and_links(self):

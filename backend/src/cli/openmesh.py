@@ -203,12 +203,27 @@ def _print_graph(graph: dict[str, Any], *, details: bool = False) -> None:
                 print(f"   lifecycle: {edge.get('lifecycle_state', 'unknown')}")
                 print(f"   first_seen: {edge.get('first_seen')}")
                 print(f"   last_seen: {edge.get('last_seen')}")
+                provenance = edge.get("provenance") or {}
+                trace_ids = provenance.get("trace_ids") or edge.get("trace_ids") or []
+                event_ids = provenance.get("event_ids") or edge.get("event_ids") or []
+                print(f"   provenance.trace_ids: {_join_short(trace_ids)}")
+                print(f"   provenance.event_ids: {_join_short(event_ids)}")
                 print(
-                    f"   trace_id: {edge.get('trace_id') or edge.get('first_trace_id') or '-'}"
+                    "   provenance.window: "
+                    f"{provenance.get('first_seen') or edge.get('first_seen')} -> "
+                    f"{provenance.get('last_seen') or edge.get('last_seen')}"
                 )
-                print(
-                    f"   event_id: {edge.get('event_id') or edge.get('first_event_id') or '-'}"
+                observations = provenance.get("observations") or edge.get(
+                    "observations", []
                 )
+                if observations:
+                    latest = observations[-1]
+                    print(
+                        "   latest_evidence: "
+                        f"{latest.get('event_type')} "
+                        f"{latest.get('event_id')} "
+                        f"trace:{latest.get('trace_id')}"
+                    )
         print()
 
     if details:
@@ -227,6 +242,15 @@ def _print_graph(graph: dict[str, Any], *, details: bool = False) -> None:
             print(f"invalid_source_types: {len(invalid_sources)}")
             print(f"invalid_target_types: {len(invalid_targets)}")
             print(f"broken_references: {len(broken)}")
+
+
+def _join_short(values: list[str], limit: int = 3) -> str:
+    if not values:
+        return "-"
+    visible = [str(value) for value in values[:limit]]
+    if len(values) > limit:
+        visible.append(f"...+{len(values) - limit}")
+    return ", ".join(visible)
 
 
 def _print_nodes(graph: dict[str, Any]) -> None:

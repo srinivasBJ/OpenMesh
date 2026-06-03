@@ -56,6 +56,60 @@ def _edge_type_for(
     return edge_type_for(event_type, target_type, source_type)
 
 
+def _node_evidence(node: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "node_id": node["id"],
+        "node_type": node["type"],
+        "name": node["name"],
+    }
+
+
+def _event_evidence(
+    record: OpenMeshEventRecord,
+    *,
+    event_id: str,
+    trace_id: str | None,
+    source: Dict[str, Any],
+    target: Dict[str, Any],
+    timestamp: str,
+) -> Dict[str, Any]:
+    payload = getattr(record, "payload_json", None) or {}
+    return {
+        "event_id": event_id,
+        "event_type": record.event_type,
+        "trace_id": trace_id,
+        "span_id": getattr(record, "span_id", None),
+        "timestamp": timestamp,
+        "source": _node_evidence(source),
+        "target": _node_evidence(target),
+        "payload_keys": sorted(payload.keys()) if isinstance(payload, dict) else [],
+    }
+
+
+def _dedupe_append(values: list[Any], value: Any) -> None:
+    if value and value not in values:
+        values.append(value)
+
+
+def _sync_edge_provenance(edge: Dict[str, Any]) -> None:
+    observations = edge.get("observations", [])
+    edge["provenance"] = {
+        "source": edge["source"],
+        "target": edge["target"],
+        "relationship_type": edge["type"],
+        "event_ids": list(edge.get("event_ids", [])),
+        "trace_ids": list(edge.get("trace_ids", [])),
+        "span_ids": list(edge.get("span_ids", [])),
+        "first_seen": edge.get("first_seen"),
+        "last_seen": edge.get("last_seen"),
+        "first_event_id": edge.get("first_event_id"),
+        "last_event_id": edge.get("last_event_id"),
+        "first_trace_id": edge.get("first_trace_id"),
+        "last_trace_id": edge.get("last_trace_id"),
+        "observations": observations,
+    }
+
+
 def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]:
     nodes: Dict[str, Dict[str, Any]] = {}
     edges: Dict[str, Dict[str, Any]] = {}
@@ -115,8 +169,10 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
                         "last_trace_id": trace_id,
                         "trace_ids": [],
                         "event_ids": [],
+                        "span_ids": [],
                         "last_event_id": None,
                         "observations": [],
+                        "provenance": {},
                     },
                 )
                 edge["event_count"] += 1
@@ -124,19 +180,21 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
                 edge["last_seen"] = timestamp_text
                 edge["last_trace_id"] = trace_id
                 edge["last_event_id"] = event_id
-                if trace_id and trace_id not in edge["trace_ids"]:
-                    edge["trace_ids"].append(trace_id)
-                if event_id not in edge["event_ids"]:
-                    edge["event_ids"].append(event_id)
+                span_id = getattr(record, "span_id", None)
+                _dedupe_append(edge["trace_ids"], trace_id)
+                _dedupe_append(edge["event_ids"], event_id)
+                _dedupe_append(edge["span_ids"], span_id)
                 edge["observations"].append(
-                    {
-                        "trace_id": trace_id,
-                        "event_id": event_id,
-                        "event_type": record.event_type,
-                        "span_id": getattr(record, "span_id", None),
-                        "timestamp": timestamp_text,
-                    }
+                    _event_evidence(
+                        record,
+                        event_id=event_id,
+                        trace_id=trace_id,
+                        source=source,
+                        target=target,
+                        timestamp=timestamp_text,
+                    )
                 )
+                _sync_edge_provenance(edge)
                 edges[edge_id] = edge
 
     for node in nodes.values():
@@ -287,6 +345,7 @@ def validate_graph_state(
             or not edge.get("event_id")
             or not edge.get("first_seen")
             or not edge.get("last_seen")
+            or not _valid_edge_provenance(edge)
         ):
             missing_provenance.append(edge["id"])
 
@@ -340,6 +399,21 @@ def _lifecycle_state(last_seen: str | None, now: datetime) -> str:
     if age <= STALE_AFTER:
         return "stale"
     return "inactive"
+
+
+def _valid_edge_provenance(edge: Dict[str, Any]) -> bool:
+    provenance = edge.get("provenance")
+    if not isinstance(provenance, dict):
+        return False
+    return all(
+        [
+            provenance.get("event_ids"),
+            provenance.get("trace_ids"),
+            provenance.get("first_seen"),
+            provenance.get("last_seen"),
+            provenance.get("observations"),
+        ]
+    )
 
 
 def _normalize_datetime(value: datetime) -> datetime:

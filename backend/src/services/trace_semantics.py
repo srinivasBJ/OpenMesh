@@ -185,6 +185,23 @@ def graph_edges_for_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         )
         if not edge_type:
             continue
+        observation = {
+            "event_id": event["event_id"],
+            "event_type": event["event_type"],
+            "trace_id": event["trace_id"],
+            "span_id": event.get("span_id"),
+            "timestamp": event.get("timestamp"),
+            "source": {
+                "node_id": source.get("node_id"),
+                "node_type": source.get("node_type"),
+                "name": source.get("name"),
+            },
+            "target": {
+                "node_id": target.get("node_id"),
+                "node_type": target.get("node_type"),
+                "name": target.get("name"),
+            },
+        }
         edges.append(
             {
                 "source": source["name"],
@@ -197,6 +214,21 @@ def graph_edges_for_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "first_seen": event.get("timestamp"),
                 "last_seen": event.get("timestamp"),
                 "observation_count": 1,
+                "provenance": {
+                    "source": source.get("node_id") or source["name"],
+                    "target": target.get("node_id") or target["name"],
+                    "relationship_type": edge_type,
+                    "event_ids": [event["event_id"]],
+                    "trace_ids": [event["trace_id"]],
+                    "span_ids": [event["span_id"]] if event.get("span_id") else [],
+                    "first_seen": event.get("timestamp"),
+                    "last_seen": event.get("timestamp"),
+                    "first_event_id": event["event_id"],
+                    "last_event_id": event["event_id"],
+                    "first_trace_id": event["trace_id"],
+                    "last_trace_id": event["trace_id"],
+                    "observations": [observation],
+                },
             }
         )
     return edges

@@ -469,6 +469,9 @@ def edge_detail_rows(snapshot: TuiSnapshot, edge_id: str) -> list[str]:
     source = nodes.get(edge["source"], {"name": edge["source"]})
     target = nodes.get(edge["target"], {"name": edge["target"]})
     definition = edge.get("relationship_definition") or {}
+    provenance = edge.get("provenance") or {}
+    trace_ids = provenance.get("trace_ids") or edge.get("trace_ids") or []
+    event_ids = provenance.get("event_ids") or edge.get("event_ids") or []
     rows = [
         f"{_short(source['name'], 18)} {edge['type']} {_short(target['name'], 18)}",
         f"validation: {edge.get('validation_status', 'unknown')}",
@@ -479,18 +482,30 @@ def edge_detail_rows(snapshot: TuiSnapshot, edge_id: str) -> list[str]:
         f"last_seen: {_time(edge.get('last_seen'))}",
         "",
         "Provenance",
-        f"trace: {_short(edge.get('trace_id') or edge.get('first_trace_id'), 28)}",
-        f"event: {_short(edge.get('event_id') or edge.get('first_event_id'), 28)}",
+        f"traces: {_short(_join_values(trace_ids), 42)}",
+        f"events: {_short(_join_values(event_ids), 42)}",
+        f"first_event: {_short(provenance.get('first_event_id'), 28)}",
+        f"last_event: {_short(provenance.get('last_event_id'), 28)}",
         "",
         "Recent observations",
     ]
-    for observation in edge.get("observations", [])[-5:]:
+    observations = provenance.get("observations") or edge.get("observations", [])
+    for observation in observations[-5:]:
         rows.append(
             f"  {_time(observation.get('timestamp'))} "
             f"{_short(observation.get('event_type'), 18)} "
             f"{_short(observation.get('event_id'), 18)}"
         )
     return rows
+
+
+def _join_values(values: list[Any], limit: int = 4) -> str:
+    if not values:
+        return "-"
+    visible = [str(value) for value in values[:limit]]
+    if len(values) > limit:
+        visible.append(f"+{len(values) - limit}")
+    return ", ".join(visible)
 
 
 def node_detail_rows(snapshot: TuiSnapshot, node_id: str) -> list[str]:

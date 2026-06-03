@@ -75,7 +75,7 @@ from src.services.registry_compatibility import (
 )
 from src.services.registry_status import build_registry_status
 from src.services.openmesh_collector import OpenMeshCollector
-from src.services.openmesh_queries import trace_summary
+from src.services.openmesh_queries import inspect_graph_node, trace_summary
 from src.services.relationship_types import (
     relationship_definition,
     relationship_registry,
@@ -410,6 +410,43 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             provenance["observations"][1]["target"]["name"], "python hello.py"
         )
         self.assertEqual(graph["validation"]["missing_provenance"], [])
+
+    def test_graph_node_inspection_explains_node_relationships(self):
+        started = self.make_event("process.started")
+        started["source"] = CLI_NODE
+        started["target"] = process_node("sess_test", "python hello.py")
+        completed = self.make_event("process.completed")
+        completed["source"] = started["target"]
+        completed["target"] = command_node("python hello.py")
+        graph = reduce_graph_state(
+            [
+                record_from_event(started, timestamp=datetime(2026, 6, 3, 10, 0, 0)),
+                record_from_event(completed, timestamp=datetime(2026, 6, 3, 10, 1, 0)),
+            ]
+        )
+
+        inspection = inspect_graph_node(graph, "sess_test")
+
+        self.assertIsNotNone(inspection)
+        assert inspection is not None
+        self.assertEqual(inspection["node_id"], "process:sess_test")
+        self.assertEqual(inspection["node_type"], "process")
+        self.assertEqual(inspection["first_seen"], "2026-06-03T10:00:00Z")
+        self.assertEqual(inspection["last_seen"], "2026-06-03T10:01:00Z")
+        self.assertEqual(inspection["event_count"], 2)
+        self.assertEqual(inspection["relationship_count"], 2)
+        self.assertEqual(len(inspection["incoming_relationships"]), 1)
+        self.assertEqual(len(inspection["outgoing_relationships"]), 1)
+        self.assertEqual(inspection["trace_ids"], ["trace_test"])
+        self.assertEqual(inspection["session_ids"], ["sess_test"])
+        self.assertEqual(
+            inspection["provenance"]["event_ids"],
+            [started["event_id"], completed["event_id"]],
+        )
+        self.assertEqual(
+            inspection["outgoing_relationships"][0]["provenance"]["event_ids"],
+            [completed["event_id"]],
+        )
 
     def test_relationship_registry_maps_protocol_events_to_canonical_types(self):
         relationship_types = {item["type"] for item in relationship_registry()}

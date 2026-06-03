@@ -23,6 +23,7 @@ from ..services.openmesh_queries import (
     get_health,
     get_sessions,
     get_traces,
+    inspect_graph_node,
 )
 from ..services.registry_status import build_registry_status
 from ..services.trace_semantics import (
@@ -510,11 +511,12 @@ def _join_values(values: list[Any], limit: int = 4) -> str:
 
 def node_detail_rows(snapshot: TuiSnapshot, node_id: str) -> list[str]:
     nodes, outgoing = _node_maps(snapshot)
-    node = nodes.get(node_id)
-    if not node:
+    inspection = inspect_graph_node(snapshot.graph, node_id)
+    if not inspection:
         return [f"Node {node_id}", "No loaded node detail"]
+    node = inspection["node"]
     definition = node.get("type_definition") or {}
-    incoming = [edge for edge in snapshot.graph["edges"] if edge["target"] == node_id]
+    provenance = inspection.get("provenance", {})
     rows = [
         node["name"],
         f"type: {node['type']} ({definition.get('display_name', 'unknown')})",
@@ -522,8 +524,12 @@ def node_detail_rows(snapshot: TuiSnapshot, node_id: str) -> list[str]:
         f"category: {node.get('category', 'unknown')}",
         f"validation: {node.get('validation_status', 'unknown')}",
         f"status: {node.get('lifecycle_state', 'unknown')}",
-        f"events: {node.get('event_count', 0)}",
+        f"first_seen: {_time(inspection.get('first_seen'))}",
         f"last_seen: {_time(node.get('last_seen'))}",
+        f"events: {inspection.get('event_count', 0)}",
+        f"relationships: {inspection.get('relationship_count', 0)}",
+        f"traces: {_short(_join_values(inspection.get('trace_ids', [])), 42)}",
+        f"sessions: {_short(_join_values(inspection.get('session_ids', [])), 42)}",
         "",
         "Metadata",
     ]
@@ -532,15 +538,35 @@ def node_detail_rows(snapshot: TuiSnapshot, node_id: str) -> list[str]:
         rows.append("  none")
     for key, value in sorted(metadata.items()):
         rows.append(f"  {key}: {_short(str(value), 34)}")
-    rows.extend(["", "Relationships"])
-    relationships = outgoing.get(node_id, []) + incoming
-    if not relationships:
+    rows.extend(["", "Relationships", "Incoming"])
+    if not inspection.get("incoming_relationships"):
         rows.append("  none")
-    for edge in relationships[:8]:
-        direction = "->" if edge["source"] == node_id else "<-"
-        other_id = edge["target"] if direction == "->" else edge["source"]
-        other = nodes.get(other_id, {"name": other_id})
-        rows.append(f"  {direction} {edge['type']} {_short(other['name'], 24)}")
+    for edge in inspection.get("incoming_relationships", [])[:5]:
+        source = nodes.get(edge["source"], {"name": edge["source"]})
+        rows.append(
+            f"  <- {edge['type']} {_short(source['name'], 24)} "
+            f"obs:{edge.get('observation_count', edge.get('event_count', 0))}"
+        )
+    rows.append("")
+    rows.append("Outgoing")
+    if not inspection.get("outgoing_relationships"):
+        rows.append("  none")
+    for edge in outgoing.get(node_id, [])[:5]:
+        target = nodes.get(edge["target"], {"name": edge["target"]})
+        rows.append(
+            f"  -> {edge['type']} {_short(target['name'], 24)} "
+            f"obs:{edge.get('observation_count', edge.get('event_count', 0))}"
+        )
+    rows.extend(
+        [
+            "",
+            "Provenance",
+            f"events: {_short(_join_values(provenance.get('event_ids', [])), 42)}",
+            f"window: {_time(provenance.get('first_seen'))} -> {_time(provenance.get('last_seen'))}",
+            f"first_event: {_short(provenance.get('first_event_id'), 28)}",
+            f"last_event: {_short(provenance.get('last_event_id'), 28)}",
+        ]
+    )
     return rows
 
 

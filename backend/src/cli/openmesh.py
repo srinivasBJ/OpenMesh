@@ -28,6 +28,7 @@ from ..services.openmesh_queries import (
     get_health,
     get_trace,
     get_traces,
+    inspect_node,
 )
 from ..services.registry_status import build_registry_status
 from ..services.workflow_registry import get_workflow_registry
@@ -272,6 +273,67 @@ def _print_nodes(graph: dict[str, Any]) -> None:
             f"{node.get('event_count', 0):>6} "
             f"{node.get('last_seen') or '-'}"
         )
+
+
+def _print_node_inspection(inspection: dict[str, Any]) -> None:
+    node = inspection["node"]
+    provenance = inspection.get("provenance", {})
+    print(node["name"])
+    print()
+    print(f"node_id: {inspection['node_id']}")
+    print(f"type: {inspection['node_type']}")
+    print(f"status: {node.get('lifecycle_state', 'unknown')}")
+    print(f"validation: {inspection.get('validation', {}).get('status', 'unknown')}")
+    print(f"first_seen: {inspection.get('first_seen') or '-'}")
+    print(f"last_seen: {inspection.get('last_seen') or '-'}")
+    print(f"event_count: {inspection.get('event_count', 0)}")
+    print(f"relationship_count: {inspection.get('relationship_count', 0)}")
+    print()
+    print("Traces")
+    print(f"  {_join_short(inspection.get('trace_ids', []), limit=5)}")
+    print("Sessions")
+    print(f"  {_join_short(inspection.get('session_ids', []), limit=5)}")
+    print()
+    print("Incoming Relationships")
+    _print_inspection_relationships(inspection.get("incoming_relationships", []))
+    print()
+    print("Outgoing Relationships")
+    _print_inspection_relationships(inspection.get("outgoing_relationships", []))
+    print()
+    print("Provenance")
+    print(f"  events: {_join_short(provenance.get('event_ids', []), limit=5)}")
+    print(
+        f"  window: {provenance.get('first_seen') or '-'} -> {provenance.get('last_seen') or '-'}"
+    )
+    print(f"  first_event: {provenance.get('first_event_id') or '-'}")
+    print(f"  last_event: {provenance.get('last_event_id') or '-'}")
+    print(f"  relationship_events: {provenance.get('relationship_event_count', 0)}")
+    observations = provenance.get("observations", [])
+    if observations:
+        print("  recent_observations:")
+        for observation in observations[-5:]:
+            print(
+                "    "
+                f"{observation.get('timestamp')} "
+                f"{observation.get('event_type')} "
+                f"{observation.get('event_id')} "
+                f"role:{observation.get('role', '-')}"
+            )
+
+
+def _print_inspection_relationships(edges: list[dict[str, Any]]) -> None:
+    if not edges:
+        print("  none")
+        return
+    for edge in sorted(edges, key=lambda item: (item["type"], item["id"]))[:20]:
+        provenance = edge.get("provenance") or {}
+        print(
+            f"  {edge['type']} {edge['source']} -> {edge['target']} "
+            f"obs:{edge.get('observation_count', edge.get('event_count', 0))} "
+            f"state:{edge.get('lifecycle_state', 'unknown')}"
+        )
+        print(f"    traces: {_join_short(provenance.get('trace_ids', []), limit=3)}")
+        print(f"    events: {_join_short(provenance.get('event_ids', []), limit=3)}")
 
 
 def _print_registry(registry: dict[str, Any]) -> None:
@@ -639,6 +701,18 @@ async def _nodes(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _inspect(args: argparse.Namespace) -> int:
+    async def run(db):
+        inspection = await inspect_node(db, args.node_id)
+        if not inspection:
+            print(f"OpenMesh node not found: {args.node_id}")
+            return 1
+        _print_node_inspection(inspection)
+        return 0
+
+    return await _with_db(run)
+
+
 async def _registry(args: argparse.Namespace) -> int:
     async def run(db):
         records = await list_openmesh_events(db, limit=args.limit)
@@ -911,6 +985,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     nodes = subparsers.add_parser("nodes", help="Show governed OpenMesh graph nodes.")
     nodes.set_defaults(func=_nodes)
+
+    inspect = subparsers.add_parser("inspect", help="Inspect one OpenMesh graph node.")
+    inspect.add_argument(
+        "node_id", help="Node id, node name, or normalized node alias."
+    )
+    inspect.set_defaults(func=_inspect)
 
     registry = subparsers.add_parser(
         "registry", help="Show OpenMesh registry versions and compatibility."

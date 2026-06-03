@@ -102,6 +102,100 @@ async def get_graph(db: AsyncSession, limit: int = 1000) -> dict:
     return reduce_graph_state(records)
 
 
+async def inspect_node(
+    db: AsyncSession, node_id: str, limit: int = 1000
+) -> dict | None:
+    graph = await get_graph(db, limit=limit)
+    return inspect_graph_node(graph, node_id)
+
+
+def inspect_graph_node(graph: dict[str, Any], node_ref: str) -> dict | None:
+    node = _find_graph_node(graph.get("nodes", []), node_ref)
+    if not node:
+        return None
+
+    node_id = node["id"]
+    incoming = [edge for edge in graph.get("edges", []) if edge["target"] == node_id]
+    outgoing = [edge for edge in graph.get("edges", []) if edge["source"] == node_id]
+    relationships = incoming + outgoing
+    trace_ids = _dedupe(
+        [
+            *(node.get("provenance", {}).get("trace_ids") or node.get("trace_ids", [])),
+            *[
+                trace_id
+                for edge in relationships
+                for trace_id in (
+                    edge.get("provenance", {}).get("trace_ids")
+                    or edge.get("trace_ids", [])
+                )
+            ],
+        ]
+    )
+    session_ids = _dedupe(
+        [
+            *(
+                node.get("provenance", {}).get("session_ids")
+                or node.get("session_ids", [])
+            ),
+            *[
+                session_id
+                for edge in relationships
+                for session_id in (
+                    edge.get("provenance", {}).get("session_ids")
+                    or edge.get("session_ids", [])
+                )
+            ],
+        ]
+    )
+    event_ids = _dedupe(
+        [
+            *(node.get("provenance", {}).get("event_ids") or node.get("event_ids", [])),
+            *[
+                event_id
+                for edge in relationships
+                for event_id in (
+                    edge.get("provenance", {}).get("event_ids")
+                    or edge.get("event_ids", [])
+                )
+            ],
+        ]
+    )
+    return {
+        "node": node,
+        "node_id": node["id"],
+        "name": node["name"],
+        "node_type": node["type"],
+        "first_seen": node.get("first_seen"),
+        "last_seen": node.get("last_seen"),
+        "event_count": node.get("event_count", 0),
+        "relationship_count": len(relationships),
+        "incoming_relationships": incoming,
+        "outgoing_relationships": outgoing,
+        "trace_ids": trace_ids,
+        "session_ids": session_ids,
+        "provenance": {
+            "event_ids": event_ids,
+            "trace_ids": trace_ids,
+            "session_ids": session_ids,
+            "first_seen": node.get("provenance", {}).get("first_seen")
+            or node.get("first_seen"),
+            "last_seen": node.get("provenance", {}).get("last_seen")
+            or node.get("last_seen"),
+            "first_event_id": node.get("provenance", {}).get("first_event_id"),
+            "last_event_id": node.get("provenance", {}).get("last_event_id"),
+            "observations": node.get("provenance", {}).get("observations", []),
+            "relationship_event_count": sum(
+                edge.get("event_count", 0) for edge in relationships
+            ),
+        },
+        "validation": {
+            "status": node.get("validation_status", "unknown"),
+            "errors": node.get("validation_errors", []),
+            "warnings": node.get("validation_warnings", []),
+        },
+    }
+
+
 async def get_sessions(db: AsyncSession, limit: int = 100) -> list[dict]:
     records = await list_openmesh_sessions(db, limit=limit)
     return [session_to_dict(record) for record in records]
@@ -138,3 +232,37 @@ async def get_health(db: AsyncSession) -> dict:
         "nodes": len(graph["nodes"]),
         "edges": len(graph["edges"]),
     }
+
+
+def _find_graph_node(nodes: list[dict[str, Any]], node_ref: str) -> dict | None:
+    normalized_ref = _normalize_node_ref(node_ref)
+    candidates = []
+    for node in nodes:
+        node_id = node.get("id", "")
+        name = node.get("name", "")
+        aliases = {
+            node_id,
+            name,
+            node_id.split(":", 1)[-1],
+            name.replace(" ", "-"),
+            name.replace(" ", "_"),
+        }
+        if node_ref in aliases or normalized_ref in {
+            _normalize_node_ref(alias) for alias in aliases
+        }:
+            candidates.append(node)
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda item: (item.get("type", ""), item["id"]))[0]
+
+
+def _normalize_node_ref(value: str) -> str:
+    return value.strip().lower().replace(" ", "-").replace("_", "-")
+
+
+def _dedupe(values: list[Any]) -> list[Any]:
+    result = []
+    for value in values:
+        if value and value not in result:
+            result.append(value)
+    return result

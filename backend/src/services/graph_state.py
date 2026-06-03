@@ -36,7 +36,12 @@ def _node_from_json(
         "runtime": node.get("runtime"),
         "metadata": node.get("metadata", {}),
         "event_count": 0,
+        "trace_ids": [],
+        "session_ids": [],
+        "event_ids": [],
+        "observations": [],
         "last_seen": None,
+        "provenance": {},
     }
 
 
@@ -78,6 +83,7 @@ def _event_evidence(
         "event_id": event_id,
         "event_type": record.event_type,
         "trace_id": trace_id,
+        "session_id": getattr(record, "session_id", None),
         "span_id": getattr(record, "span_id", None),
         "timestamp": timestamp,
         "source": _node_evidence(source),
@@ -86,9 +92,46 @@ def _event_evidence(
     }
 
 
+def _node_observation(
+    record: OpenMeshEventRecord,
+    *,
+    event_id: str,
+    trace_id: str | None,
+    node: Dict[str, Any],
+    role: str,
+    timestamp: str,
+) -> Dict[str, Any]:
+    return {
+        "event_id": event_id,
+        "event_type": record.event_type,
+        "trace_id": trace_id,
+        "session_id": getattr(record, "session_id", None),
+        "span_id": getattr(record, "span_id", None),
+        "timestamp": timestamp,
+        "role": role,
+        "node": _node_evidence(node),
+    }
+
+
 def _dedupe_append(values: list[Any], value: Any) -> None:
     if value and value not in values:
         values.append(value)
+
+
+def _sync_node_provenance(node: Dict[str, Any]) -> None:
+    observations = node.get("observations", [])
+    node["provenance"] = {
+        "node_id": node["id"],
+        "node_type": node["type"],
+        "event_ids": list(node.get("event_ids", [])),
+        "trace_ids": list(node.get("trace_ids", [])),
+        "session_ids": list(node.get("session_ids", [])),
+        "first_seen": node.get("first_seen"),
+        "last_seen": node.get("last_seen"),
+        "first_event_id": node.get("first_event_id"),
+        "last_event_id": node.get("last_event_id"),
+        "observations": observations,
+    }
 
 
 def _sync_edge_provenance(edge: Dict[str, Any]) -> None:
@@ -99,6 +142,7 @@ def _sync_edge_provenance(edge: Dict[str, Any]) -> None:
         "relationship_type": edge["type"],
         "event_ids": list(edge.get("event_ids", [])),
         "trace_ids": list(edge.get("trace_ids", [])),
+        "session_ids": list(edge.get("session_ids", [])),
         "span_ids": list(edge.get("span_ids", [])),
         "first_seen": edge.get("first_seen"),
         "last_seen": edge.get("last_seen"),
@@ -124,14 +168,30 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
         timestamp = _normalize_datetime(record.timestamp)
         timestamp_text = timestamp.isoformat() + "Z"
 
-        for node in (source, target):
+        for role, node in (("source", source), ("target", target)):
             if not node:
                 continue
             existing = nodes.get(node["id"], node)
             existing["event_count"] = existing.get("event_count", 0) + 1
             if not existing.get("first_seen"):
                 existing["first_seen"] = timestamp_text
+                existing["first_event_id"] = event_id
             existing["last_seen"] = timestamp_text
+            existing["last_event_id"] = event_id
+            _dedupe_append(existing["trace_ids"], getattr(record, "trace_id", None))
+            _dedupe_append(existing["session_ids"], getattr(record, "session_id", None))
+            _dedupe_append(existing["event_ids"], event_id)
+            existing["observations"].append(
+                _node_observation(
+                    record,
+                    event_id=event_id,
+                    trace_id=getattr(record, "trace_id", None),
+                    node=existing,
+                    role=role,
+                    timestamp=timestamp_text,
+                )
+            )
+            _sync_node_provenance(existing)
             nodes[node["id"]] = existing
 
         if source and target:
@@ -168,6 +228,7 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
                         "first_event_id": event_id,
                         "last_trace_id": trace_id,
                         "trace_ids": [],
+                        "session_ids": [],
                         "event_ids": [],
                         "span_ids": [],
                         "last_event_id": None,
@@ -182,6 +243,7 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
                 edge["last_event_id"] = event_id
                 span_id = getattr(record, "span_id", None)
                 _dedupe_append(edge["trace_ids"], trace_id)
+                _dedupe_append(edge["session_ids"], getattr(record, "session_id", None))
                 _dedupe_append(edge["event_ids"], event_id)
                 _dedupe_append(edge["span_ids"], span_id)
                 edge["observations"].append(

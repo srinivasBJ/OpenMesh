@@ -36,6 +36,7 @@ from ...services.mcp_discovery import get_mcp_registry
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
 from ...services.openmesh_queries import (
     get_graph,
+    inspect_node,
     get_session,
     get_sessions,
     get_trace,
@@ -577,6 +578,18 @@ async def get_openmesh_graph(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_graph(db, limit=limit)
+
+
+@router.get("/openmesh/inspect/{node_id}")
+async def inspect_openmesh_node(
+    node_id: str,
+    limit: int = Query(1000, le=5000),
+    db: AsyncSession = Depends(get_db),
+):
+    inspection = await inspect_node(db, node_id, limit=limit)
+    if not inspection:
+        raise HTTPException(404, "OpenMesh node not found")
+    return inspection
 
 
 @router.get("/openmesh/relationships")

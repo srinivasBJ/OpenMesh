@@ -6,25 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import OpenMeshEventRecord
 from ..db.openmesh_events import list_openmesh_events
-
-
-CATEGORY_BY_NODE_TYPE = {
-    "agent": "agents",
-    "tool": "tools",
-    "process": "processes",
-    "command": "processes",
-    "service": "services",
-}
+from .node_types import node_type_definition, node_type_registry, validate_node
 
 
 def _empty_registry() -> dict[str, list[dict[str, Any]]]:
-    return {
-        "frameworks": [],
-        "agents": [],
-        "tools": [],
-        "processes": [],
-        "services": [],
-    }
+    categories = {definition["category"] for definition in node_type_registry()}
+    return {category: [] for category in sorted(categories)}
 
 
 def _status_from_event(event_type: str, severity: Optional[str]) -> str:
@@ -54,11 +41,16 @@ def _display_framework_name(name: str) -> str:
 
 
 def _new_entry(node: dict[str, Any], category: str, timestamp: str, event_type: str, severity: Optional[str]) -> dict[str, Any]:
+    validation = validate_node(node)
     return {
         "id": node["node_id"],
         "name": node["name"],
         "type": node["node_type"],
         "category": category,
+        "type_definition": validation["definition"],
+        "validation_status": validation["status"],
+        "validation_errors": validation["errors"],
+        "validation_warnings": validation["warnings"],
         "runtime": node.get("runtime"),
         "metadata": node.get("metadata") or {},
         "status": _status_from_event(event_type, severity),
@@ -96,6 +88,10 @@ def build_discovery(records: Iterable[OpenMeshEventRecord]) -> dict[str, list[di
                         "name": _display_framework_name(framework),
                         "type": "framework",
                         "category": "frameworks",
+                        "type_definition": node_type_definition("framework"),
+                        "validation_status": "valid",
+                        "validation_errors": [],
+                        "validation_warnings": [],
                         "runtime": framework,
                         "metadata": {"framework": framework},
                         "status": "observed",
@@ -106,9 +102,10 @@ def build_discovery(records: Iterable[OpenMeshEventRecord]) -> dict[str, list[di
                 )
                 _touch_entry(framework_entry, timestamp, record.event_type, record.severity)
 
-            category = CATEGORY_BY_NODE_TYPE.get(node.get("node_type"))
-            if not category:
+            definition = node_type_definition(node.get("node_type"))
+            if not definition:
                 continue
+            category = str(definition["category"])
             entry_key = f"process:{node['name']}" if category == "processes" else node["node_id"]
             entry = entries.setdefault(
                 entry_key,
@@ -118,7 +115,8 @@ def build_discovery(records: Iterable[OpenMeshEventRecord]) -> dict[str, list[di
 
         if record.source_json and record.target_json:
             for node in (record.source_json, record.target_json):
-                category = CATEGORY_BY_NODE_TYPE.get(node.get("node_type"))
+                definition = node_type_definition(node.get("node_type"))
+                category = str(definition["category"]) if definition else None
                 entry_key = f"process:{node['name']}" if category == "processes" else node["node_id"]
                 if entry_key in entries:
                     entries[entry_key]["relationship_count"] += 1

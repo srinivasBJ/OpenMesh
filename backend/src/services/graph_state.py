@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, Optional
 
 from ..db.models import OpenMeshEventRecord
+from .node_types import node_type_registry, validate_node
 from .relationship_types import relationship_registry, relationship_type_for, validate_relationship
 
 
@@ -11,13 +12,20 @@ ACTIVE_AFTER = timedelta(hours=1)
 STALE_AFTER = timedelta(hours=24)
 
 
-def _node_from_json(node: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _node_from_json(node: Optional[Dict[str, Any]], fallback_id: str) -> Optional[Dict[str, Any]]:
     if not node:
         return None
+    validation = validate_node(node)
+    definition = validation["definition"] or {}
     return {
-        "id": node["node_id"],
-        "type": node["node_type"],
-        "name": node["name"],
+        "id": node.get("node_id") or fallback_id,
+        "type": node.get("node_type") or "unknown",
+        "name": node.get("name") or node.get("node_id") or "Unknown Node",
+        "category": definition.get("category", "unknown"),
+        "type_definition": validation["definition"],
+        "validation_status": validation["status"],
+        "validation_errors": validation["errors"],
+        "validation_warnings": validation["warnings"],
         "runtime": node.get("runtime"),
         "metadata": node.get("metadata", {}),
         "event_count": 0,
@@ -43,8 +51,9 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
     now = datetime.utcnow()
 
     for record in sorted(records, key=lambda item: item.timestamp):
-        source = _node_from_json(record.source_json)
-        target = _node_from_json(record.target_json)
+        event_id = getattr(record, "event_id", f"{record.event_type}:{record.timestamp.isoformat()}")
+        source = _node_from_json(record.source_json, f"invalid:{event_id}:source")
+        target = _node_from_json(record.target_json, f"invalid:{event_id}:target")
         timestamp = _normalize_datetime(record.timestamp)
         timestamp_text = timestamp.isoformat() + "Z"
 
@@ -61,7 +70,6 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
         if source and target:
             edge_type = _edge_type_for(record.event_type, target["type"], source["type"])
             if edge_type:
-                event_id = getattr(record, "event_id", f"{record.event_type}:{timestamp.isoformat()}")
                 trace_id = getattr(record, "trace_id", None)
                 edge_id = f"{source['id']}:{edge_type}:{target['id']}"
                 relationship_validation = validate_relationship(edge_type, source["type"], target["type"])
@@ -108,6 +116,9 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
                 )
                 edges[edge_id] = edge
 
+    for node in nodes.values():
+        node["lifecycle_state"] = _lifecycle_state(node["last_seen"], now)
+
     for edge in edges.values():
         edge["lifecycle_state"] = _lifecycle_state(edge["last_seen"], now)
 
@@ -117,6 +128,7 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
         "edges": list(edges.values()),
         "metadata": {
             "generated_at": now.isoformat() + "Z",
+            "node_types": node_type_registry(),
             "relationship_types": relationship_registry(),
             "lifecycle": {
                 "active_after_seconds": int(ACTIVE_AFTER.total_seconds()),
@@ -134,7 +146,44 @@ def validate_graph_state(nodes: Dict[str, Dict[str, Any]], edges: Dict[str, Dict
     invalid_relationship_types = []
     invalid_source_types = []
     invalid_target_types = []
+    unknown_node_types = []
+    invalid_node_metadata = []
+    missing_required_identifiers = []
+    invalid_node_categories = []
+    invalid_relationship_endpoints = []
     missing_provenance = []
+    node_validation_statuses: dict[str, str] = {}
+
+    for node in nodes.values():
+        validation = validate_node(
+            {
+                "node_id": node.get("id"),
+                "node_type": node.get("type"),
+                "name": node.get("name"),
+                "metadata": node.get("metadata", {}),
+            }
+        )
+        errors = node.get("validation_errors", validation["errors"])
+        warnings = node.get("validation_warnings", validation["warnings"])
+        error_codes = {error["code"] for error in errors}
+        warning_codes = {warning["code"] for warning in warnings}
+        node_validation_statuses[node["id"]] = "invalid" if errors else "warning" if warnings else "valid"
+        detail = {
+            "node_id": node["id"],
+            "type": node["type"],
+            "category": node.get("category"),
+            "errors": errors,
+            "warnings": warnings,
+        }
+        if "unknown_node_type" in error_codes:
+            unknown_node_types.append(detail)
+        if "invalid_node_metadata" in error_codes or "unsupported_node_metadata" in warning_codes:
+            invalid_node_metadata.append(detail)
+        if "missing_required_identifiers" in error_codes:
+            missing_required_identifiers.append(detail)
+        definition = node.get("type_definition") or validation["definition"]
+        if definition and node.get("category") != definition.get("category"):
+            invalid_node_categories.append(detail)
 
     for edge in edges.values():
         source = nodes.get(edge["source"])
@@ -144,6 +193,18 @@ def validate_graph_state(nodes: Dict[str, Dict[str, Any]], edges: Dict[str, Dict
             continue
         incident_nodes.add(edge["source"])
         incident_nodes.add(edge["target"])
+        source_status = source.get("validation_status") or node_validation_statuses.get(source["id"])
+        target_status = target.get("validation_status") or node_validation_statuses.get(target["id"])
+        if source_status == "invalid" or target_status == "invalid":
+            invalid_relationship_endpoints.append(
+                {
+                    "edge_id": edge["id"],
+                    "source": source["id"],
+                    "target": target["id"],
+                    "source_status": source_status,
+                    "target_status": target_status,
+                }
+            )
         relationship_validation = validate_relationship(edge["type"], source["type"], target["type"])
         if not relationship_validation["valid"]:
             invalid_relationship = {
@@ -165,10 +226,24 @@ def validate_graph_state(nodes: Dict[str, Dict[str, Any]], edges: Dict[str, Dict
             missing_provenance.append(edge["id"])
 
     orphan_nodes = sorted(node_id for node_id in nodes if node_id not in incident_nodes)
-    status = "OK" if not broken_references and not invalid_relationships and not missing_provenance else "WARNING"
+    node_issues = unknown_node_types or invalid_node_metadata or missing_required_identifiers or invalid_node_categories
+    status = (
+        "OK"
+        if not broken_references
+        and not invalid_relationships
+        and not invalid_relationship_endpoints
+        and not missing_provenance
+        and not node_issues
+        else "WARNING"
+    )
     return {
         "status": status,
         "orphan_nodes": orphan_nodes,
+        "unknown_node_types": unknown_node_types,
+        "invalid_node_metadata": invalid_node_metadata,
+        "missing_required_identifiers": missing_required_identifiers,
+        "invalid_node_categories": invalid_node_categories,
+        "invalid_relationship_endpoints": invalid_relationship_endpoints,
         "invalid_relationships": invalid_relationships,
         "invalid_relationship_types": invalid_relationship_types,
         "invalid_source_types": invalid_source_types,

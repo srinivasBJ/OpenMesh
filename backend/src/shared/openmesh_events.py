@@ -18,6 +18,8 @@ OpenMeshNodeType = Literal[
     "runtime",
     "process",
     "workflow",
+    "framework",
+    "mcp_server",
     "capability",
     "guild",
     "wiki",

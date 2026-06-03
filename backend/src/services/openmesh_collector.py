@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db.openmesh_events import create_openmesh_event
 from ..shared.openmesh_events import is_openmesh_event
 from ..websocket.manager import manager
+from .node_types import validate_node
 
 
-REQUIRED_NODE_FIELDS = {"node_id", "node_type", "name"}
 LINK_IDENTITY_FIELDS = {"url", "trace_id", "span_id", "event_id"}
 
 
@@ -53,10 +53,12 @@ class OpenMeshCollector:
             node = event.get(node_key)
             if node is None and node_key == "target":
                 continue
-            if not isinstance(node, dict) or not REQUIRED_NODE_FIELDS.issubset(node.keys()):
+            validation = validate_node(node)
+            if not validation["valid"]:
+                messages = "; ".join(error["message"] for error in validation["errors"])
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Invalid OpenMesh {node_key} node: expected node_id, node_type, and name",
+                    detail=f"Invalid OpenMesh {node_key} node: {messages}",
                 )
 
     async def accept(

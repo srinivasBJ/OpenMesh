@@ -19,6 +19,11 @@ from ..services.ecosystem_snapshot import (
     inspect_ecosystem_snapshot,
     list_ecosystem_snapshots,
 )
+from ..services.graph_exploration import (
+    explore_graph_node,
+    filter_graph,
+    search_graph,
+)
 from ..services.mcp_capabilities import get_capability_registry
 from ..services.mcp_config_discovery import get_mcp_config_registry
 from ..services.mcp_discovery import get_mcp_registry
@@ -53,6 +58,16 @@ OPENMESH_LOGO = r"""
 \____/ .___/\___/\__,_/_/  /_/\___/____/_/ /_/
     /_/
 """
+
+GRAPH_FILTERS = [
+    ("all", None, None),
+    ("agents", {"agent"}, None),
+    ("tools", {"tool"}, None),
+    ("workflows", {"workflow"}, None),
+    ("mcp", {"mcp_server"}, None),
+    ("uses", None, {"uses"}),
+    ("connects", None, {"connects_to"}),
+]
 
 
 @dataclass
@@ -201,10 +216,26 @@ def network_lines(snapshot: TuiSnapshot, limit: int = 80) -> list[str]:
     return lines[:limit]
 
 
-def network_edges(snapshot: TuiSnapshot) -> list[dict[str, Any]]:
+def network_edges(
+    snapshot: TuiSnapshot,
+    *,
+    node_types: set[str] | None = None,
+    relationship_types: set[str] | None = None,
+    query: str | None = None,
+) -> list[dict[str, Any]]:
     nodes, _ = _node_maps(snapshot)
+    graph = (
+        filter_graph(
+            snapshot.graph,
+            node_types=node_types,
+            relationship_types=relationship_types,
+            query=query,
+        )
+        if node_types or relationship_types or query
+        else snapshot.graph
+    )
     return sorted(
-        snapshot.graph["edges"],
+        graph["edges"],
         key=lambda edge: (
             nodes.get(edge["source"], {}).get("name", edge["source"]),
             edge["type"],
@@ -767,6 +798,11 @@ def edge_detail_rows(snapshot: TuiSnapshot, edge_id: str) -> list[str]:
         f"first_event: {_short(provenance.get('first_event_id'), 28)}",
         f"last_event: {_short(provenance.get('last_event_id'), 28)}",
         "",
+        "Traversal",
+        f"source: {_short(source.get('type'), 10)}:{_short(source['name'], 28)}",
+        f"target: {_short(target.get('type'), 10)}:{_short(target['name'], 28)}",
+        f"path: {_short(source['name'], 16)} -> {_short(target['name'], 16)}",
+        "",
         "Recent observations",
     ]
     observations = provenance.get("observations") or edge.get("observations", [])
@@ -840,6 +876,47 @@ def node_detail_rows(snapshot: TuiSnapshot, node_id: str) -> list[str]:
             f"  -> {edge['type']} {_short(target['name'], 24)} "
             f"obs:{edge.get('observation_count', edge.get('event_count', 0))}"
         )
+    exploration = explore_graph_node(snapshot.graph, node_id, depth=1)
+    if exploration:
+        neighborhood = exploration.get("neighborhood") or {}
+        traversal = exploration.get("traversal") or {}
+        rows.extend(
+            [
+                "",
+                "Explore",
+                f"neighborhood: {neighborhood.get('statistics', {}).get('node_count', 0)} nodes / "
+                f"{neighborhood.get('statistics', {}).get('edge_count', 0)} edges",
+                "Traversal targets",
+            ]
+        )
+        relationships = traversal.get("relationships", [])
+        if not relationships:
+            rows.append("  none")
+        for relationship in relationships[:8]:
+            arrow = "->" if relationship.get("direction") == "outgoing" else "<-"
+            rows.append(
+                f"  {arrow} {relationship.get('relationship_type')} "
+                f"{_short(relationship.get('node_type'), 10)}:"
+                f"{_short(relationship.get('node_name'), 22)}"
+            )
+        rows.append("")
+        rows.append("Search")
+        search = search_graph(snapshot.graph, node["name"], limit=5)
+        matches = search.get("nodes", []) + search.get("relationships", [])
+        if not matches:
+            rows.append("  none")
+        for match in matches[:5]:
+            if match.get("relationship_type"):
+                rows.append(
+                    f"  rel {match.get('relationship_type')} "
+                    f"{_short(match.get('source_name'), 14)} -> "
+                    f"{_short(match.get('target_name'), 14)}"
+                )
+            else:
+                rows.append(
+                    f"  node {_short(match.get('node_type'), 10)}:"
+                    f"{_short(match.get('name'), 24)}"
+                )
     rows.extend(
         [
             "",
@@ -1044,6 +1121,7 @@ class OpenMeshTui(App):
         ("l", "show_timeline", "Timeline"),
         ("r", "show_replay", "Replay"),
         ("y", "show_query", "Query"),
+        ("g", "cycle_graph_filter", "Graph Filter"),
         ("u", "next_query", "Next Query"),
         ("space", "toggle_replay", "Play/Pause"),
         ("n", "step_replay", "Step"),
@@ -1067,6 +1145,7 @@ class OpenMeshTui(App):
         self.replay_control = "start"
         self.replay_position = 0
         self.query_index = 0
+        self.network_filter_index = 0
         self.agent_node_rows: list[dict[str, Any]] = []
         self.network_edge_rows: list[dict[str, Any]] = []
 
@@ -1108,12 +1187,14 @@ class OpenMeshTui(App):
     async def refresh_data(self) -> None:
         self.snapshot = await load_snapshot()
         health = self.snapshot.health
+        graph_filter = GRAPH_FILTERS[self.network_filter_index][0]
         self.query_one("#topbar", Static).update(
             f"[#c56b2c]{OPENMESH_LOGO.strip()}[/]\n"
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
-            f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
+            f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)} "
+            f"graph_filter:{graph_filter}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [d diff] [l timeline] [r replay] [y query] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [d diff] [l timeline] [r replay] [y query] [g filter] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -1160,7 +1241,12 @@ class OpenMeshTui(App):
         table = self.query_one("#network-table", DataTable)
         table.clear()
         nodes, _ = _node_maps(self.snapshot)
-        self.network_edge_rows = network_edges(self.snapshot)
+        _, node_types, relationship_types = GRAPH_FILTERS[self.network_filter_index]
+        self.network_edge_rows = network_edges(
+            self.snapshot,
+            node_types=node_types,
+            relationship_types=relationship_types,
+        )
         for edge in self.network_edge_rows:
             source = nodes.get(edge["source"], {"name": edge["source"]})
             target = nodes.get(edge["target"], {"name": edge["target"]})
@@ -1394,6 +1480,12 @@ class OpenMeshTui(App):
         self.query_index = (self.query_index + 1) % max(len(SAVED_QUERIES), 1)
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
+
+    def action_cycle_graph_filter(self) -> None:
+        self.network_filter_index = (self.network_filter_index + 1) % len(GRAPH_FILTERS)
+        self._refresh_network()
+        self._refresh_events()
+        self.query_one("#network-table", Widget).focus()
 
     def action_select_snapshot_a(self) -> None:
         if self.snapshot and len(self.snapshot.snapshots) > 1:

@@ -20,6 +20,7 @@ Core backend pieces:
 - `backend/src/db/openmesh_sessions.py`: CLI process session persistence helpers.
 - `backend/src/services/openmesh_queries.py`: shared read model for API and CLI.
 - `backend/src/services/graph_state.py`: derives nodes and edges from events.
+- `backend/src/services/graph_exploration.py`: derives node selection, traversal, neighborhood, filter, and search views from graph state.
 - `backend/src/services/discovery.py`: derives observed frameworks, agents, tools, workflows, services, and processes.
 - `backend/src/services/ecosystem_registry.py`: aggregates observed entities into one ecosystem inventory.
 - `backend/src/services/plugins.py`: discovers, validates, and loads OpenMesh plugins.

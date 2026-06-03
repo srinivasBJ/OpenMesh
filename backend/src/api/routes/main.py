@@ -40,10 +40,13 @@ from ...services.ecosystem_snapshot import (
 )
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
 from ...services.openmesh_queries import (
+    explore_node,
+    filter_graph_view,
     get_graph,
     inspect_node,
     inspect_workflow,
     list_workflows,
+    search_graph_view,
     get_session,
     get_sessions,
     get_trace,
@@ -603,6 +606,68 @@ async def get_openmesh_graph(
     return await get_graph(db, limit=limit)
 
 
+@router.get("/openmesh/graph/search")
+async def search_openmesh_graph(
+    q: str = Query(..., min_length=1),
+    node_type: Optional[str] = None,
+    relationship_type: Optional[str] = None,
+    limit: int = Query(100, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    return await search_graph_view(
+        db,
+        q,
+        node_type=node_type,
+        relationship_type=relationship_type,
+        limit=limit,
+    )
+
+
+@router.get("/openmesh/graph/filter")
+async def filter_openmesh_graph(
+    node_type: Optional[str] = None,
+    relationship_type: Optional[str] = None,
+    q: Optional[str] = None,
+    lifecycle_state: Optional[str] = None,
+    limit: int = Query(500, le=1000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await filter_graph_view(
+        db,
+        node_types=_csv_values(node_type),
+        relationship_types=_csv_values(relationship_type),
+        query=q,
+        lifecycle_state=lifecycle_state,
+        limit=limit,
+    )
+
+
+@router.get("/openmesh/graph/explore/{node_id:path}")
+async def explore_openmesh_graph_node(
+    node_id: str,
+    depth: int = Query(1, ge=0, le=4),
+    direction: str = Query("both"),
+    relationship_type: Optional[str] = None,
+    node_type: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = Query(500, le=1000),
+    db: AsyncSession = Depends(get_db),
+):
+    exploration = await explore_node(
+        db,
+        node_id,
+        depth=depth,
+        direction=direction,
+        relationship_type=relationship_type,
+        node_type=node_type,
+        query=q,
+        limit=limit,
+    )
+    if not exploration:
+        raise HTTPException(404, "OpenMesh graph node not found")
+    return exploration
+
+
 @router.get("/openmesh/inspect/{node_id}")
 async def inspect_openmesh_node(
     node_id: str,
@@ -626,6 +691,13 @@ async def get_openmesh_node_types():
         "node_types": node_type_registry(),
         "validation": node_type_validation_metadata(),
     }
+
+
+def _csv_values(value: Optional[str]) -> set[str] | None:
+    if not value:
+        return None
+    values = {item.strip() for item in value.split(",") if item.strip()}
+    return values or None
 
 
 @router.get("/openmesh/registry")

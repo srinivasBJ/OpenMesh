@@ -34,6 +34,13 @@ from src.api.routes.main import (
 )
 from src.services.discovery import build_discovery
 from src.services.graph_state import reduce_graph_state, validate_graph_state
+from src.services.graph_exploration import (
+    expand_graph_neighborhood,
+    filter_graph,
+    search_graph,
+    select_graph_node,
+    traverse_graph_relationships,
+)
 from src.services.node_types import (
     NODE_TYPES,
     NodeType,
@@ -188,6 +195,53 @@ def command_node(command: str) -> dict:
     }
 
 
+def workflow_test_node() -> dict:
+    return {
+        "node_id": "workflow:research",
+        "node_type": "workflow",
+        "name": "Research Workflow",
+        "runtime": "langgraph",
+        "metadata": {"framework": "LangGraph"},
+    }
+
+
+def tool_test_node() -> dict:
+    return {
+        "node_id": "tool:web_search",
+        "node_type": "tool",
+        "name": "Web Search",
+        "runtime": "openmesh.sdk",
+    }
+
+
+def mcp_test_node() -> dict:
+    return {
+        "node_id": "mcp:filesystem",
+        "node_type": "mcp_server",
+        "name": "Filesystem MCP",
+        "runtime": "mcp",
+        "metadata": {"transport": "stdio"},
+    }
+
+
+def service_test_node() -> dict:
+    return {
+        "node_id": "service:claude-code",
+        "node_type": "service",
+        "name": "Claude Code",
+        "runtime": "cli",
+    }
+
+
+def capability_test_node() -> dict:
+    return {
+        "node_id": "capability:read_file",
+        "node_type": "capability",
+        "name": "read_file",
+        "runtime": "mcp",
+    }
+
+
 def record_from_event(event: dict, **overrides):
     values = {
         "event_id": event["event_id"],
@@ -257,6 +311,36 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             session_id="sess_test",
             trace_id="trace_test",
         )
+
+    def make_exploration_graph(self):
+        pairs = [
+            (
+                "workflow.started",
+                agent_node("agent-a", "Research Agent"),
+                workflow_test_node(),
+            ),
+            (
+                "tool.call.started",
+                agent_node("agent-a", "Research Agent"),
+                tool_test_node(),
+            ),
+            ("tool.connected", tool_test_node(), mcp_test_node()),
+            ("tool.call.completed", workflow_test_node(), tool_test_node()),
+            ("mcp.config.discovered", service_test_node(), mcp_test_node()),
+            ("mcp.capability.discovered", mcp_test_node(), capability_test_node()),
+        ]
+        records = []
+        for index, (event_type, source, target) in enumerate(pairs):
+            event = self.make_event(event_type)
+            event["source"] = source
+            event["target"] = target
+            records.append(
+                record_from_event(
+                    event,
+                    timestamp=datetime(2026, 6, 3, 10, index, 0),
+                )
+            )
+        return reduce_graph_state(records)
 
     def make_snapshot_payload(
         self,
@@ -701,6 +785,65 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             inspection["outgoing_relationships"][0]["provenance"]["event_ids"],
             [completed["event_id"]],
+        )
+
+    def test_graph_exploration_selects_and_traverses_nodes(self):
+        graph = self.make_exploration_graph()
+
+        selection = select_graph_node(graph, "agent-a")
+        traversal = traverse_graph_relationships(
+            graph,
+            "agent-a",
+            direction="outgoing",
+            relationship_type="uses",
+        )
+
+        self.assertIsNotNone(selection)
+        assert selection is not None
+        self.assertEqual(selection["node_type"], "agent")
+        self.assertIn(
+            "tool:web_search",
+            {target["node_id"] for target in selection["navigation_targets"]},
+        )
+        self.assertIsNotNone(traversal)
+        assert traversal is not None
+        self.assertEqual(traversal["relationship_count"], 1)
+        self.assertEqual(traversal["relationships"][0]["node_id"], "tool:web_search")
+        self.assertEqual(traversal["relationships"][0]["relationship_type"], "uses")
+
+    def test_graph_exploration_expands_neighborhood_and_filters_graph(self):
+        graph = self.make_exploration_graph()
+
+        neighborhood = expand_graph_neighborhood(graph, "agent-a", depth=2)
+        filtered = filter_graph(graph, node_types={"agent"})
+
+        self.assertIsNotNone(neighborhood)
+        assert neighborhood is not None
+        node_ids = {node["id"] for node in neighborhood["nodes"]}
+        self.assertIn("agent-a", node_ids)
+        self.assertIn("workflow:research", node_ids)
+        self.assertIn("tool:web_search", node_ids)
+        self.assertGreaterEqual(neighborhood["statistics"]["edge_count"], 2)
+        self.assertEqual(filtered["filters"]["node_types"], ["agent"])
+        self.assertIn(
+            "tool:web_search",
+            {node["id"] for node in filtered["nodes"]},
+        )
+        self.assertGreaterEqual(filtered["statistics"]["edge_count"], 1)
+
+    def test_graph_search_finds_nodes_and_relationships(self):
+        graph = self.make_exploration_graph()
+
+        result = search_graph(graph, "filesystem")
+
+        self.assertGreaterEqual(result["count"], 2)
+        self.assertIn(
+            "mcp:filesystem",
+            {node["node_id"] for node in result["nodes"]},
+        )
+        self.assertIn(
+            "connects_to",
+            {edge["relationship_type"] for edge in result["relationships"]},
         )
 
     def test_relationship_registry_maps_protocol_events_to_canonical_types(self):
@@ -2927,6 +3070,8 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         node_detail = "\n".join(node_detail_rows(snapshot, "agent-a"))
         self.assertIn("type: agent", node_detail)
         self.assertIn("Relationships", node_detail)
+        self.assertIn("Explore", node_detail)
+        self.assertIn("Traversal targets", node_detail)
         registry_detail = "\n".join(registry_rows(snapshot))
         self.assertIn("Compatibility: INFO", registry_detail)
         self.assertIn("node_registry", registry_detail)

@@ -17,6 +17,11 @@ from ..db.openmesh_sessions import (
     session_to_dict,
 )
 from .graph_state import reduce_graph_state
+from .graph_exploration import (
+    explore_graph_node,
+    filter_graph,
+    search_graph,
+)
 from .trace_semantics import (
     build_event_hierarchy,
     build_span_summary,
@@ -108,6 +113,68 @@ async def inspect_node(
 ) -> dict | None:
     graph = await get_graph(db, limit=limit)
     return inspect_graph_node(graph, node_id)
+
+
+async def explore_node(
+    db: AsyncSession,
+    node_id: str,
+    *,
+    depth: int = 1,
+    direction: str = "both",
+    relationship_type: str | None = None,
+    node_type: str | None = None,
+    query: str | None = None,
+    limit: int = 1000,
+) -> dict | None:
+    graph = await get_graph(db, limit=limit)
+    return explore_graph_node(
+        graph,
+        node_id,
+        depth=depth,
+        direction=direction,
+        relationship_type=relationship_type,
+        node_type=node_type,
+        query=query,
+        limit=limit,
+    )
+
+
+async def search_graph_view(
+    db: AsyncSession,
+    query: str,
+    *,
+    node_type: str | None = None,
+    relationship_type: str | None = None,
+    limit: int = 1000,
+) -> dict:
+    graph = await get_graph(db, limit=limit)
+    return search_graph(
+        graph,
+        query,
+        node_type=node_type,
+        relationship_type=relationship_type,
+        limit=min(limit, 250),
+    )
+
+
+async def filter_graph_view(
+    db: AsyncSession,
+    *,
+    node_types: set[str] | None = None,
+    relationship_types: set[str] | None = None,
+    query: str | None = None,
+    lifecycle_state: str | None = None,
+    limit: int = 1000,
+) -> dict:
+    graph = await get_graph(db, limit=limit)
+    return filter_graph(
+        graph,
+        node_types=node_types,
+        relationship_types=relationship_types,
+        query=query,
+        lifecycle_state=lifecycle_state,
+        limit=limit,
+    )
 
 
 async def list_workflows(db: AsyncSession, limit: int = 5000) -> list[dict[str, Any]]:

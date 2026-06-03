@@ -340,6 +340,7 @@ python -m pip install openmesh
 
 See [docs/INSTALLATION.md](docs/INSTALLATION.md) and [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
 Plugin metadata and validation are documented in [docs/PLUGINS.md](docs/PLUGINS.md).
+Graph exploration is documented in [docs/GRAPH_EXPLORATION.md](docs/GRAPH_EXPLORATION.md).
 
 Run the basic Python SDK example from the repository root:
 
@@ -408,6 +409,9 @@ This repository includes public-project workflow scaffolding:
 - `GET /api/openmesh/traces`
 - `GET /api/openmesh/traces/{trace_id}`
 - `GET /api/openmesh/graph`
+- `GET /api/openmesh/graph/search`
+- `GET /api/openmesh/graph/filter`
+- `GET /api/openmesh/graph/explore/{node_id}`
 - `GET /api/openmesh/sessions`
 - `GET /api/openmesh/discovery`
 - `GET /api/openmesh/ecosystem`

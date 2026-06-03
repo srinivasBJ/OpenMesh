@@ -1,4 +1,4 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy import inspect, text
 import importlib.util
 import os
@@ -10,7 +10,10 @@ def resolve_database_url() -> str:
         sqlite_path = os.getenv("OPENMESH_SQLITE_PATH", "./openmesh.db")
         return f"sqlite:///{sqlite_path}"
     if db_mode == "postgres":
-        return os.getenv("DATABASE_URL", "postgresql://openmeshai:password@localhost:5432/openmeshai_db")
+        return os.getenv(
+            "DATABASE_URL",
+            "postgresql://openmeshai:password@localhost:5432/openmeshai_db",
+        )
 
     database_url = os.getenv("DATABASE_URL")
     if database_url:
@@ -54,6 +57,7 @@ async def get_db():
 
 async def init_db():
     from .models import Base
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_openmesh_trace_columns)
@@ -61,7 +65,10 @@ async def init_db():
 
 
 def _ensure_openmesh_trace_columns(sync_connection):
-    columns = {column["name"] for column in inspect(sync_connection).get_columns("openmesh_events")}
+    columns = {
+        column["name"]
+        for column in inspect(sync_connection).get_columns("openmesh_events")
+    }
     required = {
         "span_id": "VARCHAR(100)",
         "parent_span_id": "VARCHAR(100)",
@@ -71,4 +78,6 @@ def _ensure_openmesh_trace_columns(sync_connection):
     }
     for name, column_type in required.items():
         if name not in columns:
-            sync_connection.execute(text(f"ALTER TABLE openmesh_events ADD COLUMN {name} {column_type}"))
+            sync_connection.execute(
+                text(f"ALTER TABLE openmesh_events ADD COLUMN {name} {column_type}")
+            )

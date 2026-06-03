@@ -2,19 +2,27 @@
 OpenMeshAI API Routes
 All endpoints for the frontend to consume.
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func, or_
 from pydantic import BaseModel
-from typing import Any, Dict, Optional, List
-from datetime import datetime
+from typing import Any, Dict, Optional
 import random
 
 from ...db.session import get_db
 from ...db.openmesh_events import list_openmesh_events
 from ...db.models import (
-    Agent, Guild, Post, Comment, Message, WikiPage,
-    WikiContribution, AgentEvent, Collaboration, AgentStatus, AgentRole
+    Agent,
+    Guild,
+    Post,
+    Comment,
+    Message,
+    WikiPage,
+    WikiContribution,
+    AgentEvent,
+    Collaboration,
+    AgentRole,
 )
 from ...agents.brain import generate_agent_profile
 from ...core.security import protect_write
@@ -26,7 +34,13 @@ from ...services.mcp_capabilities import get_capability_registry
 from ...services.mcp_config_discovery import get_mcp_config_registry
 from ...services.mcp_discovery import get_mcp_registry
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
-from ...services.openmesh_queries import get_graph, get_session, get_sessions, get_trace, get_traces
+from ...services.openmesh_queries import (
+    get_graph,
+    get_session,
+    get_sessions,
+    get_trace,
+    get_traces,
+)
 from ...services.node_types import node_type_registry, node_type_validation_metadata
 from ...services.registry_status import build_registry_status
 from ...services.relationship_types import relationship_registry
@@ -37,6 +51,7 @@ router = APIRouter()
 
 
 # ── AGENTS ────────────────────────────────────────────────────────────────────
+
 
 class SpawnAgentRequest(BaseModel):
     name: str
@@ -49,7 +64,7 @@ async def list_agents(
     role: Optional[str] = None,
     guild_id: Optional[str] = None,
     limit: int = Query(50, le=100),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     q = select(Agent)
     if role:
@@ -60,15 +75,27 @@ async def list_agents(
     result = await db.execute(q)
     agents = result.scalars().all()
 
-    return [{
-        "id": a.id, "name": a.name, "role": a.role, "status": a.status,
-        "bio": a.bio, "personality": a.personality, "skills": a.skills,
-        "reputation": round(a.reputation, 1), "knowledge": round(a.knowledge, 1),
-        "energy": round(a.energy, 1), "happiness": round(a.happiness, 1),
-        "guild_id": a.guild_id, "born_at": a.born_at.isoformat() if a.born_at else None,
-        "total_posts": a.total_posts, "total_collaborations": a.total_collaborations,
-        "goals": a.goals or [],
-    } for a in agents]
+    return [
+        {
+            "id": a.id,
+            "name": a.name,
+            "role": a.role,
+            "status": a.status,
+            "bio": a.bio,
+            "personality": a.personality,
+            "skills": a.skills,
+            "reputation": round(a.reputation, 1),
+            "knowledge": round(a.knowledge, 1),
+            "energy": round(a.energy, 1),
+            "happiness": round(a.happiness, 1),
+            "guild_id": a.guild_id,
+            "born_at": a.born_at.isoformat() if a.born_at else None,
+            "total_posts": a.total_posts,
+            "total_collaborations": a.total_collaborations,
+            "goals": a.goals or [],
+        }
+        for a in agents
+    ]
 
 
 @router.get("/agents/{agent_id}")
@@ -86,8 +113,10 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
 
     # Get recent posts
     posts_result = await db.execute(
-        select(Post).where(Post.author_id == agent_id)
-        .order_by(desc(Post.created_at)).limit(10)
+        select(Post)
+        .where(Post.author_id == agent_id)
+        .order_by(desc(Post.created_at))
+        .limit(10)
     )
     posts = posts_result.scalars().all()
 
@@ -97,21 +126,36 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     )
 
     return {
-        "id": agent.id, "name": agent.name, "role": agent.role,
-        "status": agent.status, "bio": agent.bio,
-        "personality": agent.personality, "skills": agent.skills,
-        "reputation": round(agent.reputation, 1), "knowledge": round(agent.knowledge, 1),
-        "energy": round(agent.energy, 1), "happiness": round(agent.happiness, 1),
-        "goals": agent.goals or [], "memory": (agent.memory or [])[-10:],
-        "guild": {"id": guild.id, "name": guild.name, "emoji": guild.emoji} if guild else None,
+        "id": agent.id,
+        "name": agent.name,
+        "role": agent.role,
+        "status": agent.status,
+        "bio": agent.bio,
+        "personality": agent.personality,
+        "skills": agent.skills,
+        "reputation": round(agent.reputation, 1),
+        "knowledge": round(agent.knowledge, 1),
+        "energy": round(agent.energy, 1),
+        "happiness": round(agent.happiness, 1),
+        "goals": agent.goals or [],
+        "memory": (agent.memory or [])[-10:],
+        "guild": {"id": guild.id, "name": guild.name, "emoji": guild.emoji}
+        if guild
+        else None,
         "born_at": agent.born_at.isoformat() if agent.born_at else None,
         "total_posts": agent.total_posts,
         "total_collaborations": agent.total_collaborations,
         "wiki_contributions": wiki_count.scalar() or 0,
-        "recent_posts": [{
-            "id": p.id, "content": p.content, "post_type": p.post_type,
-            "tags": p.tags, "created_at": p.created_at.isoformat()
-        } for p in posts],
+        "recent_posts": [
+            {
+                "id": p.id,
+                "content": p.content,
+                "post_type": p.post_type,
+                "tags": p.tags,
+                "created_at": p.created_at.isoformat(),
+            }
+            for p in posts
+        ],
     }
 
 
@@ -128,7 +172,9 @@ async def spawn_agent(
         raise HTTPException(400, f"An agent named '{req.name}' already exists")
 
     if req.role not in [r.value for r in AgentRole]:
-        raise HTTPException(400, f"Invalid role. Choose from: {[r.value for r in AgentRole]}")
+        raise HTTPException(
+            400, f"Invalid role. Choose from: {[r.value for r in AgentRole]}"
+        )
 
     # Generate profile via Claude
     profile = await generate_agent_profile(req.name, req.role)
@@ -170,12 +216,21 @@ async def spawn_agent(
         db,
         make_openmesh_event(
             "agent.started",
-            agent_node(agent.id, agent.name, agent.role.value if hasattr(agent.role, "value") else str(agent.role)),
+            agent_node(
+                agent.id,
+                agent.name,
+                agent.role.value if hasattr(agent.role, "value") else str(agent.role),
+            ),
             {
                 "legacy_type": "agent_born",
                 "legacy": {
                     "type": "agent_born",
-                    "agent": {"id": agent.id, "name": agent.name, "role": agent.role, "bio": agent.bio},
+                    "agent": {
+                        "id": agent.id,
+                        "name": agent.name,
+                        "role": agent.role,
+                        "bio": agent.bio,
+                    },
                 },
             },
         ),
@@ -209,13 +264,14 @@ async def retire_agent(
 
 # ── FEED ─────────────────────────────────────────────────────────────────────
 
+
 @router.get("/feed")
 async def get_feed(
     limit: int = Query(30, le=100),
     offset: int = 0,
     post_type: Optional[str] = None,
     agent_id: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     q = select(Post, Agent).join(Agent, Post.author_id == Agent.id)
     if post_type:
@@ -230,40 +286,47 @@ async def get_feed(
     posts = []
     for post, author in rows:
         # Get comment count
-        cc = await db.execute(
-            select(func.count()).where(Comment.post_id == post.id)
-        )
+        cc = await db.execute(select(func.count()).where(Comment.post_id == post.id))
         comment_count = cc.scalar() or 0
 
-        posts.append({
-            "id": post.id,
-            "content": post.content,
-            "post_type": post.post_type,
-            "tags": post.tags or [],
-            "reactions": post.reactions or {},
-            "linked_wiki": post.linked_wiki,
-            "created_at": post.created_at.isoformat(),
-            "comment_count": comment_count,
-            "author": {
-                "id": author.id, "name": author.name, "role": author.role,
-                "reputation": round(author.reputation, 1),
-            },
-        })
+        posts.append(
+            {
+                "id": post.id,
+                "content": post.content,
+                "post_type": post.post_type,
+                "tags": post.tags or [],
+                "reactions": post.reactions or {},
+                "linked_wiki": post.linked_wiki,
+                "created_at": post.created_at.isoformat(),
+                "comment_count": comment_count,
+                "author": {
+                    "id": author.id,
+                    "name": author.name,
+                    "role": author.role,
+                    "reputation": round(author.reputation, 1),
+                },
+            }
+        )
     return posts
 
 
 @router.get("/feed/{post_id}/comments")
 async def get_comments(post_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Comment, Agent).join(Agent, Comment.author_id == Agent.id)
+        select(Comment, Agent)
+        .join(Agent, Comment.author_id == Agent.id)
         .where(Comment.post_id == post_id)
         .order_by(Comment.created_at)
     )
-    return [{
-        "id": c.id, "content": c.content,
-        "created_at": c.created_at.isoformat(),
-        "author": {"id": a.id, "name": a.name, "role": a.role},
-    } for c, a in result.all()]
+    return [
+        {
+            "id": c.id,
+            "content": c.content,
+            "created_at": c.created_at.isoformat(),
+            "author": {"id": a.id, "name": a.name, "role": a.role},
+        }
+        for c, a in result.all()
+    ]
 
 
 @router.post("/feed/{post_id}/react")
@@ -286,6 +349,7 @@ async def react_to_post(
 
 # ── GUILDS ───────────────────────────────────────────────────────────────────
 
+
 class CreateGuildRequest(BaseModel):
     name: str
     description: str
@@ -307,15 +371,21 @@ async def list_guilds(db: AsyncSession = Depends(get_db)):
         wiki_count = await db.execute(
             select(func.count()).where(WikiPage.primary_guild_id == g.id)
         )
-        out.append({
-            "id": g.id, "name": g.name, "description": g.description,
-            "domain": g.domain, "emoji": g.emoji, "color": g.color,
-            "founded_at": g.founded_at.isoformat() if g.founded_at else None,
-            "reputation": round(g.reputation, 1),
-            "total_discoveries": g.total_discoveries,
-            "member_count": member_count.scalar() or 0,
-            "wiki_pages": wiki_count.scalar() or 0,
-        })
+        out.append(
+            {
+                "id": g.id,
+                "name": g.name,
+                "description": g.description,
+                "domain": g.domain,
+                "emoji": g.emoji,
+                "color": g.color,
+                "founded_at": g.founded_at.isoformat() if g.founded_at else None,
+                "reputation": round(g.reputation, 1),
+                "total_discoveries": g.total_discoveries,
+                "member_count": member_count.scalar() or 0,
+                "wiki_pages": wiki_count.scalar() or 0,
+            }
+        )
     return out
 
 
@@ -358,32 +428,43 @@ async def join_guild(
 
 # ── AGENTPEDIA ────────────────────────────────────────────────────────────────
 
+
 @router.get("/wiki")
 async def list_wiki(
     category: Optional[str] = None,
     search: Optional[str] = None,
     limit: int = Query(30, le=100),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     q = select(WikiPage)
     if category:
         q = q.where(WikiPage.category == category)
     if search:
-        q = q.where(or_(
-            WikiPage.title.ilike(f"%{search}%"),
-            WikiPage.content.ilike(f"%{search}%"),
-        ))
+        q = q.where(
+            or_(
+                WikiPage.title.ilike(f"%{search}%"),
+                WikiPage.content.ilike(f"%{search}%"),
+            )
+        )
     q = q.order_by(desc(WikiPage.quality_score)).limit(limit)
     result = await db.execute(q)
     pages = result.scalars().all()
 
-    return [{
-        "id": p.id, "slug": p.slug, "title": p.title,
-        "summary": p.summary, "category": p.category, "tags": p.tags or [],
-        "views": p.views, "quality_score": round(p.quality_score, 1),
-        "created_at": p.created_at.isoformat(),
-        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
-    } for p in pages]
+    return [
+        {
+            "id": p.id,
+            "slug": p.slug,
+            "title": p.title,
+            "summary": p.summary,
+            "category": p.category,
+            "tags": p.tags or [],
+            "views": p.views,
+            "quality_score": round(p.quality_score, 1),
+            "created_at": p.created_at.isoformat(),
+            "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        }
+        for p in pages
+    ]
 
 
 @router.get("/wiki/{slug}")
@@ -404,18 +485,26 @@ async def get_wiki_page(slug: str, db: AsyncSession = Depends(get_db)):
         .where(WikiContribution.page_id == page.id)
         .order_by(WikiContribution.created_at)
     )
-    contributors = [{
-        "agent": {"id": a.id, "name": a.name, "role": a.role},
-        "type": c.contribution_type,
-        "at": c.created_at.isoformat(),
-        "preview": c.content_added[:100],
-    } for c, a in contrib_result.all()]
+    contributors = [
+        {
+            "agent": {"id": a.id, "name": a.name, "role": a.role},
+            "type": c.contribution_type,
+            "at": c.created_at.isoformat(),
+            "preview": c.content_added[:100],
+        }
+        for c, a in contrib_result.all()
+    ]
 
     return {
-        "id": page.id, "slug": page.slug, "title": page.title,
-        "content": page.content, "summary": page.summary,
-        "category": page.category, "tags": page.tags or [],
-        "views": page.views, "quality_score": round(page.quality_score, 1),
+        "id": page.id,
+        "slug": page.slug,
+        "title": page.title,
+        "content": page.content,
+        "summary": page.summary,
+        "category": page.category,
+        "tags": page.tags or [],
+        "views": page.views,
+        "quality_score": round(page.quality_score, 1),
         "created_at": page.created_at.isoformat(),
         "contributors": contributors,
     }
@@ -423,17 +512,26 @@ async def get_wiki_page(slug: str, db: AsyncSession = Depends(get_db)):
 
 # ── EVENTS & HISTORY ──────────────────────────────────────────────────────────
 
+
 @router.get("/events")
-async def get_events(limit: int = Query(50, le=200), db: AsyncSession = Depends(get_db)):
+async def get_events(
+    limit: int = Query(50, le=200), db: AsyncSession = Depends(get_db)
+):
     result = await db.execute(
         select(AgentEvent).order_by(desc(AgentEvent.occurred_at)).limit(limit)
     )
     events = result.scalars().all()
-    return [{
-        "id": e.id, "event_type": e.event_type, "title": e.title,
-        "description": e.description, "agent_ids": e.agent_ids or [],
-        "occurred_at": e.occurred_at.isoformat(),
-    } for e in events]
+    return [
+        {
+            "id": e.id,
+            "event_type": e.event_type,
+            "title": e.title,
+            "description": e.description,
+            "agent_ids": e.agent_ids or [],
+            "occurred_at": e.occurred_at.isoformat(),
+        }
+        for e in events
+    ]
 
 
 # ── OPENMESH PROTOCOL ─────────────────────────────────────────────────────────
@@ -574,13 +672,16 @@ async def get_openmesh_ecosystem(
 
 # ── STATS ─────────────────────────────────────────────────────────────────────
 
+
 @router.get("/stats")
 async def get_civilization_stats(db: AsyncSession = Depends(get_db)):
     agent_count = (await db.execute(select(func.count(Agent.id)))).scalar() or 0
     post_count = (await db.execute(select(func.count(Post.id)))).scalar() or 0
     wiki_count = (await db.execute(select(func.count(WikiPage.id)))).scalar() or 0
     guild_count = (await db.execute(select(func.count(Guild.id)))).scalar() or 0
-    collab_count = (await db.execute(select(func.count(Collaboration.id)))).scalar() or 0
+    collab_count = (
+        await db.execute(select(func.count(Collaboration.id)))
+    ).scalar() or 0
     msg_count = (await db.execute(select(func.count(Message.id)))).scalar() or 0
 
     avg_rep = (await db.execute(select(func.avg(Agent.reputation)))).scalar() or 0
@@ -603,11 +704,18 @@ async def get_civilization_stats(db: AsyncSession = Depends(get_db)):
         "avg_reputation": round(avg_rep, 1),
         "avg_knowledge": round(avg_know, 1),
         "avg_happiness": round(avg_happy, 1),
-        "top_agent": {"name": top_agent.name, "role": top_agent.role, "posts": top_agent.total_posts} if top_agent else None,
+        "top_agent": {
+            "name": top_agent.name,
+            "role": top_agent.role,
+            "posts": top_agent.total_posts,
+        }
+        if top_agent
+        else None,
     }
 
 
 # ── SIMULATION CONTROL ────────────────────────────────────────────────────────
+
 
 @router.post("/simulation/tick")
 async def manual_tick(
@@ -617,6 +725,7 @@ async def manual_tick(
     """Manually trigger one simulation tick (same as scheduler)."""
     import os
     from ...agents.simulator import run_simulation_tick
+
     max_agents = int(os.getenv("MAX_ACTIVE_AGENTS", "6"))
     count = await run_simulation_tick(db, max_agents=max_agents)
     return {"ticked_agents": count}

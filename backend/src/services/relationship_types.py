@@ -123,7 +123,10 @@ def relationship_type_for(
         return "runs"
     if target_type == "process":
         return "spawns"
-    if source_type in {"agent", "tool", "workflow", "service"} and target_type in {"service", "mcp_server"}:
+    if source_type in {"agent", "tool", "workflow", "service"} and target_type in {
+        "service",
+        "mcp_server",
+    }:
         return "connects_to"
     if source_type in {"service", "mcp_server"} and target_type == "capability":
         return "exposes"
@@ -132,7 +135,9 @@ def relationship_type_for(
     return None
 
 
-def is_relationship_valid(relationship_type: str, source_type: str, target_type: str) -> bool:
+def is_relationship_valid(
+    relationship_type: str, source_type: str, target_type: str
+) -> bool:
     return validate_relationship(relationship_type, source_type, target_type)["valid"]
 
 
@@ -153,7 +158,9 @@ def relationship_definition(relationship_type: str) -> Optional[dict[str, object
     return definition
 
 
-def validate_relationship(relationship_type: str, source_type: str, target_type: str) -> dict[str, Any]:
+def validate_relationship(
+    relationship_type: str, source_type: str, target_type: str
+) -> dict[str, Any]:
     spec = RELATIONSHIP_TYPES.get(relationship_type)
     definition = relationship_definition(relationship_type)
     errors: list[dict[str, str]] = []

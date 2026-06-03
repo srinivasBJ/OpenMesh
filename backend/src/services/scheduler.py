@@ -2,6 +2,7 @@
 Scheduler — Runs agent simulation ticks on a timer.
 Every AGENT_TICK_INTERVAL seconds, a batch of agents "wakes up" and acts.
 """
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import os
 
@@ -26,7 +27,13 @@ async def tick_job():
 
 def start_scheduler():
     # Replace the existing job if start_scheduler is called again (e.g. app reload).
-    scheduler.add_job(tick_job, "interval", seconds=TICK_INTERVAL, id="agent_tick", replace_existing=True)
+    scheduler.add_job(
+        tick_job,
+        "interval",
+        seconds=TICK_INTERVAL,
+        id="agent_tick",
+        replace_existing=True,
+    )
     if scheduler.running:
         print("⏰ Scheduler already running")
         return
@@ -48,5 +55,7 @@ def scheduler_status() -> dict:
         "tick_interval_seconds": TICK_INTERVAL,
         "max_agents_per_tick": MAX_AGENTS,
         "job_present": job is not None,
-        "next_run_at": job.next_run_time.isoformat() if job and job.next_run_time else None,
+        "next_run_at": job.next_run_time.isoformat()
+        if job and job.next_run_time
+        else None,
     }

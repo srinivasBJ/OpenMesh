@@ -7,8 +7,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from src.sdk import OpenMeshClient
-from src.sdk.integrations.crewai import OpenMeshCrewAI
+from src.sdk import OpenMeshClient  # noqa: E402
+from src.sdk.integrations.crewai import OpenMeshCrewAI  # noqa: E402
 
 
 def main() -> None:

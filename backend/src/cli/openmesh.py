@@ -22,7 +22,13 @@ from ..services.mcp_config_discovery import (
 from ..services.mcp_capabilities import get_capability_registry
 from ..services.mcp_discovery import get_mcp_registry
 from ..services.openmesh_doctor import run_doctor
-from ..services.openmesh_queries import get_events, get_graph, get_health, get_trace, get_traces
+from ..services.openmesh_queries import (
+    get_events,
+    get_graph,
+    get_health,
+    get_trace,
+    get_traces,
+)
 from ..services.registry_status import build_registry_status
 from ..services.workflow_registry import get_workflow_registry
 from ..shared.openmesh_events import make_openmesh_event
@@ -108,7 +114,12 @@ def _print_trace_detail(trace: dict[str, Any]) -> None:
             f"events:{span['event_count']} duration:{duration_text}"
         )
         for link in span.get("links", []):
-            linked = link.get("trace_id") or link.get("span_id") or link.get("event_id") or link.get("url")
+            linked = (
+                link.get("trace_id")
+                or link.get("span_id")
+                or link.get("event_id")
+                or link.get("url")
+            )
             relationship = link.get("relationship") or "linked"
             print(f"  link:{relationship} -> {linked}")
     span_tree = trace.get("span_tree") or []
@@ -123,7 +134,9 @@ def _print_trace_detail(trace: dict[str, Any]) -> None:
     if not relationships:
         print("- none")
     for edge in relationships:
-        print(f"- {edge['source']} --{edge['type']}--> {edge['target']} event:{edge['event_id']}")
+        print(
+            f"- {edge['source']} --{edge['type']}--> {edge['target']} event:{edge['event_id']}"
+        )
     print()
     validation = trace.get("validation", {})
     print(f"Validation: {validation.get('status', 'UNKNOWN')}")
@@ -167,7 +180,9 @@ def _print_graph(graph: dict[str, Any], *, details: bool = False) -> None:
 
     for node_id, node in sorted(nodes.items(), key=lambda item: item[1]["name"]):
         print(node["name"])
-        relationships = sorted(outgoing.get(node_id, []), key=lambda edge: (edge["type"], edge["target"]))
+        relationships = sorted(
+            outgoing.get(node_id, []), key=lambda edge: (edge["type"], edge["target"])
+        )
         if not relationships:
             print("└─ no relationships")
             print()
@@ -182,12 +197,18 @@ def _print_graph(graph: dict[str, Any], *, details: bool = False) -> None:
                 print(f"   validation: {edge.get('validation_status', 'unknown')}")
                 if definition.get("description"):
                     print(f"   definition: {definition['description']}")
-                print(f"   observations: {edge.get('observation_count', edge.get('event_count', 0))}")
+                print(
+                    f"   observations: {edge.get('observation_count', edge.get('event_count', 0))}"
+                )
                 print(f"   lifecycle: {edge.get('lifecycle_state', 'unknown')}")
                 print(f"   first_seen: {edge.get('first_seen')}")
                 print(f"   last_seen: {edge.get('last_seen')}")
-                print(f"   trace_id: {edge.get('trace_id') or edge.get('first_trace_id') or '-'}")
-                print(f"   event_id: {edge.get('event_id') or edge.get('first_event_id') or '-'}")
+                print(
+                    f"   trace_id: {edge.get('trace_id') or edge.get('first_trace_id') or '-'}"
+                )
+                print(
+                    f"   event_id: {edge.get('event_id') or edge.get('first_event_id') or '-'}"
+                )
         print()
 
     if details:
@@ -209,11 +230,15 @@ def _print_graph(graph: dict[str, Any], *, details: bool = False) -> None:
 
 
 def _print_nodes(graph: dict[str, Any]) -> None:
-    nodes = sorted(graph.get("nodes", []), key=lambda node: (node["type"], node["name"]))
+    nodes = sorted(
+        graph.get("nodes", []), key=lambda node: (node["type"], node["name"])
+    )
     if not nodes:
         print("No OpenMesh graph nodes found.")
         return
-    print(f"{'name':<30} {'type':<14} {'status':<10} {'validation':<10} {'events':>6} last_seen")
+    print(
+        f"{'name':<30} {'type':<14} {'status':<10} {'validation':<10} {'events':>6} last_seen"
+    )
     for node in nodes:
         print(
             f"{_short(node['name'], 30):<30} "
@@ -244,7 +269,9 @@ def _print_registry(registry: dict[str, Any]) -> None:
     print("Node Definitions")
     for definition in registry["node_definitions"]:
         marker = _definition_marker(definition)
-        print(f"{marker} {definition['type']:<16} {definition['display_name']} ({definition['category']})")
+        print(
+            f"{marker} {definition['type']:<16} {definition['display_name']} ({definition['category']})"
+        )
     print()
     print("Relationship Definitions")
     for definition in registry["relationship_definitions"]:
@@ -342,14 +369,18 @@ def _print_mcp(servers: list[dict[str, Any]]) -> None:
         )
 
 
-def _print_mcp_config(configs: list[dict[str, Any]], *, issues: list[dict[str, Any]] | None = None) -> None:
+def _print_mcp_config(
+    configs: list[dict[str, Any]], *, issues: list[dict[str, Any]] | None = None
+) -> None:
     print("MCP Configuration Sources")
     print()
     issues = issues or []
     if issues:
         print("Issues")
         for issue in issues:
-            print(f"- {issue['source']} {issue['config_path']}: {issue['code']} ({issue['message']})")
+            print(
+                f"- {issue['source']} {issue['config_path']}: {issue['code']} ({issue['message']})"
+            )
         print()
     if not configs:
         print("No MCP configuration entries discovered.")
@@ -691,7 +722,9 @@ async def _run_command(args: argparse.Namespace) -> int:
 
     async def run(db) -> int:
         started_at = _utc_now()
-        await create_openmesh_session(db, session_id=session_id, command=command, started_at=started_at)
+        await create_openmesh_session(
+            db, session_id=session_id, command=command, started_at=started_at
+        )
         started_event = await _emit_process_event(
             db,
             "process.started",
@@ -699,7 +732,11 @@ async def _run_command(args: argparse.Namespace) -> int:
             trace_id=trace_id,
             source=CLI_NODE,
             target=process,
-            payload={"command": command, "argv": command_parts, "started_at": started_at.isoformat() + "Z"},
+            payload={
+                "command": command,
+                "argv": command_parts,
+                "started_at": started_at.isoformat() + "Z",
+            },
             span_id=span_id,
         )
         root_event_id = started_event["root_event_id"]
@@ -820,7 +857,9 @@ async def _tui(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="openmesh", description="Inspect persisted OpenMesh events.")
+    parser = argparse.ArgumentParser(
+        prog="openmesh", description="Inspect persisted OpenMesh events."
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     health = subparsers.add_parser("health", help="Show collector and storage status.")
@@ -839,33 +878,69 @@ def build_parser() -> argparse.ArgumentParser:
     trace.set_defaults(func=_trace)
 
     graph = subparsers.add_parser("graph", help="Show OpenMesh graph relationships.")
-    graph.add_argument("--details", action="store_true", help="Show edge provenance and lifecycle metadata.")
+    graph.add_argument(
+        "--details",
+        action="store_true",
+        help="Show edge provenance and lifecycle metadata.",
+    )
     graph.set_defaults(func=_graph)
 
     nodes = subparsers.add_parser("nodes", help="Show governed OpenMesh graph nodes.")
     nodes.set_defaults(func=_nodes)
 
-    registry = subparsers.add_parser("registry", help="Show OpenMesh registry versions and compatibility.")
-    registry.add_argument("--limit", type=int, default=5000, help="Maximum events to validate compatibility from.")
+    registry = subparsers.add_parser(
+        "registry", help="Show OpenMesh registry versions and compatibility."
+    )
+    registry.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to validate compatibility from.",
+    )
     registry.set_defaults(func=_registry)
 
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
     doctor.set_defaults(func=_doctor)
 
-    integrations = subparsers.add_parser("integrations", help="Show OpenMesh framework integration status.")
+    integrations = subparsers.add_parser(
+        "integrations", help="Show OpenMesh framework integration status."
+    )
     integrations.set_defaults(func=_integrations)
 
-    discover = subparsers.add_parser("discover", help="Show observed OpenMesh ecosystem registry.")
-    discover.add_argument("--limit", type=int, default=5000, help="Maximum events to derive discovery from.")
+    discover = subparsers.add_parser(
+        "discover", help="Show observed OpenMesh ecosystem registry."
+    )
+    discover.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive discovery from.",
+    )
     discover.set_defaults(func=_discover)
 
     mcp = subparsers.add_parser("mcp", help="Show discovered MCP server metadata.")
-    mcp.add_argument("--limit", type=int, default=5000, help="Maximum events to derive MCP registry from.")
+    mcp.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive MCP registry from.",
+    )
     mcp.set_defaults(func=_mcp)
 
-    mcp_config = subparsers.add_parser("mcp-config", help="Show discovered MCP configuration metadata.")
-    mcp_config.add_argument("--limit", type=int, default=5000, help="Maximum events to derive MCP config registry from.")
-    mcp_config.add_argument("--scan", action="store_true", help="Passively scan known MCP config files and register metadata.")
+    mcp_config = subparsers.add_parser(
+        "mcp-config", help="Show discovered MCP configuration metadata."
+    )
+    mcp_config.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive MCP config registry from.",
+    )
+    mcp_config.add_argument(
+        "--scan",
+        action="store_true",
+        help="Passively scan known MCP config files and register metadata.",
+    )
     mcp_config.add_argument(
         "--path",
         action="append",
@@ -873,24 +948,49 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mcp_config.set_defaults(func=_mcp_config)
 
-    capabilities = subparsers.add_parser("capabilities", help="Show discovered MCP capability metadata.")
-    capabilities.add_argument("--limit", type=int, default=5000, help="Maximum events to derive capability registry from.")
+    capabilities = subparsers.add_parser(
+        "capabilities", help="Show discovered MCP capability metadata."
+    )
+    capabilities.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive capability registry from.",
+    )
     capabilities.set_defaults(func=_capabilities)
 
-    workflows = subparsers.add_parser("workflows", help="Show discovered workflow metadata.")
-    workflows.add_argument("--limit", type=int, default=5000, help="Maximum events to derive workflow registry from.")
+    workflows = subparsers.add_parser(
+        "workflows", help="Show discovered workflow metadata."
+    )
+    workflows.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive workflow registry from.",
+    )
     workflows.set_defaults(func=_workflows)
 
-    ecosystem = subparsers.add_parser("ecosystem", help="Show unified OpenMesh ecosystem inventory.")
-    ecosystem.add_argument("--limit", type=int, default=5000, help="Maximum events to derive ecosystem registry from.")
+    ecosystem = subparsers.add_parser(
+        "ecosystem", help="Show unified OpenMesh ecosystem inventory."
+    )
+    ecosystem.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive ecosystem registry from.",
+    )
     ecosystem.set_defaults(func=_ecosystem)
 
     tui = subparsers.add_parser("tui", help="Launch the OpenMesh terminal UI.")
-    tui.add_argument("--once", action="store_true", help="Render one terminal capture and exit.")
+    tui.add_argument(
+        "--once", action="store_true", help="Render one terminal capture and exit."
+    )
     tui.set_defaults(func=_tui)
 
     run = subparsers.add_parser("run", help="Run and observe a command.")
-    run.add_argument("command", nargs=argparse.REMAINDER, help="Command to run after --.")
+    run.add_argument(
+        "command", nargs=argparse.REMAINDER, help="Command to run after --."
+    )
     run.set_defaults(func=_run_command)
 
     return parser

@@ -58,7 +58,9 @@ class MCPConfigProvider:
     source: str = "unknown"
     candidate_paths: tuple[str, ...] = ()
 
-    def discover(self, paths: Optional[Iterable[Path]] = None) -> tuple[list[MCPConfigEntry], list[MCPConfigIssue]]:
+    def discover(
+        self, paths: Optional[Iterable[Path]] = None
+    ) -> tuple[list[MCPConfigEntry], list[MCPConfigIssue]]:
         entries: list[MCPConfigEntry] = []
         issues: list[MCPConfigIssue] = []
         for path in paths or self.paths():
@@ -76,7 +78,9 @@ class MCPConfigProvider:
         try:
             data = _load_config(path)
         except Exception as exc:
-            return [], [MCPConfigIssue(self.source, str(path), "malformed_config", str(exc))]
+            return [], [
+                MCPConfigIssue(self.source, str(path), "malformed_config", str(exc))
+            ]
         return _entries_from_config(self.source, path, data)
 
 
@@ -131,7 +135,9 @@ def discover_mcp_configs(
     for provider in providers:
         if paths_by_source and provider.source not in paths_by_source:
             continue
-        provider_entries, provider_issues = provider.discover(paths_by_source.get(provider.source))
+        provider_entries, provider_issues = provider.discover(
+            paths_by_source.get(provider.source)
+        )
         entries.extend(provider_entries)
         issues.extend(provider_issues)
     return {
@@ -140,14 +146,18 @@ def discover_mcp_configs(
     }
 
 
-def build_mcp_config_registry(records: Iterable[OpenMeshEventRecord]) -> list[dict[str, Any]]:
+def build_mcp_config_registry(
+    records: Iterable[OpenMeshEventRecord],
+) -> list[dict[str, Any]]:
     entries: dict[tuple[str, str, str], dict[str, Any]] = {}
     for record in sorted(records, key=lambda item: item.timestamp):
         if record.event_type != "mcp.config.discovered" or not record.target_json:
             continue
         payload = record.payload_json or {}
         source = payload.get("source") or (record.source_json or {}).get("name")
-        config_path = payload.get("config_path") or (record.source_json or {}).get("metadata", {}).get("config_path")
+        config_path = payload.get("config_path") or (record.source_json or {}).get(
+            "metadata", {}
+        ).get("config_path")
         server = payload.get("server") or record.target_json.get("name")
         key = (str(source), str(config_path), str(server))
         entry = entries.setdefault(
@@ -169,10 +179,15 @@ def build_mcp_config_registry(records: Iterable[OpenMeshEventRecord]) -> list[di
         entry["version"] = payload.get("version", entry.get("version"))
         entry["event_count"] += 1
         entry["last_seen"] = record.timestamp.isoformat() + "Z"
-    return sorted(entries.values(), key=lambda item: (item["source"], item["server"], item["config_path"]))
+    return sorted(
+        entries.values(),
+        key=lambda item: (item["source"], item["server"], item["config_path"]),
+    )
 
 
-async def get_mcp_config_registry(db: AsyncSession, limit: int = 5000) -> list[dict[str, Any]]:
+async def get_mcp_config_registry(
+    db: AsyncSession, limit: int = 5000
+) -> list[dict[str, Any]]:
     records = await list_openmesh_events(db, limit=limit)
     return build_mcp_config_registry(records)
 
@@ -214,27 +229,43 @@ async def register_discovered_mcp_configs(
     paths_by_source: Optional[dict[str, Iterable[Path]]] = None,
     broadcast: bool = True,
 ) -> dict[str, list[dict[str, Any]]]:
-    discovered = discover_mcp_configs(providers=providers, paths_by_source=paths_by_source)
+    discovered = discover_mcp_configs(
+        providers=providers, paths_by_source=paths_by_source
+    )
     events = []
     for raw_entry in discovered["entries"]:
         entry = MCPConfigEntry(**raw_entry)
         events.append(await register_mcp_config_entry(db, entry, broadcast=broadcast))
-    return {"entries": discovered["entries"], "issues": discovered["issues"], "events": events}
+    return {
+        "entries": discovered["entries"],
+        "issues": discovered["issues"],
+        "events": events,
+    }
 
 
-def validate_mcp_config_entries(entries: Iterable[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+def validate_mcp_config_entries(
+    entries: Iterable[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
     seen: dict[tuple[str, str], list[dict[str, Any]]] = {}
     missing = []
     for entry in entries:
         missing_fields = [
-            field for field in ("source", "config_path", "server", "transport", "endpoint")
+            field
+            for field in ("source", "config_path", "server", "transport", "endpoint")
             if not entry.get(field)
         ]
         if missing_fields:
             missing.append({"entry": entry, "missing": missing_fields})
-        seen.setdefault((str(entry.get("source")), str(entry.get("server"))), []).append(entry)
+        seen.setdefault(
+            (str(entry.get("source")), str(entry.get("server"))), []
+        ).append(entry)
     duplicates = [
-        {"source": source, "server": server, "count": len(values), "paths": [item.get("config_path") for item in values]}
+        {
+            "source": source,
+            "server": server,
+            "count": len(values),
+            "paths": [item.get("config_path") for item in values],
+        }
         for (source, server), values in seen.items()
         if len(values) > 1
     ]
@@ -262,9 +293,15 @@ def _load_config(path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
-def _entries_from_config(source: str, path: Path, data: Any) -> tuple[list[MCPConfigEntry], list[MCPConfigIssue]]:
+def _entries_from_config(
+    source: str, path: Path, data: Any
+) -> tuple[list[MCPConfigEntry], list[MCPConfigIssue]]:
     if not isinstance(data, dict):
-        return [], [MCPConfigIssue(source, str(path), "malformed_config", "Config root must be an object")]
+        return [], [
+            MCPConfigIssue(
+                source, str(path), "malformed_config", "Config root must be an object"
+            )
+        ]
     servers = _server_mapping(data)
     if not isinstance(servers, dict):
         return [], []
@@ -272,14 +309,26 @@ def _entries_from_config(source: str, path: Path, data: Any) -> tuple[list[MCPCo
     issues = []
     for server_name, raw_server in servers.items():
         if not isinstance(raw_server, dict):
-            issues.append(MCPConfigIssue(source, str(path), "malformed_server", f"{server_name} must be an object"))
+            issues.append(
+                MCPConfigIssue(
+                    source,
+                    str(path),
+                    "malformed_server",
+                    f"{server_name} must be an object",
+                )
+            )
             continue
         entry = _entry_from_server(source, path, str(server_name), raw_server)
         if entry:
             entries.append(entry)
         else:
             issues.append(
-                MCPConfigIssue(source, str(path), "missing_required_metadata", f"{server_name} is missing transport or endpoint")
+                MCPConfigIssue(
+                    source,
+                    str(path),
+                    "missing_required_metadata",
+                    f"{server_name} is missing transport or endpoint",
+                )
             )
     return entries, issues
 
@@ -295,7 +344,9 @@ def _server_mapping(data: dict[str, Any]) -> Any:
     return None
 
 
-def _entry_from_server(source: str, path: Path, server_name: str, server: dict[str, Any]) -> Optional[MCPConfigEntry]:
+def _entry_from_server(
+    source: str, path: Path, server_name: str, server: dict[str, Any]
+) -> Optional[MCPConfigEntry]:
     transport = server.get("transport") or _transport_from_server(server)
     endpoint = server.get("endpoint") or server.get("url") or server.get("command")
     version = server.get("version")
@@ -326,4 +377,9 @@ def _transport_from_server(server: dict[str, Any]) -> Optional[str]:
 
 
 def _stable_id(value: str) -> str:
-    return "".join(character.lower() if character.isalnum() else "-" for character in value).strip("-") or "config"
+    return (
+        "".join(
+            character.lower() if character.isalnum() else "-" for character in value
+        ).strip("-")
+        or "config"
+    )

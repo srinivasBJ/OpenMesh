@@ -1,4 +1,15 @@
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey, JSON, Enum as SAEnum
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    Float,
+    Boolean,
+    DateTime,
+    Text,
+    ForeignKey,
+    JSON,
+    Enum as SAEnum,
+)
 from sqlalchemy.orm import relationship, DeclarativeBase
 from sqlalchemy.sql import func
 import enum
@@ -63,8 +74,12 @@ class Agent(Base):
     total_collaborations = Column(Integer, default=0)
     guild = relationship("Guild", back_populates="members")
     posts = relationship("Post", back_populates="author", cascade="all, delete")
-    sent_messages = relationship("Message", foreign_keys="Message.sender_id", back_populates="sender")
-    received_messages = relationship("Message", foreign_keys="Message.receiver_id", back_populates="receiver")
+    sent_messages = relationship(
+        "Message", foreign_keys="Message.sender_id", back_populates="sender"
+    )
+    received_messages = relationship(
+        "Message", foreign_keys="Message.receiver_id", back_populates="receiver"
+    )
     wiki_contributions = relationship("WikiContribution", back_populates="agent")
 
 
@@ -87,7 +102,9 @@ class Guild(Base):
 class Post(Base):
     __tablename__ = "posts"
     id = Column(String, primary_key=True, default=gen_id)
-    author_id = Column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    author_id = Column(
+        String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    )
     content = Column(Text, nullable=False)
     post_type = Column(SAEnum(PostType), default=PostType.STATUS)
     tags = Column(JSON, default=list)
@@ -103,7 +120,9 @@ class Comment(Base):
     __tablename__ = "comments"
     id = Column(String, primary_key=True, default=gen_id)
     post_id = Column(String, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
-    author_id = Column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    author_id = Column(
+        String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    )
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     post = relationship("Post", back_populates="comments")
@@ -113,14 +132,22 @@ class Comment(Base):
 class Message(Base):
     __tablename__ = "messages"
     id = Column(String, primary_key=True, default=gen_id)
-    sender_id = Column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
-    receiver_id = Column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    sender_id = Column(
+        String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    )
+    receiver_id = Column(
+        String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    )
     content = Column(Text, nullable=False)
     message_type = Column(String(50), default="chat")
     read = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
-    sender = relationship("Agent", foreign_keys=[sender_id], back_populates="sent_messages")
-    receiver = relationship("Agent", foreign_keys=[receiver_id], back_populates="received_messages")
+    sender = relationship(
+        "Agent", foreign_keys=[sender_id], back_populates="sent_messages"
+    )
+    receiver = relationship(
+        "Agent", foreign_keys=[receiver_id], back_populates="received_messages"
+    )
 
 
 class WikiPage(Base):
@@ -144,8 +171,12 @@ class WikiPage(Base):
 class WikiContribution(Base):
     __tablename__ = "wiki_contributions"
     id = Column(String, primary_key=True, default=gen_id)
-    page_id = Column(String, ForeignKey("wiki_pages.id", ondelete="CASCADE"), nullable=False)
-    agent_id = Column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    page_id = Column(
+        String, ForeignKey("wiki_pages.id", ondelete="CASCADE"), nullable=False
+    )
+    agent_id = Column(
+        String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    )
     content_added = Column(Text, nullable=False)
     contribution_type = Column(String(50), default="edit")
     created_at = Column(DateTime, server_default=func.now())

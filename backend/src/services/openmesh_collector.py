@@ -18,7 +18,9 @@ LINK_IDENTITY_FIELDS = {"url", "trace_id", "span_id", "event_id"}
 class OpenMeshCollector:
     def validate_event(self, event: Dict[str, Any]) -> None:
         if not isinstance(event, dict):
-            raise HTTPException(status_code=422, detail="OpenMesh event must be a JSON object")
+            raise HTTPException(
+                status_code=422, detail="OpenMesh event must be a JSON object"
+            )
         if not is_openmesh_event(event):
             raise HTTPException(
                 status_code=422,
@@ -26,23 +28,45 @@ class OpenMeshCollector:
             )
         missing = [
             field
-            for field in ("event_id", "event_type", "timestamp", "trace_id", "session_id", "payload")
+            for field in (
+                "event_id",
+                "event_type",
+                "timestamp",
+                "trace_id",
+                "session_id",
+                "payload",
+            )
             if not event.get(field)
         ]
         if missing:
-            raise HTTPException(status_code=422, detail=f"Missing OpenMesh event fields: {', '.join(missing)}")
+            raise HTTPException(
+                status_code=422,
+                detail=f"Missing OpenMesh event fields: {', '.join(missing)}",
+            )
         if not isinstance(event.get("payload"), dict):
-            raise HTTPException(status_code=422, detail="Invalid OpenMesh payload: expected object")
-        if event.get("severity") and event["severity"] not in {"debug", "info", "warning", "error"}:
+            raise HTTPException(
+                status_code=422, detail="Invalid OpenMesh payload: expected object"
+            )
+        if event.get("severity") and event["severity"] not in {
+            "debug",
+            "info",
+            "warning",
+            "error",
+        }:
             raise HTTPException(status_code=422, detail="Invalid OpenMesh severity")
         links = event.get("links", [])
         if links is None:
             links = []
         if not isinstance(links, list):
-            raise HTTPException(status_code=422, detail="Invalid OpenMesh links: expected list")
+            raise HTTPException(
+                status_code=422, detail="Invalid OpenMesh links: expected list"
+            )
         for index, link in enumerate(links):
             if not isinstance(link, dict):
-                raise HTTPException(status_code=422, detail=f"Invalid OpenMesh link at index {index}: expected object")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid OpenMesh link at index {index}: expected object",
+                )
             if not any(link.get(field) for field in LINK_IDENTITY_FIELDS):
                 raise HTTPException(
                     status_code=422,

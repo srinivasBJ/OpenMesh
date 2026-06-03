@@ -1,5 +1,6 @@
-import asyncio
+# ruff: noqa: E402
 import json
+import sys
 import tempfile
 import unittest
 from datetime import datetime
@@ -9,8 +10,16 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
 from src.db.openmesh_events import create_openmesh_event, record_to_event
-from src.db.openmesh_sessions import complete_openmesh_session, create_openmesh_session, session_to_dict
+from src.db.openmesh_sessions import (
+    complete_openmesh_session,
+    create_openmesh_session,
+    session_to_dict,
+)
 from src.services.discovery import build_discovery
 from src.services.graph_state import reduce_graph_state, validate_graph_state
 from src.services.node_types import (
@@ -21,7 +30,11 @@ from src.services.node_types import (
     node_type_validation_metadata,
     validate_node,
 )
-from src.services.mcp_discovery import build_mcp_registry, mcp_server_node, register_mcp_server
+from src.services.mcp_discovery import (
+    build_mcp_registry,
+    mcp_server_node,
+    register_mcp_server,
+)
 from src.services.mcp_config_discovery import (
     ClaudeDesktopConfigProvider,
     CodexConfigProvider,
@@ -38,7 +51,10 @@ from src.services.mcp_capabilities import (
     register_mcp_capability,
     validate_capability_entries,
 )
-from src.services.ecosystem_registry import build_ecosystem_registry, validate_ecosystem_entities
+from src.services.ecosystem_registry import (
+    build_ecosystem_registry,
+    validate_ecosystem_entities,
+)
 from src.services.openmesh_doctor import (
     build_capability_diagnostics,
     build_ecosystem_diagnostics,
@@ -68,7 +84,13 @@ from src.services.relationship_types import (
     RelationshipType,
     validate_relationship,
 )
-from src.services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace, validate_trace_semantics
+from src.services.trace_semantics import (
+    build_event_hierarchy,
+    build_span_summary,
+    build_span_tree,
+    graph_edges_for_trace,
+    validate_trace_semantics,
+)
 from src.services.workflow_registry import (
     WorkflowEntry,
     build_workflow_registry,
@@ -77,7 +99,13 @@ from src.services.workflow_registry import (
     workflow_node,
 )
 from src.shared.openmesh_events import agent_node, make_openmesh_event
-from src.cli.openmesh import _print_capabilities, _print_ecosystem, _print_mcp, _print_mcp_config, _print_workflows
+from src.cli.openmesh import (
+    _print_capabilities,
+    _print_ecosystem,
+    _print_mcp,
+    _print_mcp_config,
+    _print_workflows,
+)
 from src.cli.tui import (
     TuiSnapshot,
     capability_rows,
@@ -122,7 +150,9 @@ def record_from_event(event: dict, **overrides):
     values = {
         "event_id": event["event_id"],
         "event_type": event["event_type"],
-        "timestamp": datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")).replace(tzinfo=None),
+        "timestamp": datetime.fromisoformat(
+            event["timestamp"].replace("Z", "+00:00")
+        ).replace(tzinfo=None),
         "trace_id": event["trace_id"],
         "session_id": event["session_id"],
         "span_id": event.get("span_id"),
@@ -229,7 +259,13 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             {"message": "linked"},
             session_id="sess_test",
             trace_id="trace_test",
-            links=[{"trace_id": "trace_parent", "span_id": "span_parent", "relationship": "follows_from"}],
+            links=[
+                {
+                    "trace_id": "trace_parent",
+                    "span_id": "span_parent",
+                    "relationship": "follows_from",
+                }
+            ],
         )
 
         record = await create_openmesh_event(db, event)
@@ -251,14 +287,20 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_collector_rejects_unknown_node_types_and_invalid_metadata(self):
         collector = OpenMeshCollector()
         unknown = self.make_event()
-        unknown["source"] = {"node_id": "unknown:a", "node_type": "unknown", "name": "Unknown A"}
+        unknown["source"] = {
+            "node_id": "unknown:a",
+            "node_type": "unknown",
+            "name": "Unknown A",
+        }
         invalid_metadata = self.make_event()
         invalid_metadata["source"]["metadata"] = []
 
         with self.assertRaises(HTTPException) as unknown_error:
             await collector.accept(FakeAsyncSession(), unknown, broadcast=False)
         with self.assertRaises(HTTPException) as metadata_error:
-            await collector.accept(FakeAsyncSession(), invalid_metadata, broadcast=False)
+            await collector.accept(
+                FakeAsyncSession(), invalid_metadata, broadcast=False
+            )
 
         self.assertIn("Unknown node type", unknown_error.exception.detail)
         self.assertIn("metadata must be an object", metadata_error.exception.detail)
@@ -270,7 +312,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             SimpleNamespace(
                 event_id=event["event_id"],
                 event_type=event["event_type"],
-                timestamp=datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")).replace(tzinfo=None),
+                timestamp=datetime.fromisoformat(
+                    event["timestamp"].replace("Z", "+00:00")
+                ).replace(tzinfo=None),
                 trace_id=event["trace_id"],
                 session_id=event["session_id"],
                 source_json=event["source"],
@@ -318,9 +362,13 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("process", node_types)
         self.assertEqual(graph["validation"]["status"], "OK")
         self.assertTrue(all(edge["event_id"] for edge in graph["edges"]))
-        self.assertTrue(all(edge["trace_id"] == "trace_test" for edge in graph["edges"]))
+        self.assertTrue(
+            all(edge["trace_id"] == "trace_test" for edge in graph["edges"])
+        )
         self.assertTrue(all(edge["observation_count"] == 1 for edge in graph["edges"]))
-        self.assertTrue(all(edge["validation_status"] == "valid" for edge in graph["edges"]))
+        self.assertTrue(
+            all(edge["validation_status"] == "valid" for edge in graph["edges"])
+        )
         self.assertTrue(all(edge["relationship_definition"] for edge in graph["edges"]))
 
     def test_relationship_registry_maps_protocol_events_to_canonical_types(self):
@@ -329,8 +377,18 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("uses", relationship_types)
         self.assertIn("spawns", relationship_types)
         self.assertEqual(relationship_definition("uses")["name"], "uses")
-        self.assertEqual(relationship_type_for("tool.call.started", source_type="agent", target_type="tool"), "uses")
-        self.assertEqual(relationship_type_for("process.started", source_type="service", target_type="process"), "spawns")
+        self.assertEqual(
+            relationship_type_for(
+                "tool.call.started", source_type="agent", target_type="tool"
+            ),
+            "uses",
+        )
+        self.assertEqual(
+            relationship_type_for(
+                "process.started", source_type="service", target_type="process"
+            ),
+            "spawns",
+        )
 
     def test_relationship_registry_validates_types_and_pairs(self):
         valid = validate_relationship("uses", "agent", "tool")
@@ -349,14 +407,33 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         )
 
     def test_node_type_registry_validates_known_and_unknown_nodes(self):
-        valid = validate_node({"node_id": "agent:a", "node_type": "agent", "name": "Agent A", "metadata": {"role": "researcher"}})
-        unknown = validate_node({"node_id": "thing:a", "node_type": "thing", "name": "Thing A"})
+        valid = validate_node(
+            {
+                "node_id": "agent:a",
+                "node_type": "agent",
+                "name": "Agent A",
+                "metadata": {"role": "researcher"},
+            }
+        )
+        unknown = validate_node(
+            {"node_id": "thing:a", "node_type": "thing", "name": "Thing A"}
+        )
         missing = validate_node({"node_type": "agent", "name": ""})
-        invalid_metadata = validate_node({"node_id": "agent:b", "node_type": "agent", "name": "Agent B", "metadata": []})
+        invalid_metadata = validate_node(
+            {
+                "node_id": "agent:b",
+                "node_type": "agent",
+                "name": "Agent B",
+                "metadata": [],
+            }
+        )
 
         self.assertEqual(node_type_definition("agent")["display_name"], "Agent")
         self.assertIn("mcp_server", {item["type"] for item in node_type_registry()})
-        self.assertEqual(node_type_validation_metadata()["required_identifiers"], ("node_id", "node_type", "name"))
+        self.assertEqual(
+            node_type_validation_metadata()["required_identifiers"],
+            ("node_id", "node_type", "name"),
+        )
         self.assertEqual(valid["status"], "valid")
         self.assertEqual(unknown["errors"][0]["code"], "unknown_node_type")
         self.assertEqual(missing["errors"][0]["code"], "missing_required_identifiers")
@@ -366,53 +443,75 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         versions = registry_versions()
         supported = validate_registry_versions()
         unsupported = validate_registry_versions(node_registry_version="9.0.0")
-        deprecated = compatibility_status(deprecated_nodes=[{"type": "legacy_agent", "deprecation_message": "Use agent"}])
+        deprecated = compatibility_status(
+            deprecated_nodes=[
+                {"type": "legacy_agent", "deprecation_message": "Use agent"}
+            ]
+        )
 
         self.assertEqual(versions["node_registry"], NODE_REGISTRY_VERSION)
-        self.assertEqual(versions["relationship_registry"], RELATIONSHIP_REGISTRY_VERSION)
+        self.assertEqual(
+            versions["relationship_registry"], RELATIONSHIP_REGISTRY_VERSION
+        )
         self.assertEqual(supported["status"], "ok")
-        self.assertEqual(unsupported["errors"][0]["code"], "unsupported_registry_version")
+        self.assertEqual(
+            unsupported["errors"][0]["code"], "unsupported_registry_version"
+        )
         self.assertEqual(deprecated["severity"], "WARNING")
 
     def test_registry_validation_reports_deprecated_definitions(self):
-        with patch.dict(
-            NODE_TYPES,
-            {
-                "legacy_agent": NodeType(
-                    "legacy_agent",
-                    "Legacy Agent",
-                    "Deprecated test node.",
-                    "agents",
-                    (),
-                    deprecated_in="0.1.0",
-                )
-            },
-        ), patch.dict(
-            RELATIONSHIP_TYPES,
-            {
-                "legacy_uses": RelationshipType(
-                    "legacy_uses",
-                    "legacy uses",
-                    "Deprecated test relationship.",
-                    ("legacy_agent",),
-                    ("tool",),
-                    deprecated_in="0.1.0",
-                )
-            },
+        with (
+            patch.dict(
+                NODE_TYPES,
+                {
+                    "legacy_agent": NodeType(
+                        "legacy_agent",
+                        "Legacy Agent",
+                        "Deprecated test node.",
+                        "agents",
+                        (),
+                        deprecated_in="0.1.0",
+                    )
+                },
+            ),
+            patch.dict(
+                RELATIONSHIP_TYPES,
+                {
+                    "legacy_uses": RelationshipType(
+                        "legacy_uses",
+                        "legacy uses",
+                        "Deprecated test relationship.",
+                        ("legacy_agent",),
+                        ("tool",),
+                        deprecated_in="0.1.0",
+                    )
+                },
+            ),
         ):
-            node_validation = validate_node({"node_id": "legacy:a", "node_type": "legacy_agent", "name": "Legacy A"})
-            relationship_validation = validate_relationship("legacy_uses", "legacy_agent", "tool")
+            node_validation = validate_node(
+                {"node_id": "legacy:a", "node_type": "legacy_agent", "name": "Legacy A"}
+            )
+            relationship_validation = validate_relationship(
+                "legacy_uses", "legacy_agent", "tool"
+            )
 
         self.assertEqual(node_validation["status"], "warning")
         self.assertEqual(node_validation["warnings"][0]["code"], "deprecated_node_type")
         self.assertEqual(relationship_validation["status"], "warning")
-        self.assertEqual(relationship_validation["warnings"][0]["code"], "deprecated_relationship_type")
+        self.assertEqual(
+            relationship_validation["warnings"][0]["code"],
+            "deprecated_relationship_type",
+        )
 
     def test_registry_compatibility_diagnostics_report_unsupported_versions(self):
-        diagnostics = build_registry_compatibility_diagnostics([], node_registry_version="9.0.0")
+        diagnostics = build_registry_compatibility_diagnostics(
+            [], node_registry_version="9.0.0"
+        )
 
         self.assertEqual(diagnostics["severity"], "ERROR")
-        self.assertEqual(diagnostics["detail"]["errors"][0]["code"], "unsupported_registry_version")
+        self.assertEqual(
+            diagnostics["detail"]["errors"][0]["code"], "unsupported_registry_version"
+        )
 
     def test_registry_status_exposes_versions_definitions_and_rules(self):
         status = build_registry_status([])
@@ -464,7 +563,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(registry[0]["server"], "Filesystem MCP")
         self.assertEqual(registry[0]["transport"], "stdio")
-        self.assertTrue(any(entry["type"] == "mcp_server" for entry in discovery["services"]))
+        self.assertTrue(
+            any(entry["type"] == "mcp_server" for entry in discovery["services"])
+        )
         self.assertEqual(graph["edges"][0]["type"], "connects_to")
         self.assertEqual(graph["edges"][0]["validation_status"], "valid")
 
@@ -474,20 +575,22 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             claude_path = root / "claude_desktop_config.json"
             codex_path = root / "config.toml"
             claude_path.write_text(
-                json.dumps({
-                    "mcpServers": {
-                        "filesystem": {
-                            "command": "mcp-server-filesystem",
-                            "version": "1.0.0",
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "filesystem": {
+                                "command": "mcp-server-filesystem",
+                                "version": "1.0.0",
+                            }
                         }
                     }
-                }),
+                ),
                 encoding="utf-8",
             )
             codex_path.write_text(
                 "[mcp.servers.search]\n"
-                "transport = \"http\"\n"
-                "endpoint = \"http://localhost:8765/mcp\"\n",
+                'transport = "http"\n'
+                'endpoint = "http://localhost:8765/mcp"\n',
                 encoding="utf-8",
             )
 
@@ -500,9 +603,16 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(len(discovered["issues"]), 0)
-        self.assertEqual({entry["server"] for entry in discovered["entries"]}, {"filesystem", "search"})
-        self.assertTrue(any(entry["transport"] == "stdio" for entry in discovered["entries"]))
-        self.assertTrue(any(entry["transport"] == "http" for entry in discovered["entries"]))
+        self.assertEqual(
+            {entry["server"] for entry in discovered["entries"]},
+            {"filesystem", "search"},
+        )
+        self.assertTrue(
+            any(entry["transport"] == "stdio" for entry in discovered["entries"])
+        )
+        self.assertTrue(
+            any(entry["transport"] == "http" for entry in discovered["entries"])
+        )
 
     async def test_mcp_config_registration_creates_defines_edge(self):
         db = FakeAsyncSession()
@@ -529,27 +639,29 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(db.added), 1)
 
     def test_mcp_config_validation_detects_duplicates_and_missing_metadata(self):
-        validation = validate_mcp_config_entries([
-            {
-                "source": "Codex",
-                "config_path": "/tmp/a.toml",
-                "server": "search",
-                "transport": "http",
-                "endpoint": "http://localhost:8765/mcp",
-            },
-            {
-                "source": "Codex",
-                "config_path": "/tmp/b.toml",
-                "server": "search",
-                "transport": "http",
-                "endpoint": "http://localhost:9999/mcp",
-            },
-            {
-                "source": "OpenHands",
-                "config_path": "/tmp/openhands.toml",
-                "server": "broken",
-            },
-        ])
+        validation = validate_mcp_config_entries(
+            [
+                {
+                    "source": "Codex",
+                    "config_path": "/tmp/a.toml",
+                    "server": "search",
+                    "transport": "http",
+                    "endpoint": "http://localhost:8765/mcp",
+                },
+                {
+                    "source": "Codex",
+                    "config_path": "/tmp/b.toml",
+                    "server": "search",
+                    "transport": "http",
+                    "endpoint": "http://localhost:9999/mcp",
+                },
+                {
+                    "source": "OpenHands",
+                    "config_path": "/tmp/openhands.toml",
+                    "server": "broken",
+                },
+            ]
+        )
 
         self.assertEqual(len(validation["duplicates"]), 1)
         self.assertEqual(len(validation["missing_required_metadata"]), 1)
@@ -558,17 +670,21 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         diagnostics = build_mcp_config_diagnostics(
             [],
             discovered={
-                "entries": [{
-                    "source": "Codex",
-                    "config_path": "/tmp/config.toml",
-                    "server": "broken",
-                }],
-                "issues": [{
-                    "source": "Codex",
-                    "config_path": "/tmp/bad.toml",
-                    "code": "malformed_config",
-                    "message": "bad toml",
-                }],
+                "entries": [
+                    {
+                        "source": "Codex",
+                        "config_path": "/tmp/config.toml",
+                        "server": "broken",
+                    }
+                ],
+                "issues": [
+                    {
+                        "source": "Codex",
+                        "config_path": "/tmp/bad.toml",
+                        "code": "malformed_config",
+                        "message": "bad toml",
+                    }
+                ],
             },
         )
 
@@ -603,13 +719,15 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             endpoint="stdio://filesystem",
             version="1.0.0",
         )
-        target = capability_node(MCPCapabilityEntry(
-            server="Filesystem MCP",
-            capability="read_file",
-            description="Read file metadata",
-            category="filesystem",
-            version="1.0.0",
-        ))
+        target = capability_node(
+            MCPCapabilityEntry(
+                server="Filesystem MCP",
+                capability="read_file",
+                description="Read file metadata",
+                category="filesystem",
+                version="1.0.0",
+            )
+        )
         event = make_openmesh_event(
             "mcp.capability.discovered",
             source,
@@ -632,44 +750,54 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(registry[0]["server"], "Filesystem MCP")
         self.assertEqual(registry[0]["capability"], "read_file")
-        self.assertTrue(any(entry["type"] == "capability" for entry in discovery["capabilities"]))
+        self.assertTrue(
+            any(entry["type"] == "capability" for entry in discovery["capabilities"])
+        )
         self.assertEqual(graph["edges"][0]["type"], "exposes")
         self.assertEqual(graph["edges"][0]["validation_status"], "valid")
 
     def test_mcp_capability_validation_detects_duplicates_and_missing_metadata(self):
-        validation = validate_capability_entries([
-            {
-                "server": "Filesystem MCP",
-                "capability": "read_file",
-                "category": "filesystem",
-                "metadata": {},
-            },
-            {
-                "server": "Filesystem MCP",
-                "capability": "read_file",
-                "category": "filesystem",
-                "metadata": {},
-            },
-            {
-                "server": "Search MCP",
-                "capability": "",
-                "metadata": [],
-            },
-        ])
+        validation = validate_capability_entries(
+            [
+                {
+                    "server": "Filesystem MCP",
+                    "capability": "read_file",
+                    "category": "filesystem",
+                    "metadata": {},
+                },
+                {
+                    "server": "Filesystem MCP",
+                    "capability": "read_file",
+                    "category": "filesystem",
+                    "metadata": {},
+                },
+                {
+                    "server": "Search MCP",
+                    "capability": "",
+                    "metadata": [],
+                },
+            ]
+        )
 
         self.assertEqual(len(validation["duplicates"]), 1)
         self.assertEqual(len(validation["missing_required_metadata"]), 1)
         self.assertEqual(len(validation["malformed_metadata"]), 1)
 
     def test_doctor_capability_diagnostics_reports_integrity_issues(self):
-        target = capability_node({
-            "server": "Search MCP",
-            "capability": "broken_search",
-            "metadata": {},
-        })
+        target = capability_node(
+            {
+                "server": "Search MCP",
+                "capability": "broken_search",
+                "metadata": {},
+            }
+        )
         event = make_openmesh_event(
             "mcp.capability.discovered",
-            mcp_server_node(name="Search MCP", transport="http", endpoint="http://localhost:8765/mcp"),
+            mcp_server_node(
+                name="Search MCP",
+                transport="http",
+                endpoint="http://localhost:8765/mcp",
+            ),
             {"server": "Search MCP", "capability": "broken_search"},
             target=target,
         )
@@ -700,24 +828,30 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event["source"]["node_type"], "agent")
         self.assertEqual(event["target"]["node_type"], "workflow")
         self.assertEqual(event["target"]["metadata"]["framework"], "LangGraph")
-        self.assertEqual(event["target"]["metadata"]["source"], "examples/langgraph_basic.py")
+        self.assertEqual(
+            event["target"]["metadata"]["source"], "examples/langgraph_basic.py"
+        )
         self.assertEqual(len(db.added), 1)
 
     def test_workflow_registry_graph_and_discovery_are_event_derived(self):
         agent = agent_node("agent:research", "Research Agent", "researcher")
-        workflow = workflow_node(WorkflowEntry(
-            workflow="Research Flow",
-            framework="LangGraph",
-            version="0.1.0",
-            source="examples/langgraph_basic.py",
-        ))
+        workflow = workflow_node(
+            WorkflowEntry(
+                workflow="Research Flow",
+                framework="LangGraph",
+                version="0.1.0",
+                source="examples/langgraph_basic.py",
+            )
+        )
         tool = {
             "node_id": "tool:web_search",
             "node_type": "tool",
             "name": "web_search",
             "runtime": "mcp",
         }
-        mcp = mcp_server_node(name="Search MCP", transport="http", endpoint="http://localhost:8765/mcp")
+        mcp = mcp_server_node(
+            name="Search MCP", transport="http", endpoint="http://localhost:8765/mcp"
+        )
         events = [
             make_openmesh_event(
                 "workflow.registered",
@@ -758,29 +892,35 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(registry[0]["workflow"], "Research Flow")
         self.assertEqual(registry[0]["framework"], "LangGraph")
-        self.assertTrue(any(entry["type"] == "workflow" for entry in discovery["workflows"]))
+        self.assertTrue(
+            any(entry["type"] == "workflow" for entry in discovery["workflows"])
+        )
         self.assertEqual(edge_types, {"runs", "uses", "connects_to"})
-        self.assertTrue(all(edge["validation_status"] == "valid" for edge in graph["edges"]))
+        self.assertTrue(
+            all(edge["validation_status"] == "valid" for edge in graph["edges"])
+        )
 
     def test_workflow_validation_detects_duplicates_and_missing_metadata(self):
-        validation = validate_workflow_entries([
-            {
-                "workflow": "Research Flow",
-                "framework": "LangGraph",
-                "source": "examples/langgraph_basic.py",
-                "metadata": {},
-            },
-            {
-                "workflow": "Research Flow",
-                "framework": "LangGraph",
-                "source": "examples/other.py",
-                "metadata": {},
-            },
-            {
-                "workflow": "Broken Flow",
-                "metadata": [],
-            },
-        ])
+        validation = validate_workflow_entries(
+            [
+                {
+                    "workflow": "Research Flow",
+                    "framework": "LangGraph",
+                    "source": "examples/langgraph_basic.py",
+                    "metadata": {},
+                },
+                {
+                    "workflow": "Research Flow",
+                    "framework": "LangGraph",
+                    "source": "examples/other.py",
+                    "metadata": {},
+                },
+                {
+                    "workflow": "Broken Flow",
+                    "metadata": [],
+                },
+            ]
+        )
 
         self.assertEqual(len(validation["duplicates"]), 1)
         self.assertEqual(len(validation["missing_required_metadata"]), 1)
@@ -802,20 +942,31 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
     def test_ecosystem_registry_unifies_observed_entities(self):
         agent = agent_node("agent:research", "Research Agent", "researcher")
-        workflow = workflow_node(WorkflowEntry(
-            workflow="Research Flow",
-            framework="LangGraph",
-            version="0.1.0",
-            source="examples/langgraph_basic.py",
-        ))
-        tool = {"node_id": "tool:web_search", "node_type": "tool", "name": "web_search", "runtime": "mcp"}
-        mcp = mcp_server_node(name="Search MCP", transport="http", endpoint="http://localhost:8765/mcp")
-        capability = capability_node(MCPCapabilityEntry(
-            server="Search MCP",
-            capability="web_search",
-            description="Search query metadata",
-            category="search",
-        ))
+        workflow = workflow_node(
+            WorkflowEntry(
+                workflow="Research Flow",
+                framework="LangGraph",
+                version="0.1.0",
+                source="examples/langgraph_basic.py",
+            )
+        )
+        tool = {
+            "node_id": "tool:web_search",
+            "node_type": "tool",
+            "name": "web_search",
+            "runtime": "mcp",
+        }
+        mcp = mcp_server_node(
+            name="Search MCP", transport="http", endpoint="http://localhost:8765/mcp"
+        )
+        capability = capability_node(
+            MCPCapabilityEntry(
+                server="Search MCP",
+                capability="web_search",
+                description="Search query metadata",
+                category="search",
+            )
+        )
         config_source = {
             "node_id": "mcp_config:codex:config",
             "node_type": "service",
@@ -824,10 +975,38 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             "metadata": {"source": "Codex", "config_path": "/tmp/config.toml"},
         }
         events = [
-            make_openmesh_event("workflow.registered", agent, {"workflow": "Research Flow", "framework": "LangGraph", "source": "examples/langgraph_basic.py"}, target=workflow),
-            make_openmesh_event("workflow.tool.used", workflow, {"workflow": "Research Flow"}, target=tool),
-            make_openmesh_event("workflow.mcp.connected", workflow, {"workflow": "Research Flow"}, target=mcp),
-            make_openmesh_event("mcp.capability.discovered", mcp, {"server": "Search MCP", "capability": "web_search", "category": "search"}, target=capability),
+            make_openmesh_event(
+                "workflow.registered",
+                agent,
+                {
+                    "workflow": "Research Flow",
+                    "framework": "LangGraph",
+                    "source": "examples/langgraph_basic.py",
+                },
+                target=workflow,
+            ),
+            make_openmesh_event(
+                "workflow.tool.used",
+                workflow,
+                {"workflow": "Research Flow"},
+                target=tool,
+            ),
+            make_openmesh_event(
+                "workflow.mcp.connected",
+                workflow,
+                {"workflow": "Research Flow"},
+                target=mcp,
+            ),
+            make_openmesh_event(
+                "mcp.capability.discovered",
+                mcp,
+                {
+                    "server": "Search MCP",
+                    "capability": "web_search",
+                    "category": "search",
+                },
+                target=capability,
+            ),
             make_openmesh_event(
                 "mcp.config.discovered",
                 config_source,
@@ -841,7 +1020,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 target=mcp,
             ),
         ]
-        registry = build_ecosystem_registry([record_from_event(event) for event in events])
+        registry = build_ecosystem_registry(
+            [record_from_event(event) for event in events]
+        )
 
         self.assertEqual(registry["summary"]["groups"]["agents"], 1)
         self.assertEqual(registry["summary"]["groups"]["tools"], 1)
@@ -852,11 +1033,31 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(registry["validation"]["status"], "OK")
 
     def test_ecosystem_validation_detects_duplicates_and_orphans(self):
-        validation = validate_ecosystem_entities([
-            {"id": "agent:a", "type": "agent", "name": "Agent A", "relationship_count": 0, "metadata": {}},
-            {"id": "agent:b", "type": "agent", "name": "Agent A", "relationship_count": 1, "metadata": {}},
-            {"id": "tool:a", "type": "tool", "name": "Tool A", "relationship_count": 0, "metadata": {}},
-        ])
+        validation = validate_ecosystem_entities(
+            [
+                {
+                    "id": "agent:a",
+                    "type": "agent",
+                    "name": "Agent A",
+                    "relationship_count": 0,
+                    "metadata": {},
+                },
+                {
+                    "id": "agent:b",
+                    "type": "agent",
+                    "name": "Agent A",
+                    "relationship_count": 1,
+                    "metadata": {},
+                },
+                {
+                    "id": "tool:a",
+                    "type": "tool",
+                    "name": "Tool A",
+                    "relationship_count": 0,
+                    "metadata": {},
+                },
+            ]
+        )
 
         self.assertEqual(validation["status"], "ERROR")
         self.assertEqual(len(validation["duplicate_entities"]), 1)
@@ -878,9 +1079,24 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
     def test_graph_validation_distinguishes_relationship_integrity_errors(self):
         nodes = {
-            "agent:a": {"id": "agent:a", "type": "agent", "name": "Agent A", "category": "agents"},
-            "tool:a": {"id": "tool:a", "type": "tool", "name": "Tool A", "category": "tools"},
-            "service:a": {"id": "service:a", "type": "service", "name": "Service A", "category": "services"},
+            "agent:a": {
+                "id": "agent:a",
+                "type": "agent",
+                "name": "Agent A",
+                "category": "agents",
+            },
+            "tool:a": {
+                "id": "tool:a",
+                "type": "tool",
+                "name": "Tool A",
+                "category": "tools",
+            },
+            "service:a": {
+                "id": "service:a",
+                "type": "service",
+                "name": "Service A",
+                "category": "services",
+            },
         }
         edge_base = {
             "trace_id": "trace_test",
@@ -889,9 +1105,27 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             "last_seen": "2026-06-03T00:00:00Z",
         }
         edges = {
-            "unknown": {"id": "unknown", "source": "agent:a", "target": "tool:a", "type": "unknown", **edge_base},
-            "bad-source": {"id": "bad-source", "source": "tool:a", "target": "tool:a", "type": "uses", **edge_base},
-            "bad-target": {"id": "bad-target", "source": "agent:a", "target": "service:a", "type": "uses", **edge_base},
+            "unknown": {
+                "id": "unknown",
+                "source": "agent:a",
+                "target": "tool:a",
+                "type": "unknown",
+                **edge_base,
+            },
+            "bad-source": {
+                "id": "bad-source",
+                "source": "tool:a",
+                "target": "tool:a",
+                "type": "uses",
+                **edge_base,
+            },
+            "bad-target": {
+                "id": "bad-target",
+                "source": "agent:a",
+                "target": "service:a",
+                "type": "uses",
+                **edge_base,
+            },
         }
 
         validation = validate_graph_state(nodes, edges)
@@ -902,8 +1136,18 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
     def test_graph_validation_detects_unknown_node_types_and_categories(self):
         nodes = {
-            "unknown:a": {"id": "unknown:a", "type": "unknown", "name": "Unknown A", "category": "unknown"},
-            "agent:a": {"id": "agent:a", "type": "agent", "name": "Agent A", "category": "tools"},
+            "unknown:a": {
+                "id": "unknown:a",
+                "type": "unknown",
+                "name": "Unknown A",
+                "category": "unknown",
+            },
+            "agent:a": {
+                "id": "agent:a",
+                "type": "agent",
+                "name": "Agent A",
+                "category": "tools",
+            },
         }
         edges = {
             "edge:a": {
@@ -987,7 +1231,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             SimpleNamespace(
                 event_id=event["event_id"],
                 event_type=event["event_type"],
-                timestamp=datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")).replace(tzinfo=None),
+                timestamp=datetime.fromisoformat(
+                    event["timestamp"].replace("Z", "+00:00")
+                ).replace(tzinfo=None),
                 trace_id=event["trace_id"],
                 span_id=event.get("span_id"),
                 source_json=event["source"],
@@ -1001,9 +1247,15 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(discovery["frameworks"][0]["name"], "LangGraph")
         self.assertEqual(discovery["tools"][0]["name"], "web_search")
-        self.assertTrue(any(entry["name"] == "python hello.py" for entry in discovery["processes"]))
-        self.assertTrue(any(entry["name"] == "Research Agent" for entry in discovery["agents"]))
-        self.assertEqual(discovery["tools"][0]["type_definition"]["display_name"], "Tool")
+        self.assertTrue(
+            any(entry["name"] == "python hello.py" for entry in discovery["processes"])
+        )
+        self.assertTrue(
+            any(entry["name"] == "Research Agent" for entry in discovery["agents"])
+        )
+        self.assertEqual(
+            discovery["tools"][0]["type_definition"]["display_name"], "Tool"
+        )
         self.assertEqual(discovery["tools"][0]["validation_status"], "valid")
 
     def test_trace_semantics_reconstruct_parent_child_tree_and_provenance(self):
@@ -1023,7 +1275,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             "tool.call.started",
             root["source"],
             {"tool": "web_search"},
-            target={"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"},
+            target={
+                "node_id": "tool:web_search",
+                "node_type": "tool",
+                "name": "web_search",
+            },
             session_id=root["session_id"],
             trace_id=root["trace_id"],
             parent_event_id=task["event_id"],
@@ -1037,7 +1293,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         validation = validate_trace_semantics(events)
 
         self.assertEqual(hierarchy[0]["children"][0]["event_id"], task["event_id"])
-        self.assertEqual(hierarchy[0]["children"][0]["children"][0]["event_id"], tool["event_id"])
+        self.assertEqual(
+            hierarchy[0]["children"][0]["children"][0]["event_id"], tool["event_id"]
+        )
         self.assertEqual(relationships[0]["event_id"], tool["event_id"])
         self.assertEqual(relationships[0]["type"], "uses")
         self.assertEqual(validation["status"], "OK")
@@ -1048,7 +1306,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             "tool.call.started",
             root["source"],
             {"tool": "web_search"},
-            target={"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"},
+            target={
+                "node_id": "tool:web_search",
+                "node_type": "tool",
+                "name": "web_search",
+            },
             session_id=root["session_id"],
             trace_id=root["trace_id"],
             parent_event_id=root["event_id"],
@@ -1060,7 +1322,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             "tool.call.completed",
             root["source"],
             {"tool": "web_search"},
-            target={"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"},
+            target={
+                "node_id": "tool:web_search",
+                "node_type": "tool",
+                "name": "web_search",
+            },
             session_id=root["session_id"],
             trace_id=root["trace_id"],
             span_id=linked["span_id"],
@@ -1074,12 +1340,16 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         span_tree = build_span_tree(events)
         validation = validate_trace_semantics(events)
 
-        child_span = next(span for span in spans if span["span_id"] == linked["span_id"])
+        child_span = next(
+            span for span in spans if span["span_id"] == linked["span_id"]
+        )
         self.assertEqual(child_span["status"], "completed")
         self.assertEqual(child_span["event_count"], 2)
         self.assertEqual(child_span["links"][0]["trace_id"], "trace_external")
         self.assertEqual(span_tree[0]["children"][0]["span_id"], linked["span_id"])
-        self.assertEqual(validation["cross_trace_links"][0]["linked_trace_id"], "trace_external")
+        self.assertEqual(
+            validation["cross_trace_links"][0]["linked_trace_id"], "trace_external"
+        )
 
     def test_doctor_trace_diagnostics_find_broken_parent_span_and_orphan_span(self):
         root = self.make_event("task.started")
@@ -1087,7 +1357,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             "tool.call.started",
             root["source"],
             {"tool": "web_search"},
-            target={"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"},
+            target={
+                "node_id": "tool:web_search",
+                "node_type": "tool",
+                "name": "web_search",
+            },
             session_id=root["session_id"],
             trace_id=root["trace_id"],
             parent_span_id="span_missing",
@@ -1095,7 +1369,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             root_event_id=root["event_id"],
         )
 
-        diagnostics = build_trace_diagnostics([record_from_event(root), record_from_event(child)])
+        diagnostics = build_trace_diagnostics(
+            [record_from_event(root), record_from_event(child)]
+        )
         trace_check = diagnostics[0]
 
         self.assertEqual(trace_check["severity"], "ERROR")
@@ -1106,23 +1382,35 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         missing = self.make_event("task.started")
         broken = self.make_event("tool.call.started")
 
-        diagnostics = build_trace_diagnostics([
-            record_from_event(missing, root_event_id=None),
-            record_from_event(broken, root_event_id="evt_missing_root"),
-        ])
+        diagnostics = build_trace_diagnostics(
+            [
+                record_from_event(missing, root_event_id=None),
+                record_from_event(broken, root_event_id="evt_missing_root"),
+            ]
+        )
         detail = diagnostics[0]["detail"]
 
         self.assertEqual(diagnostics[0]["severity"], "ERROR")
         self.assertEqual(len(detail["missing_root_event_events"]), 1)
         self.assertEqual(len(detail["broken_root_event_events"]), 1)
 
-    def test_doctor_trace_diagnostics_find_malformed_and_invalid_cross_trace_links(self):
+    def test_doctor_trace_diagnostics_find_malformed_and_invalid_cross_trace_links(
+        self,
+    ):
         local = self.make_event("message.sent")
-        local["links"] = [{"trace_id": "trace_missing", "span_id": "span_missing", "relationship": "follows_from"}]
+        local["links"] = [
+            {
+                "trace_id": "trace_missing",
+                "span_id": "span_missing",
+                "relationship": "follows_from",
+            }
+        ]
         malformed = self.make_event("message.sent")
         malformed["links"] = [{"relationship": "empty"}]
 
-        diagnostics = build_trace_diagnostics([record_from_event(local), record_from_event(malformed)])
+        diagnostics = build_trace_diagnostics(
+            [record_from_event(local), record_from_event(malformed)]
+        )
         detail = diagnostics[0]["detail"]
 
         self.assertEqual(diagnostics[0]["severity"], "ERROR")
@@ -1134,14 +1422,18 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         parent["trace_id"] = "trace_parent"
         child = self.make_event("task.started")
         child["trace_id"] = "trace_child"
-        child["links"] = [{
-            "trace_id": parent["trace_id"],
-            "span_id": parent["span_id"],
-            "event_id": parent["event_id"],
-            "relationship": "follows_from",
-        }]
+        child["links"] = [
+            {
+                "trace_id": parent["trace_id"],
+                "span_id": parent["span_id"],
+                "event_id": parent["event_id"],
+                "relationship": "follows_from",
+            }
+        ]
 
-        diagnostics = build_trace_diagnostics([record_from_event(parent), record_from_event(child)])
+        diagnostics = build_trace_diagnostics(
+            [record_from_event(parent), record_from_event(child)]
+        )
 
         self.assertEqual(diagnostics[0]["severity"], "INFO")
         self.assertEqual(diagnostics[0]["detail"]["valid_cross_trace_links"], 1)
@@ -1149,14 +1441,20 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
     def test_doctor_workflow_diagnostics_find_incomplete_and_long_running_spans(self):
         workflow = make_openmesh_event(
             "workflow.started",
-            {"node_id": "workflow:test", "node_type": "workflow", "name": "Test Workflow"},
+            {
+                "node_id": "workflow:test",
+                "node_type": "workflow",
+                "name": "Test Workflow",
+            },
             {"workflow": "test"},
             session_id="sess_test",
             trace_id="trace_workflow",
         )
         record = record_from_event(workflow, timestamp=datetime(2026, 1, 1, 0, 0, 0))
 
-        diagnostics = build_trace_diagnostics([record], now=datetime(2026, 1, 1, 2, 0, 0))
+        diagnostics = build_trace_diagnostics(
+            [record], now=datetime(2026, 1, 1, 2, 0, 0)
+        )
         trace_check, workflow_check = diagnostics
 
         self.assertEqual(trace_check["severity"], "WARNING")
@@ -1164,22 +1462,30 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(trace_check["detail"]["long_running_active_spans"]), 1)
         self.assertEqual(len(workflow_check["detail"]["incomplete_workflow_spans"]), 1)
 
-    def test_doctor_graph_diagnostics_find_missing_provenance_invalid_and_stale_edges(self):
+    def test_doctor_graph_diagnostics_find_missing_provenance_invalid_and_stale_edges(
+        self,
+    ):
         stale = self.make_event("message.sent")
         stale["source"] = agent_node("agent-a", "Research Agent", "researcher")
         stale["target"] = agent_node("agent-b", "Coding Agent", "engineer")
         invalid = self.make_event("node.transition")
         invalid["source"] = agent_node("agent-a", "Research Agent", "researcher")
-        invalid["target"] = {"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"}
+        invalid["target"] = {
+            "node_id": "tool:web_search",
+            "node_type": "tool",
+            "name": "web_search",
+        }
         missing = self.make_event("message.sent")
         missing["source"] = agent_node("agent-c", "Planning Agent", "planner")
         missing["target"] = agent_node("agent-d", "Review Agent", "reviewer")
 
-        diagnostics = build_graph_diagnostics([
-            record_from_event(stale, timestamp=datetime(2026, 1, 1, 0, 0, 0)),
-            record_from_event(invalid),
-            record_from_event(missing, trace_id=None),
-        ])
+        diagnostics = build_graph_diagnostics(
+            [
+                record_from_event(stale, timestamp=datetime(2026, 1, 1, 0, 0, 0)),
+                record_from_event(invalid),
+                record_from_event(missing, trace_id=None),
+            ]
+        )
 
         detail = diagnostics["detail"]
         self.assertEqual(diagnostics["severity"], "ERROR")
@@ -1190,7 +1496,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
     def test_doctor_relationship_diagnostics_find_invalid_source_and_target_types(self):
         invalid = self.make_event("node.transition")
         invalid["source"] = agent_node("agent-a", "Research Agent", "researcher")
-        invalid["target"] = {"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"}
+        invalid["target"] = {
+            "node_id": "tool:web_search",
+            "node_type": "tool",
+            "name": "web_search",
+        }
 
         diagnostics = build_relationship_diagnostics([record_from_event(invalid)])
 
@@ -1201,7 +1511,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
     def test_doctor_node_diagnostics_find_unknown_node_types(self):
         event = self.make_event("message.sent")
-        event["source"] = {"node_id": "unknown:a", "node_type": "unknown", "name": "Unknown A"}
+        event["source"] = {
+            "node_id": "unknown:a",
+            "node_type": "unknown",
+            "name": "Unknown A",
+        }
 
         diagnostics = build_node_diagnostics([record_from_event(event)])
 
@@ -1219,7 +1533,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             started_at=started,
         )
 
-        with patch("src.db.openmesh_sessions.get_openmesh_session", return_value=session):
+        with patch(
+            "src.db.openmesh_sessions.get_openmesh_session", return_value=session
+        ):
             completed = await complete_openmesh_session(
                 db,
                 session_id=session.session_id,
@@ -1255,8 +1571,20 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             health={"events": 1, "traces": 1, "nodes": 2, "edges": 1},
             graph={
                 "nodes": [
-                    {"id": "agent-a", "type": "agent", "name": "Research Agent", "event_count": 1, "last_seen": "2026-05-29T10:00:00Z"},
-                    {"id": "agent-b", "type": "agent", "name": "Coding Agent", "event_count": 1, "last_seen": "2026-05-29T10:00:00Z"},
+                    {
+                        "id": "agent-a",
+                        "type": "agent",
+                        "name": "Research Agent",
+                        "event_count": 1,
+                        "last_seen": "2026-05-29T10:00:00Z",
+                    },
+                    {
+                        "id": "agent-b",
+                        "type": "agent",
+                        "name": "Coding Agent",
+                        "event_count": 1,
+                        "last_seen": "2026-05-29T10:00:00Z",
+                    },
                 ],
                 "edges": [
                     {
@@ -1267,30 +1595,65 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                         "event_count": 1,
                         "last_seen": "2026-05-29T10:00:00Z",
                         "validation_status": "valid",
-                        "relationship_definition": {"description": "Agents communicate with each other."},
+                        "relationship_definition": {
+                            "description": "Agents communicate with each other."
+                        },
                     }
                 ],
             },
-            traces=[{"trace_id": "trace_test", "status": "completed", "event_count": 1, "started_at": "2026-05-29T10:00:00Z"}],
-            events=[{
-                "event_id": "evt_test",
-                "event_type": "message.sent",
-                "timestamp": "2026-05-29T10:00:00Z",
-                "trace_id": "trace_test",
-                "session_id": "sess_test",
-                "source": {"node_id": "agent-a", "node_type": "agent", "name": "Research Agent"},
-                "target": {"node_id": "agent-b", "node_type": "agent", "name": "Coding Agent"},
-                "payload": {},
-            }],
+            traces=[
+                {
+                    "trace_id": "trace_test",
+                    "status": "completed",
+                    "event_count": 1,
+                    "started_at": "2026-05-29T10:00:00Z",
+                }
+            ],
+            events=[
+                {
+                    "event_id": "evt_test",
+                    "event_type": "message.sent",
+                    "timestamp": "2026-05-29T10:00:00Z",
+                    "trace_id": "trace_test",
+                    "session_id": "sess_test",
+                    "source": {
+                        "node_id": "agent-a",
+                        "node_type": "agent",
+                        "name": "Research Agent",
+                    },
+                    "target": {
+                        "node_id": "agent-b",
+                        "node_type": "agent",
+                        "name": "Coding Agent",
+                    },
+                    "payload": {},
+                }
+            ],
             sessions=[],
             integrations=[],
-            discovery={"frameworks": [], "agents": [], "tools": [], "capabilities": [], "workflows": [], "processes": [], "services": []},
+            discovery={
+                "frameworks": [],
+                "agents": [],
+                "tools": [],
+                "capabilities": [],
+                "workflows": [],
+                "processes": [],
+                "services": [],
+            },
             mcp_servers=[],
             mcp_configs=[],
             capabilities=[],
             workflows=[],
             ecosystem={
-                "entities": {"agents": [], "tools": [], "processes": [], "workflows": [], "mcp_servers": [], "mcp_configs": [], "capabilities": []},
+                "entities": {
+                    "agents": [],
+                    "tools": [],
+                    "processes": [],
+                    "workflows": [],
+                    "mcp_servers": [],
+                    "mcp_configs": [],
+                    "capabilities": [],
+                },
                 "summary": {"entity_count": 0, "relationship_count": 0},
                 "validation": {"status": "OK"},
             },
@@ -1321,55 +1684,75 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             events=[],
             sessions=[],
             integrations=[],
-            discovery={"frameworks": [], "agents": [], "tools": [], "capabilities": [], "workflows": [], "processes": [], "services": []},
-            mcp_servers=[{
-                "server": "Filesystem MCP",
-                "version": "1.0.0",
-                "transport": "stdio",
-                "endpoint": "stdio://filesystem",
-                "last_seen": "2026-06-03T10:00:00Z",
-            }],
-            mcp_configs=[{
-                "source": "Codex",
-                "server": "search",
-                "transport": "http",
-                "config_path": "/tmp/config.toml",
-            }],
-            capabilities=[{
-                "server": "Filesystem MCP",
-                "capability": "read_file",
-                "category": "filesystem",
-                "description": "Read file metadata",
-            }],
-            workflows=[{
-                "workflow": "Research Flow",
-                "framework": "LangGraph",
-                "source": "examples/langgraph_basic.py",
-                "last_seen": "2026-06-03T10:00:00Z",
-            }],
+            discovery={
+                "frameworks": [],
+                "agents": [],
+                "tools": [],
+                "capabilities": [],
+                "workflows": [],
+                "processes": [],
+                "services": [],
+            },
+            mcp_servers=[
+                {
+                    "server": "Filesystem MCP",
+                    "version": "1.0.0",
+                    "transport": "stdio",
+                    "endpoint": "stdio://filesystem",
+                    "last_seen": "2026-06-03T10:00:00Z",
+                }
+            ],
+            mcp_configs=[
+                {
+                    "source": "Codex",
+                    "server": "search",
+                    "transport": "http",
+                    "config_path": "/tmp/config.toml",
+                }
+            ],
+            capabilities=[
+                {
+                    "server": "Filesystem MCP",
+                    "capability": "read_file",
+                    "category": "filesystem",
+                    "description": "Read file metadata",
+                }
+            ],
+            workflows=[
+                {
+                    "workflow": "Research Flow",
+                    "framework": "LangGraph",
+                    "source": "examples/langgraph_basic.py",
+                    "last_seen": "2026-06-03T10:00:00Z",
+                }
+            ],
             ecosystem={
                 "entities": {
                     "agents": [],
                     "tools": [],
                     "processes": [],
-                    "workflows": [{
-                        "id": "workflow:research",
-                        "type": "workflow",
-                        "name": "Research Flow",
-                        "status": "active",
-                        "event_count": 3,
-                        "relationship_count": 2,
-                        "last_seen": "2026-06-03T10:00:00Z",
-                    }],
-                    "mcp_servers": [{
-                        "id": "mcp:filesystem",
-                        "type": "mcp_server",
-                        "name": "Filesystem MCP",
-                        "status": "active",
-                        "event_count": 1,
-                        "relationship_count": 1,
-                        "last_seen": "2026-06-03T10:00:00Z",
-                    }],
+                    "workflows": [
+                        {
+                            "id": "workflow:research",
+                            "type": "workflow",
+                            "name": "Research Flow",
+                            "status": "active",
+                            "event_count": 3,
+                            "relationship_count": 2,
+                            "last_seen": "2026-06-03T10:00:00Z",
+                        }
+                    ],
+                    "mcp_servers": [
+                        {
+                            "id": "mcp:filesystem",
+                            "type": "mcp_server",
+                            "name": "Filesystem MCP",
+                            "status": "active",
+                            "event_count": 1,
+                            "relationship_count": 1,
+                            "last_seen": "2026-06-03T10:00:00Z",
+                        }
+                    ],
                     "mcp_configs": [],
                     "capabilities": [],
                 },
@@ -1399,72 +1782,116 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
     def test_cli_mcp_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
-            _print_mcp([{
-                "server": "Filesystem MCP",
-                "version": "1.0.0",
-                "transport": "stdio",
-                "last_seen": "2026-06-03T10:00:00Z",
-            }])
+            _print_mcp(
+                [
+                    {
+                        "server": "Filesystem MCP",
+                        "version": "1.0.0",
+                        "transport": "stdio",
+                        "last_seen": "2026-06-03T10:00:00Z",
+                    }
+                ]
+            )
 
-        printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
         self.assertIn("Filesystem MCP", printed)
         self.assertIn("stdio", printed)
 
     def test_cli_mcp_config_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
-            _print_mcp_config([{
-                "source": "Codex",
-                "server": "search",
-                "transport": "http",
-                "config_path": "/tmp/config.toml",
-            }])
+            _print_mcp_config(
+                [
+                    {
+                        "source": "Codex",
+                        "server": "search",
+                        "transport": "http",
+                        "config_path": "/tmp/config.toml",
+                    }
+                ]
+            )
 
-        printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
         self.assertIn("Codex", printed)
         self.assertIn("search", printed)
 
     def test_cli_capability_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
-            _print_capabilities([{
-                "server": "Filesystem MCP",
-                "capability": "read_file",
-                "category": "filesystem",
-                "version": "1.0.0",
-            }])
+            _print_capabilities(
+                [
+                    {
+                        "server": "Filesystem MCP",
+                        "capability": "read_file",
+                        "category": "filesystem",
+                        "version": "1.0.0",
+                    }
+                ]
+            )
 
-        printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
         self.assertIn("Filesystem MCP", printed)
         self.assertIn("read_file", printed)
         self.assertIn("filesystem", printed)
 
     def test_cli_workflow_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
-            _print_workflows([{
-                "workflow": "Research Flow",
-                "framework": "LangGraph",
-                "last_seen": "2026-06-03T10:00:00Z",
-            }])
+            _print_workflows(
+                [
+                    {
+                        "workflow": "Research Flow",
+                        "framework": "LangGraph",
+                        "last_seen": "2026-06-03T10:00:00Z",
+                    }
+                ]
+            )
 
-        printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
         self.assertIn("Research Flow", printed)
         self.assertIn("LangGraph", printed)
 
     def test_cli_ecosystem_printer_displays_grouped_inventory(self):
         with patch("builtins.print") as printer:
-            _print_ecosystem({
-                "entities": {
-                    "agents": [{"name": "Research Agent", "status": "active", "event_count": 1, "relationship_count": 1, "last_seen": "2026-06-03T10:00:00Z"}],
-                    "tools": [],
-                    "processes": [],
-                    "workflows": [{"name": "Research Flow", "status": "active", "event_count": 3, "relationship_count": 2, "last_seen": "2026-06-03T10:00:00Z"}],
-                    "mcp_servers": [],
-                    "mcp_configs": [],
-                    "capabilities": [],
-                },
-                "summary": {"entity_count": 2, "relationship_count": 2},
-            })
+            _print_ecosystem(
+                {
+                    "entities": {
+                        "agents": [
+                            {
+                                "name": "Research Agent",
+                                "status": "active",
+                                "event_count": 1,
+                                "relationship_count": 1,
+                                "last_seen": "2026-06-03T10:00:00Z",
+                            }
+                        ],
+                        "tools": [],
+                        "processes": [],
+                        "workflows": [
+                            {
+                                "name": "Research Flow",
+                                "status": "active",
+                                "event_count": 3,
+                                "relationship_count": 2,
+                                "last_seen": "2026-06-03T10:00:00Z",
+                            }
+                        ],
+                        "mcp_servers": [],
+                        "mcp_configs": [],
+                        "capabilities": [],
+                    },
+                    "summary": {"entity_count": 2, "relationship_count": 2},
+                }
+            )
 
-        printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
         self.assertIn("OpenMesh Ecosystem", printed)
         self.assertIn("Research Agent", printed)
         self.assertIn("Research Flow", printed)

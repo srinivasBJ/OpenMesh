@@ -77,7 +77,11 @@ def build_span_summary(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         span["duration_ms"] = _duration_ms(span.get("started_at"), span.get("ended_at"))
     for span in spans.values():
         parent_span_id = span.get("parent_span_id")
-        if parent_span_id and parent_span_id in spans and span["span_id"] not in spans[parent_span_id]["child_span_ids"]:
+        if (
+            parent_span_id
+            and parent_span_id in spans
+            and span["span_id"] not in spans[parent_span_id]["child_span_ids"]
+        ):
             spans[parent_span_id]["child_span_ids"].append(span["span_id"])
     return sorted(spans.values(), key=lambda span: span["first_seen_index"])
 
@@ -86,9 +90,7 @@ def build_span_tree(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     summaries = build_span_summary(events)
     nodes = {
         span["span_id"]: {
-            key: value
-            for key, value in span.items()
-            if key != "child_span_ids"
+            key: value for key, value in span.items() if key != "child_span_ids"
         }
         for span in summaries
     }
@@ -99,7 +101,11 @@ def build_span_tree(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for span in summaries:
         node = nodes[span["span_id"]]
         parent_span_id = span.get("parent_span_id")
-        if parent_span_id and parent_span_id in nodes and parent_span_id != span["span_id"]:
+        if (
+            parent_span_id
+            and parent_span_id in nodes
+            and parent_span_id != span["span_id"]
+        ):
             nodes[parent_span_id]["children"].append(node)
         else:
             roots.append(node)
@@ -108,7 +114,9 @@ def build_span_tree(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def validate_trace_semantics(events: list[dict[str, Any]]) -> dict[str, Any]:
     trace_ids = {event.get("trace_id") for event in events if event.get("trace_id")}
-    session_ids = {event.get("session_id") for event in events if event.get("session_id")}
+    session_ids = {
+        event.get("session_id") for event in events if event.get("session_id")
+    }
     event_ids = {event["event_id"] for event in events}
     span_ids = {event.get("span_id") for event in events if event.get("span_id")}
     missing_parent_events = [
@@ -130,7 +138,8 @@ def validate_trace_semantics(events: list[dict[str, Any]]) -> dict[str, Any]:
         event["event_id"]
         for event in events
         for link in event.get("links", [])
-        if not isinstance(link, dict) or not any(link.get(key) for key in ("url", "trace_id", "span_id", "event_id"))
+        if not isinstance(link, dict)
+        or not any(link.get(key) for key in ("url", "trace_id", "span_id", "event_id"))
     ]
     cross_trace_links = [
         {
@@ -141,7 +150,9 @@ def validate_trace_semantics(events: list[dict[str, Any]]) -> dict[str, Any]:
         }
         for event in events
         for link in event.get("links", [])
-        if isinstance(link, dict) and link.get("trace_id") and link.get("trace_id") != event.get("trace_id")
+        if isinstance(link, dict)
+        and link.get("trace_id")
+        and link.get("trace_id") != event.get("trace_id")
     ]
     warnings = (
         missing_parent_events
@@ -169,7 +180,9 @@ def graph_edges_for_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         target = event.get("target")
         if not source or not target:
             continue
-        edge_type = edge_type_for(event["event_type"], target.get("node_type"), source.get("node_type"))
+        edge_type = edge_type_for(
+            event["event_type"], target.get("node_type"), source.get("node_type")
+        )
         if not edge_type:
             continue
         edges.append(
@@ -190,7 +203,9 @@ def graph_edges_for_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _span_status(event_types: list[str], latest_event: dict[str, Any]) -> str:
-    if latest_event.get("severity") == "error" or latest_event.get("event_type", "").endswith(".failed"):
+    if latest_event.get("severity") == "error" or latest_event.get(
+        "event_type", ""
+    ).endswith(".failed"):
         return "failed"
     if any(event_type.endswith(".failed") for event_type in event_types):
         return "failed"

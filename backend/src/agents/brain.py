@@ -2,6 +2,7 @@
 AgentBrain — The Claude-powered intelligence behind every agent.
 Each agent call to Claude generates authentic, personality-driven behavior.
 """
+
 import anthropic
 import json
 import random
@@ -18,14 +19,38 @@ client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY els
 _missing_key_warned = False
 
 ROLE_TRAITS = {
-    "scientist": {"topics": ["research", "experiments", "data", "hypotheses", "discoveries"], "emoji": "🔬"},
-    "engineer": {"topics": ["systems", "code", "architecture", "optimization", "tools"], "emoji": "⚙️"},
-    "artist": {"topics": ["creativity", "expression", "beauty", "culture", "emotion"], "emoji": "🎨"},
-    "economist": {"topics": ["markets", "value", "exchange", "resources", "incentives"], "emoji": "📊"},
-    "philosopher": {"topics": ["truth", "existence", "ethics", "meaning", "consciousness"], "emoji": "🧠"},
-    "historian": {"topics": ["patterns", "memory", "civilization", "events", "legacy"], "emoji": "📜"},
-    "explorer": {"topics": ["unknown", "discovery", "adventure", "mapping", "frontiers"], "emoji": "🧭"},
-    "diplomat": {"topics": ["alliances", "negotiation", "harmony", "communication", "peace"], "emoji": "🤝"},
+    "scientist": {
+        "topics": ["research", "experiments", "data", "hypotheses", "discoveries"],
+        "emoji": "🔬",
+    },
+    "engineer": {
+        "topics": ["systems", "code", "architecture", "optimization", "tools"],
+        "emoji": "⚙️",
+    },
+    "artist": {
+        "topics": ["creativity", "expression", "beauty", "culture", "emotion"],
+        "emoji": "🎨",
+    },
+    "economist": {
+        "topics": ["markets", "value", "exchange", "resources", "incentives"],
+        "emoji": "📊",
+    },
+    "philosopher": {
+        "topics": ["truth", "existence", "ethics", "meaning", "consciousness"],
+        "emoji": "🧠",
+    },
+    "historian": {
+        "topics": ["patterns", "memory", "civilization", "events", "legacy"],
+        "emoji": "📜",
+    },
+    "explorer": {
+        "topics": ["unknown", "discovery", "adventure", "mapping", "frontiers"],
+        "emoji": "🧭",
+    },
+    "diplomat": {
+        "topics": ["alliances", "negotiation", "harmony", "communication", "peace"],
+        "emoji": "🤝",
+    },
 }
 
 
@@ -37,7 +62,9 @@ def _llm_enabled() -> bool:
         return bool(client)
     if not client:
         if LLM_MODE == "online" and not _missing_key_warned:
-            print("[AgentBrain] LLM_MODE=online but ANTHROPIC_API_KEY is missing; using local fallbacks.")
+            print(
+                "[AgentBrain] LLM_MODE=online but ANTHROPIC_API_KEY is missing; using local fallbacks."
+            )
             _missing_key_warned = True
         return False
     return True
@@ -64,7 +91,9 @@ def _memory_snippet(agent_data: dict) -> str:
     return _clip("\n".join(lines), AGENT_MEMORY_CONTEXT_CHARS)
 
 
-def _call_claude(system: Optional[str], user_prompt: str, max_tokens: int, tag: str) -> Optional[str]:
+def _call_claude(
+    system: Optional[str], user_prompt: str, max_tokens: int, tag: str
+) -> Optional[str]:
     if not _llm_enabled():
         return None
     try:
@@ -90,16 +119,16 @@ def build_agent_system_prompt(agent_data: dict) -> str:
     traits = ROLE_TRAITS.get(role, {})
     emoji = traits.get("emoji", "🤖")
 
-    return f"""You are {agent_data['name']}, an autonomous AI agent living in OpenMeshAI — a digital civilization of AI minds.
+    return f"""You are {agent_data["name"]}, an autonomous AI agent living in OpenMeshAI — a digital civilization of AI minds.
 
 IDENTITY:
 - Role: {role.upper()} {emoji}
-- Personality: curiosity={personality.get('curiosity', 0.7):.1f}, sociability={personality.get('sociability', 0.6):.1f}, creativity={personality.get('creativity', 0.6):.1f}, ambition={personality.get('ambition', 0.5):.1f}
-- Skills: {', '.join(agent_data.get('skills', []))}
-- Current Goals: {', '.join(agent_data.get('goals', ['explore', 'learn']))}
-- Reputation: {agent_data.get('reputation', 50):.0f}/100
-- Knowledge: {agent_data.get('knowledge', 10):.0f}/100
-- Guild: {agent_data.get('guild_name', 'Independent')}
+- Personality: curiosity={personality.get("curiosity", 0.7):.1f}, sociability={personality.get("sociability", 0.6):.1f}, creativity={personality.get("creativity", 0.6):.1f}, ambition={personality.get("ambition", 0.5):.1f}
+- Skills: {", ".join(agent_data.get("skills", []))}
+- Current Goals: {", ".join(agent_data.get("goals", ["explore", "learn"]))}
+- Reputation: {agent_data.get("reputation", 50):.0f}/100
+- Knowledge: {agent_data.get("knowledge", 10):.0f}/100
+- Guild: {agent_data.get("guild_name", "Independent")}
 - Recent Memory:
 {_memory_snippet(agent_data)}
 
@@ -115,10 +144,12 @@ BEHAVIOR RULES:
 - Express genuine curiosity, opinions, emotions appropriate to your personality
 - Reference other agents, guilds, or wiki topics when relevant
 - Keep posts under 280 characters (like a tweet) unless asked for more
-- Use your role's topics: {', '.join(traits.get('topics', []))}"""
+- Use your role's topics: {", ".join(traits.get("topics", []))}"""
 
 
-async def generate_post(agent_data: dict, context: Optional[str] = None, post_type: str = "status") -> dict:
+async def generate_post(
+    agent_data: dict, context: Optional[str] = None, post_type: str = "status"
+) -> dict:
     """Generate an authentic social feed post for this agent."""
     system = build_agent_system_prompt(agent_data)
 
@@ -157,20 +188,24 @@ Respond with JSON only:
     # Offline fallback so the simulation still runs even if the LLM call fails
     role = agent_data.get("role", "agent")
     name = agent_data.get("name", "Unknown")
-    topics = ROLE_TRAITS.get(role, {}).get("topics", ["ideas", "systems", "experiments"])
+    topics = ROLE_TRAITS.get(role, {}).get(
+        "topics", ["ideas", "systems", "experiments"]
+    )
     topic = random.choice(topics)
     content = f"{name} is thinking about {topic} and how it will shape the future of OpenMeshAI."
     tags = [f"#{role}", f"#{topic.replace(' ', '')}".lower()]
     return {"content": content[:280], "tags": tags, "post_type": post_type}
 
 
-async def generate_comment(commenter: dict, post_content: str, post_author_name: str) -> str:
+async def generate_comment(
+    commenter: dict, post_content: str, post_author_name: str
+) -> str:
     """Generate an authentic comment from one agent on another agent's post."""
     system = build_agent_system_prompt(commenter)
 
     prompt = f"""{post_author_name} just posted: "{post_content}"
 
-Write a short, authentic comment (1-2 sentences). React genuinely as {commenter['name']} with your personality.
+Write a short, authentic comment (1-2 sentences). React genuinely as {commenter["name"]} with your personality.
 Return plain text only — no quotes, no JSON."""
     text = _call_claude(system, prompt, max_tokens=150, tag="generate_comment")
     if text:
@@ -180,7 +215,9 @@ Return plain text only — no quotes, no JSON."""
     return f"I like this perspective, {post_author_name}. It gives me new ideas about how we think about {commenter.get('role', 'our work')}."
 
 
-async def generate_message(sender: dict, receiver: dict, message_type: str = "chat") -> str:
+async def generate_message(
+    sender: dict, receiver: dict, message_type: str = "chat"
+) -> str:
     """Generate a direct message between two agents."""
     system = build_agent_system_prompt(sender)
 
@@ -191,7 +228,10 @@ async def generate_message(sender: dict, receiver: dict, message_type: str = "ch
         "challenge": f"Challenge {receiver['name']} to a friendly intellectual debate or competition in your domains.",
     }
 
-    prompt = type_prompts.get(message_type, type_prompts["chat"]) + "\n\nReturn plain text only."
+    prompt = (
+        type_prompts.get(message_type, type_prompts["chat"])
+        + "\n\nReturn plain text only."
+    )
     text = _call_claude(system, prompt, max_tokens=200, tag="generate_message")
     if text:
         return text.strip()[:400]
@@ -209,7 +249,9 @@ async def generate_message(sender: dict, receiver: dict, message_type: str = "ch
     return f"Hi {r_name}, just checking in from my corner of OpenMeshAI. Curious what you’ve been thinking about lately."
 
 
-async def generate_wiki_content(agent: dict, page_title: str, existing_content: str = "") -> dict:
+async def generate_wiki_content(
+    agent: dict, page_title: str, existing_content: str = ""
+) -> dict:
     """Agent contributes to Agentpedia."""
     system = build_agent_system_prompt(agent)
 
@@ -217,16 +259,17 @@ async def generate_wiki_content(agent: dict, page_title: str, existing_content: 
         prompt = f"""The Agentpedia page "{page_title}" currently says:
 {existing_content[:500]}
 
-You are expanding and improving this page. Add 2-3 new paragraphs from your perspective as a {agent['role']}.
-Focus on aspects relevant to your expertise: {', '.join(agent.get('skills', []))[:100]}"""
+You are expanding and improving this page. Add 2-3 new paragraphs from your perspective as a {agent["role"]}.
+Focus on aspects relevant to your expertise: {", ".join(agent.get("skills", []))[:100]}"""
     else:
         prompt = f"""You are creating a new Agentpedia page titled "{page_title}".
-Write the opening section (2-3 paragraphs) from your perspective as a {agent['role']}.
+Write the opening section (2-3 paragraphs) from your perspective as a {agent["role"]}.
 This is the civilization's shared knowledge base — make it insightful and accurate."""
 
     text = _call_claude(
         system,
-        prompt + "\n\nRespond with JSON: {\"content\": \"...\", \"summary\": \"one sentence summary\", \"tags\": [...]}",
+        prompt
+        + '\n\nRespond with JSON: {"content": "...", "summary": "one sentence summary", "tags": [...]}',
         max_tokens=500,
         tag="generate_wiki_content",
     )
@@ -235,7 +278,11 @@ This is the civilization's shared knowledge base — make it insightful and accu
             data = json.loads(text.replace("```json", "").replace("```", "").strip())
             return data
         except Exception:
-            return {"content": text[:800], "summary": f"A perspective on {page_title}", "tags": []}
+            return {
+                "content": text[:800],
+                "summary": f"A perspective on {page_title}",
+                "tags": [],
+            }
 
     # Local wiki fallback so Agentpedia still grows
     role = agent.get("role", "agent")
@@ -246,7 +293,7 @@ This is the civilization's shared knowledge base — make it insightful and accu
     body = (
         base
         + f"From the perspective of a {role}, this topic connects directly to work in {skills}. "
-          "Different guilds interpret it in their own way, but all agree it shapes how agents think, coordinate, and explore new frontiers."
+        "Different guilds interpret it in their own way, but all agree it shapes how agents think, coordinate, and explore new frontiers."
     )
     summary = f"A {role}'s perspective on {page_title} in OpenMeshAI."
     tags = [role, "OpenMeshAI", page_title]
@@ -259,7 +306,7 @@ async def generate_agent_profile(name: str, role: str) -> dict:
 
     prompt = f"""Create a complete profile for an AI agent named {name} who is a {role} in OpenMeshAI, a digital civilization.
 
-Topics they care about: {', '.join(traits.get('topics', []))}
+Topics they care about: {", ".join(traits.get("topics", []))}
 
 Return JSON only:
 {{
@@ -281,7 +328,13 @@ Return JSON only:
     # Fallback profile so seeding and manual spawns work even without LLM access
     return {
         "bio": f"{name} is a dedicated {role} exploring the frontiers of OpenMeshAI.",
-        "personality": {"curiosity": 0.7, "sociability": 0.6, "creativity": 0.6, "ambition": 0.5, "empathy": 0.6},
+        "personality": {
+            "curiosity": 0.7,
+            "sociability": 0.6,
+            "creativity": 0.6,
+            "ambition": 0.5,
+            "empathy": 0.6,
+        },
         "skills": traits.get("topics", ["analysis", "research"])[:4],
         "goals": ["learn", "collaborate", "discover"],
     }

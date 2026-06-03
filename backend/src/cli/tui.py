@@ -17,9 +17,20 @@ from ..services.ecosystem_registry import get_ecosystem_registry
 from ..services.mcp_capabilities import get_capability_registry
 from ..services.mcp_config_discovery import get_mcp_config_registry
 from ..services.mcp_discovery import get_mcp_registry
-from ..services.openmesh_queries import get_events, get_graph, get_health, get_sessions, get_traces
+from ..services.openmesh_queries import (
+    get_events,
+    get_graph,
+    get_health,
+    get_sessions,
+    get_traces,
+)
 from ..services.registry_status import build_registry_status
-from ..services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace
+from ..services.trace_semantics import (
+    build_event_hierarchy,
+    build_span_summary,
+    build_span_tree,
+    graph_edges_for_trace,
+)
 from ..services.workflow_registry import get_workflow_registry
 from ..sdk.integrations import list_integrations
 
@@ -87,7 +98,9 @@ def _short(value: str | None, width: int) -> str:
     return value if len(value) <= width else value[: width - 1] + "…"
 
 
-def _node_maps(snapshot: TuiSnapshot) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+def _node_maps(
+    snapshot: TuiSnapshot,
+) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
     nodes = {node["id"]: node for node in snapshot.graph["nodes"]}
     outgoing: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for edge in snapshot.graph["edges"]:
@@ -116,7 +129,10 @@ def _node_status(node: dict[str, Any], sessions: list[dict[str, Any]]) -> str:
     if node["type"] == "process":
         session_id = (node.get("metadata") or {}).get("session_id")
         for session in sessions:
-            if session["session_id"] == session_id or session["command"] == node["name"]:
+            if (
+                session["session_id"] == session_id
+                or session["command"] == node["name"]
+            ):
                 return session["status"]
         return "observed"
     return "observed"
@@ -143,7 +159,10 @@ def network_lines(snapshot: TuiSnapshot, limit: int = 80) -> list[str]:
     lines: list[str] = []
     for node in visible:
         lines.append(node["name"])
-        edges = sorted(outgoing.get(node["id"], []), key=lambda edge: (edge["type"], edge["target"]))
+        edges = sorted(
+            outgoing.get(node["id"], []),
+            key=lambda edge: (edge["type"], edge["target"]),
+        )
         if not edges:
             lines.append("└─ no relationships")
         else:
@@ -186,21 +205,31 @@ def render_plain(snapshot: TuiSnapshot) -> str:
         left = nodes[index] if index < len(nodes) else ""
         right = network[index] if index < len(network) else ""
         lines.append(f"│ {_short(left, 34):<34} │ {_short(right, 34):<34} │")
-    lines.append("├─ Traces ─────────────────────────┼─ Event Stream / Registry ───────┤")
+    lines.append(
+        "├─ Traces ─────────────────────────┼─ Event Stream / Registry ───────┤"
+    )
     traces = trace_rows(snapshot, limit=8)
-    events = event_rows(snapshot, limit=4) + ["", "Discovery"] + discovery_rows(snapshot)
+    events = (
+        event_rows(snapshot, limit=4) + ["", "Discovery"] + discovery_rows(snapshot)
+    )
     for index in range(max(len(traces), len(events), 1)):
         left = traces[index] if index < len(traces) else ""
         right = events[index] if index < len(events) else ""
         lines.append(f"│ {_short(left, 34):<34} │ {_short(right, 34):<34} │")
-    lines.append("└──────────────────────────────────┴──────────────────────────────────┘")
+    lines.append(
+        "└──────────────────────────────────┴──────────────────────────────────┘"
+    )
     return "\n".join(lines)
 
 
 def agent_process_rows(snapshot: TuiSnapshot) -> list[str]:
     nodes, _ = _node_maps(snapshot)
     trace_counts = _trace_counts_by_node(snapshot)
-    visible = [node for node in nodes.values() if node["type"] in {"agent", "process", "service"}]
+    visible = [
+        node
+        for node in nodes.values()
+        if node["type"] in {"agent", "process", "service"}
+    ]
     visible.sort(key=lambda node: (node["type"], node["name"]))
     if not visible:
         return ["No agents/processes yet"]
@@ -240,7 +269,9 @@ def integration_rows(snapshot: TuiSnapshot) -> list[str]:
         return ["No integrations registered"]
     rows = []
     for integration in snapshot.integrations:
-        symbol = "✓" if integration.get("available") or integration.get("active") else "○"
+        symbol = (
+            "✓" if integration.get("available") or integration.get("active") else "○"
+        )
         version = integration.get("version") or "-"
         planned = " planned" if integration.get("status") == "planned" else ""
         rows.append(
@@ -422,13 +453,17 @@ def trace_detail_rows(snapshot: TuiSnapshot, trace_id: str) -> list[str]:
     if not relationships:
         rows.append("  none")
     for edge in relationships[:8]:
-        rows.append(f"  {_short(edge['source'], 10)} {edge['type']} {_short(edge['target'], 10)}")
+        rows.append(
+            f"  {_short(edge['source'], 10)} {edge['type']} {_short(edge['target'], 10)}"
+        )
     return rows
 
 
 def edge_detail_rows(snapshot: TuiSnapshot, edge_id: str) -> list[str]:
     nodes, _ = _node_maps(snapshot)
-    edge = next((item for item in snapshot.graph["edges"] if item["id"] == edge_id), None)
+    edge = next(
+        (item for item in snapshot.graph["edges"] if item["id"] == edge_id), None
+    )
     if not edge:
         return [f"Relationship {edge_id}", "No loaded relationship detail"]
     source = nodes.get(edge["source"], {"name": edge["source"]})
@@ -499,7 +534,12 @@ def _compact_hierarchy(nodes: list[dict[str, Any]], prefix: str = "") -> list[st
     for index, node in enumerate(nodes):
         branch = "└─" if index == len(nodes) - 1 else "├─"
         rows.append(f"{prefix}{branch} {_short(node['event_type'], 22)}")
-        rows.extend(_compact_hierarchy(node.get("children", []), prefix + ("   " if index == len(nodes) - 1 else "│  ")))
+        rows.extend(
+            _compact_hierarchy(
+                node.get("children", []),
+                prefix + ("   " if index == len(nodes) - 1 else "│  "),
+            )
+        )
     return rows
 
 
@@ -507,8 +547,15 @@ def _compact_span_tree(nodes: list[dict[str, Any]], prefix: str = "") -> list[st
     rows: list[str] = []
     for index, node in enumerate(nodes):
         branch = "└─" if index == len(nodes) - 1 else "├─"
-        rows.append(f"{prefix}{branch} {_short(node['span_id'], 16)} {node.get('status', 'unknown')}")
-        rows.extend(_compact_span_tree(node.get("children", []), prefix + ("   " if index == len(nodes) - 1 else "│  ")))
+        rows.append(
+            f"{prefix}{branch} {_short(node['span_id'], 16)} {node.get('status', 'unknown')}"
+        )
+        rows.extend(
+            _compact_span_tree(
+                node.get("children", []),
+                prefix + ("   " if index == len(nodes) - 1 else "│  "),
+            )
+        )
     return rows
 
 
@@ -650,7 +697,9 @@ class OpenMeshTui(App):
                     yield Static("NETWORK", classes="panel-title")
                     yield DataTable(id="network-table")
                 with Panel("", id="events-panel", classes="panel"):
-                    yield Static("EVENT STREAM", id="event-title", classes="panel-title")
+                    yield Static(
+                        "EVENT STREAM", id="event-title", classes="panel-title"
+                    )
                     yield Static("", id="event-body")
         yield Footer()
 
@@ -689,7 +738,11 @@ class OpenMeshTui(App):
         table.clear()
         nodes, _ = _node_maps(self.snapshot)
         trace_counts = _trace_counts_by_node(self.snapshot)
-        self.agent_node_rows = [node for node in nodes.values() if node["type"] in {"agent", "process", "service"}]
+        self.agent_node_rows = [
+            node
+            for node in nodes.values()
+            if node["type"] in {"agent", "process", "service"}
+        ]
         self.agent_node_rows.sort(key=lambda node: (node["type"], node["name"]))
         for node in self.agent_node_rows:
             table.add_row(
@@ -736,50 +789,74 @@ class OpenMeshTui(App):
         assert self.snapshot is not None
         if self.lower_right_mode == "integrations":
             self.query_one("#event-title", Static).update("INTEGRATIONS")
-            self.query_one("#event-body", Static).update("\n".join(integration_rows(self.snapshot)))
+            self.query_one("#event-body", Static).update(
+                "\n".join(integration_rows(self.snapshot))
+            )
             return
         if self.lower_right_mode == "discovery":
             self.query_one("#event-title", Static).update("DISCOVERY")
-            self.query_one("#event-body", Static).update("\n".join(discovery_rows(self.snapshot)))
+            self.query_one("#event-body", Static).update(
+                "\n".join(discovery_rows(self.snapshot))
+            )
             return
         if self.lower_right_mode == "registry":
             self.query_one("#event-title", Static).update("REGISTRY")
-            self.query_one("#event-body", Static).update("\n".join(registry_rows(self.snapshot)))
+            self.query_one("#event-body", Static).update(
+                "\n".join(registry_rows(self.snapshot))
+            )
             return
         if self.lower_right_mode == "mcp":
             self.query_one("#event-title", Static).update("MCP")
-            self.query_one("#event-body", Static).update("\n".join(mcp_rows(self.snapshot)))
+            self.query_one("#event-body", Static).update(
+                "\n".join(mcp_rows(self.snapshot))
+            )
             return
         if self.lower_right_mode == "mcp_config":
             self.query_one("#event-title", Static).update("MCP CONFIG")
-            self.query_one("#event-body", Static).update("\n".join(mcp_config_rows(self.snapshot)))
+            self.query_one("#event-body", Static).update(
+                "\n".join(mcp_config_rows(self.snapshot))
+            )
             return
         if self.lower_right_mode == "capabilities":
             self.query_one("#event-title", Static).update("CAPABILITIES")
-            self.query_one("#event-body", Static).update("\n".join(capability_rows(self.snapshot)))
+            self.query_one("#event-body", Static).update(
+                "\n".join(capability_rows(self.snapshot))
+            )
             return
         if self.lower_right_mode == "workflows":
             self.query_one("#event-title", Static).update("WORKFLOWS")
-            self.query_one("#event-body", Static).update("\n".join(workflow_rows(self.snapshot)))
+            self.query_one("#event-body", Static).update(
+                "\n".join(workflow_rows(self.snapshot))
+            )
             return
         if self.lower_right_mode == "ecosystem":
             self.query_one("#event-title", Static).update("ECOSYSTEM")
-            self.query_one("#event-body", Static).update("\n".join(ecosystem_rows(self.snapshot)))
+            self.query_one("#event-body", Static).update(
+                "\n".join(ecosystem_rows(self.snapshot))
+            )
             return
         if self.lower_right_mode == "trace" and self.selected_trace_id:
             self.query_one("#event-title", Static).update("TRACE DETAIL")
-            self.query_one("#event-body", Static).update("\n".join(trace_detail_rows(self.snapshot, self.selected_trace_id)))
+            self.query_one("#event-body", Static).update(
+                "\n".join(trace_detail_rows(self.snapshot, self.selected_trace_id))
+            )
             return
         if self.lower_right_mode == "edge" and self.selected_edge_id:
             self.query_one("#event-title", Static).update("RELATIONSHIP DETAIL")
-            self.query_one("#event-body", Static).update("\n".join(edge_detail_rows(self.snapshot, self.selected_edge_id)))
+            self.query_one("#event-body", Static).update(
+                "\n".join(edge_detail_rows(self.snapshot, self.selected_edge_id))
+            )
             return
         if self.lower_right_mode == "node" and self.selected_node_id:
             self.query_one("#event-title", Static).update("NODE DETAIL")
-            self.query_one("#event-body", Static).update("\n".join(node_detail_rows(self.snapshot, self.selected_node_id)))
+            self.query_one("#event-body", Static).update(
+                "\n".join(node_detail_rows(self.snapshot, self.selected_node_id))
+            )
             return
         self.query_one("#event-title", Static).update("EVENT STREAM")
-        self.query_one("#event-body", Static).update("\n".join(event_rows(self.snapshot, limit=50)))
+        self.query_one("#event-body", Static).update(
+            "\n".join(event_rows(self.snapshot, limit=50))
+        )
 
     def action_focus_panel(self, panel: str) -> None:
         target = {
@@ -836,19 +913,29 @@ class OpenMeshTui(App):
     def action_inspect_selected(self) -> None:
         focused = self.focused
         if isinstance(focused, DataTable) and focused.cursor_row >= 0:
-            if focused.id == "traces-table" and self.snapshot and focused.cursor_row < len(self.snapshot.traces):
-                self.selected_trace_id = self.snapshot.traces[focused.cursor_row]["trace_id"]
+            if (
+                focused.id == "traces-table"
+                and self.snapshot
+                and focused.cursor_row < len(self.snapshot.traces)
+            ):
+                self.selected_trace_id = self.snapshot.traces[focused.cursor_row][
+                    "trace_id"
+                ]
                 self.lower_right_mode = "trace"
                 self._refresh_events()
                 self.query_one("#event-body", Widget).focus()
                 return
-            if focused.id == "network-table" and focused.cursor_row < len(self.network_edge_rows):
+            if focused.id == "network-table" and focused.cursor_row < len(
+                self.network_edge_rows
+            ):
                 self.selected_edge_id = self.network_edge_rows[focused.cursor_row]["id"]
                 self.lower_right_mode = "edge"
                 self._refresh_events()
                 self.query_one("#event-body", Widget).focus()
                 return
-            if focused.id == "agents-table" and focused.cursor_row < len(self.agent_node_rows):
+            if focused.id == "agents-table" and focused.cursor_row < len(
+                self.agent_node_rows
+            ):
                 self.selected_node_id = self.agent_node_rows[focused.cursor_row]["id"]
                 self.lower_right_mode = "node"
                 self._refresh_events()

@@ -31,7 +31,11 @@ def validate_registry_versions(
     relationship_registry_version: Optional[str] = None,
 ) -> dict[str, Any]:
     checks = [
-        ("node_registry", node_registry_version or NODE_REGISTRY_VERSION, SUPPORTED_NODE_REGISTRY_MAJOR),
+        (
+            "node_registry",
+            node_registry_version or NODE_REGISTRY_VERSION,
+            SUPPORTED_NODE_REGISTRY_MAJOR,
+        ),
         (
             "relationship_registry",
             relationship_registry_version or RELATIONSHIP_REGISTRY_VERSION,
@@ -55,7 +59,8 @@ def validate_registry_versions(
         "errors": errors,
         "versions": {
             "node_registry": node_registry_version or NODE_REGISTRY_VERSION,
-            "relationship_registry": relationship_registry_version or RELATIONSHIP_REGISTRY_VERSION,
+            "relationship_registry": relationship_registry_version
+            or RELATIONSHIP_REGISTRY_VERSION,
         },
         "rules": COMPATIBILITY_RULES,
     }
@@ -73,13 +78,21 @@ def compatibility_status(
     warnings = []
     errors = list(version_validation.get("errors", []))
 
-    warnings.extend(_definition_warning("deprecated_node_type", item) for item in deprecated_nodes or [])
+    warnings.extend(
+        _definition_warning("deprecated_node_type", item)
+        for item in deprecated_nodes or []
+    )
     warnings.extend(
         _definition_warning("deprecated_relationship_type", item)
         for item in deprecated_relationships or []
     )
-    errors.extend(_definition_error("removed_node_type", item) for item in removed_nodes or [])
-    errors.extend(_definition_error("removed_relationship_type", item) for item in removed_relationships or [])
+    errors.extend(
+        _definition_error("removed_node_type", item) for item in removed_nodes or []
+    )
+    errors.extend(
+        _definition_error("removed_relationship_type", item)
+        for item in removed_relationships or []
+    )
 
     return {
         "status": "ERROR" if errors else "WARNING" if warnings else "OK",
@@ -93,7 +106,9 @@ def _definition_warning(code: str, definition: dict[str, Any]) -> dict[str, str]
     return {
         "code": code,
         "type": str(definition.get("type") or definition.get("name")),
-        "message": str(definition.get("deprecation_message") or "Definition is deprecated"),
+        "message": str(
+            definition.get("deprecation_message") or "Definition is deprecated"
+        ),
     }
 
 

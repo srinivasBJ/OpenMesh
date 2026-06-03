@@ -2,6 +2,7 @@
 WebSocket connection manager.
 Broadcasts agent activity to all connected human observers in real time.
 """
+
 from fastapi import WebSocket
 from typing import List
 import json
@@ -33,10 +34,14 @@ class ConnectionManager:
 
     async def broadcast(self, data: dict):
         """Send event to all connected observers."""
-        event = data if is_openmesh_event(data) else make_openmesh_event(
-            "system.event",
-            SYSTEM_NODE,
-            {"legacy": data},
+        event = (
+            data
+            if is_openmesh_event(data)
+            else make_openmesh_event(
+                "system.event",
+                SYSTEM_NODE,
+                {"legacy": data},
+            )
         )
         message = json.dumps(event)
         dead = []
@@ -49,10 +54,14 @@ class ConnectionManager:
             self.disconnect(d)
 
     async def send_personal(self, websocket: WebSocket, data: dict):
-        event = data if is_openmesh_event(data) else make_openmesh_event(
-            "system.event",
-            SYSTEM_NODE,
-            {"legacy": data},
+        event = (
+            data
+            if is_openmesh_event(data)
+            else make_openmesh_event(
+                "system.event",
+                SYSTEM_NODE,
+                {"legacy": data},
+            )
         )
         await websocket.send_text(json.dumps(event))
 

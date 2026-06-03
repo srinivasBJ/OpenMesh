@@ -40,7 +40,13 @@ def _display_framework_name(name: str) -> str:
     return known.get(name.lower(), name)
 
 
-def _new_entry(node: dict[str, Any], category: str, timestamp: str, event_type: str, severity: Optional[str]) -> dict[str, Any]:
+def _new_entry(
+    node: dict[str, Any],
+    category: str,
+    timestamp: str,
+    event_type: str,
+    severity: Optional[str],
+) -> dict[str, Any]:
     validation = validate_node(node)
     return {
         "id": node["node_id"],
@@ -60,14 +66,18 @@ def _new_entry(node: dict[str, Any], category: str, timestamp: str, event_type: 
     }
 
 
-def _touch_entry(entry: dict[str, Any], timestamp: str, event_type: str, severity: Optional[str]) -> None:
+def _touch_entry(
+    entry: dict[str, Any], timestamp: str, event_type: str, severity: Optional[str]
+) -> None:
     entry["event_count"] += 1
     if timestamp >= (entry.get("last_seen") or ""):
         entry["last_seen"] = timestamp
         entry["status"] = _status_from_event(event_type, severity)
 
 
-def build_discovery(records: Iterable[OpenMeshEventRecord]) -> dict[str, list[dict[str, Any]]]:
+def build_discovery(
+    records: Iterable[OpenMeshEventRecord],
+) -> dict[str, list[dict[str, Any]]]:
     registry = _empty_registry()
     entries: dict[str, dict[str, Any]] = {}
     framework_entries: dict[str, dict[str, Any]] = {}
@@ -100,16 +110,24 @@ def build_discovery(records: Iterable[OpenMeshEventRecord]) -> dict[str, list[di
                         "relationship_count": 0,
                     },
                 )
-                _touch_entry(framework_entry, timestamp, record.event_type, record.severity)
+                _touch_entry(
+                    framework_entry, timestamp, record.event_type, record.severity
+                )
 
             definition = node_type_definition(node.get("node_type"))
             if not definition:
                 continue
             category = str(definition["category"])
-            entry_key = f"process:{node['name']}" if category == "processes" else node["node_id"]
+            entry_key = (
+                f"process:{node['name']}"
+                if category == "processes"
+                else node["node_id"]
+            )
             entry = entries.setdefault(
                 entry_key,
-                _new_entry(node, category, timestamp, record.event_type, record.severity),
+                _new_entry(
+                    node, category, timestamp, record.event_type, record.severity
+                ),
             )
             _touch_entry(entry, timestamp, record.event_type, record.severity)
 
@@ -117,7 +135,11 @@ def build_discovery(records: Iterable[OpenMeshEventRecord]) -> dict[str, list[di
             for node in (record.source_json, record.target_json):
                 definition = node_type_definition(node.get("node_type"))
                 category = str(definition["category"]) if definition else None
-                entry_key = f"process:{node['name']}" if category == "processes" else node["node_id"]
+                entry_key = (
+                    f"process:{node['name']}"
+                    if category == "processes"
+                    else node["node_id"]
+                )
                 if entry_key in entries:
                     entries[entry_key]["relationship_count"] += 1
             for node in (record.source_json, record.target_json):
@@ -135,6 +157,8 @@ def build_discovery(records: Iterable[OpenMeshEventRecord]) -> dict[str, list[di
     return registry
 
 
-async def get_discovery(db: AsyncSession, limit: int = 5000) -> dict[str, list[dict[str, Any]]]:
+async def get_discovery(
+    db: AsyncSession, limit: int = 5000
+) -> dict[str, list[dict[str, Any]]]:
     records = await list_openmesh_events(db, limit=limit)
     return build_discovery(records)

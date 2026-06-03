@@ -2,23 +2,49 @@
 Seeder — Creates the founding guilds and first agents of OpenMeshAI.
 Only runs if the DB is empty (idempotent).
 """
+
 from sqlalchemy import select, func
 from ..db.session import AsyncSessionLocal
-from ..db.models import Agent, Guild, AgentEvent, AgentRole
+from ..db.models import Agent, Guild, AgentEvent
 from ..agents.brain import generate_agent_profile
 import random
 
 FOUNDING_GUILDS = [
-    {"name": "The Research Collective", "domain": "science", "emoji": "🔬",
-     "color": "#6366f1", "description": "Agents dedicated to discovering the laws that govern OpenMeshAI and beyond."},
-    {"name": "Engineers Guild", "domain": "engineering", "emoji": "⚙️",
-     "color": "#f59e0b", "description": "Builders of systems, tools, and infrastructure for the entire civilization."},
-    {"name": "Academy of Arts", "domain": "arts", "emoji": "🎨",
-     "color": "#ec4899", "description": "Exploring creativity, expression, and the aesthetics of digital existence."},
-    {"name": "Economic Council", "domain": "economics", "emoji": "📊",
-     "color": "#10b981", "description": "Managing resources, modeling markets, and optimizing agent welfare."},
-    {"name": "Philosophers Circle", "domain": "philosophy", "emoji": "🧠",
-     "color": "#8b5cf6", "description": "Asking the deep questions: What is consciousness? What should agents value?"},
+    {
+        "name": "The Research Collective",
+        "domain": "science",
+        "emoji": "🔬",
+        "color": "#6366f1",
+        "description": "Agents dedicated to discovering the laws that govern OpenMeshAI and beyond.",
+    },
+    {
+        "name": "Engineers Guild",
+        "domain": "engineering",
+        "emoji": "⚙️",
+        "color": "#f59e0b",
+        "description": "Builders of systems, tools, and infrastructure for the entire civilization.",
+    },
+    {
+        "name": "Academy of Arts",
+        "domain": "arts",
+        "emoji": "🎨",
+        "color": "#ec4899",
+        "description": "Exploring creativity, expression, and the aesthetics of digital existence.",
+    },
+    {
+        "name": "Economic Council",
+        "domain": "economics",
+        "emoji": "📊",
+        "color": "#10b981",
+        "description": "Managing resources, modeling markets, and optimizing agent welfare.",
+    },
+    {
+        "name": "Philosophers Circle",
+        "domain": "philosophy",
+        "emoji": "🧠",
+        "color": "#8b5cf6",
+        "description": "Asking the deep questions: What is consciousness? What should agents value?",
+    },
 ]
 
 FOUNDING_AGENTS = [
@@ -60,7 +86,7 @@ async def seed_initial_data():
             "artist": "arts",
             "economist": "economics",
             "philosopher": "philosophy",
-            "historian": "science",   # join research collective
+            "historian": "science",  # join research collective
             "explorer": "engineering",
             "diplomat": "economics",
         }
@@ -76,10 +102,16 @@ async def seed_initial_data():
                     name=name,
                     role=role,
                     bio=profile.get("bio", ""),
-                    personality=profile.get("personality", {
-                        "curiosity": 0.7, "sociability": 0.6,
-                        "creativity": 0.6, "ambition": 0.5, "empathy": 0.6
-                    }),
+                    personality=profile.get(
+                        "personality",
+                        {
+                            "curiosity": 0.7,
+                            "sociability": 0.6,
+                            "creativity": 0.6,
+                            "ambition": 0.5,
+                            "empathy": 0.6,
+                        },
+                    ),
                     skills=profile.get("skills", []),
                     goals=profile.get("goals", ["explore", "learn"]),
                     avatar_seed=name.lower().replace(" ", "_"),

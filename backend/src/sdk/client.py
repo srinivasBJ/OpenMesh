@@ -12,18 +12,33 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from src.db.session import AsyncSessionLocal
-from src.services.openmesh_collector import collector
-from src.shared.openmesh_events import OpenMeshEvent, OpenMeshNode, OpenMeshSeverity, make_openmesh_event
+from src.db.session import AsyncSessionLocal  # noqa: E402
+from src.services.openmesh_collector import collector  # noqa: E402
+from src.shared.openmesh_events import (  # noqa: E402
+    OpenMeshEvent,
+    OpenMeshNode,
+    OpenMeshSeverity,
+    make_openmesh_event,
+)
 
 
-_current_trace_id: ContextVar[Optional[str]] = ContextVar("openmesh_trace_id", default=None)
-_current_event_id: ContextVar[Optional[str]] = ContextVar("openmesh_event_id", default=None)
-_root_event_id: ContextVar[Optional[str]] = ContextVar("openmesh_root_event_id", default=None)
-_current_span_id: ContextVar[Optional[str]] = ContextVar("openmesh_span_id", default=None)
+_current_trace_id: ContextVar[Optional[str]] = ContextVar(
+    "openmesh_trace_id", default=None
+)
+_current_event_id: ContextVar[Optional[str]] = ContextVar(
+    "openmesh_event_id", default=None
+)
+_root_event_id: ContextVar[Optional[str]] = ContextVar(
+    "openmesh_root_event_id", default=None
+)
+_current_span_id: ContextVar[Optional[str]] = ContextVar(
+    "openmesh_span_id", default=None
+)
 
 
-def _agent_node(agent_id: str, name: str, role: Optional[str], metadata: Optional[dict[str, Any]]) -> OpenMeshNode:
+def _agent_node(
+    agent_id: str, name: str, role: Optional[str], metadata: Optional[dict[str, Any]]
+) -> OpenMeshNode:
     node_metadata = dict(metadata or {})
     if role:
         node_metadata["role"] = role
@@ -112,7 +127,9 @@ class OpenMeshClient:
                     severity=severity,
                 )
             )
-        raise RuntimeError("OpenMeshClient.emit() cannot run inside an active event loop; use emit_async().")
+        raise RuntimeError(
+            "OpenMeshClient.emit() cannot run inside an active event loop; use emit_async()."
+        )
 
     async def emit_async(
         self,
@@ -138,7 +155,9 @@ class OpenMeshClient:
             workspace_id=self.workspace_id,
             session_id=self.session_id,
             trace_id=trace_id or _current_trace_id.get(),
-            parent_event_id=parent_event_id if parent_event_id is not None else _current_event_id.get(),
+            parent_event_id=parent_event_id
+            if parent_event_id is not None
+            else _current_event_id.get(),
             root_event_id=root_event_id or _root_event_id.get(),
             span_id=span_id or _current_span_id.get(),
             parent_span_id=parent_span_id,
@@ -246,7 +265,9 @@ class AgentHandle:
     def ensure_registered(self) -> Optional[OpenMeshEvent]:
         if self._registered or not self._registration_payload:
             return self._registration_event
-        event = self.client.emit("agent.registered", self.node, self._registration_payload)
+        event = self.client.emit(
+            "agent.registered", self.node, self._registration_payload
+        )
         self._registered = True
         self._registration_event = event
         return event
@@ -254,18 +275,27 @@ class AgentHandle:
     async def ensure_registered_async(self) -> Optional[OpenMeshEvent]:
         if self._registered or not self._registration_payload:
             return self._registration_event
-        event = await self.client.emit_async("agent.registered", self.node, self._registration_payload)
+        event = await self.client.emit_async(
+            "agent.registered", self.node, self._registration_payload
+        )
         self._registered = True
         self._registration_event = event
         return event
 
 
 class TaskContext:
-    def __init__(self, agent: AgentHandle, name: str, *, trace_id: Optional[str] = None) -> None:
+    def __init__(
+        self, agent: AgentHandle, name: str, *, trace_id: Optional[str] = None
+    ) -> None:
         self.agent = agent
         self.name = name
         registration_trace_id = (agent._registration_event or {}).get("trace_id")
-        self.trace_id = trace_id or _current_trace_id.get() or registration_trace_id or f"trace_{uuid4().hex}"
+        self.trace_id = (
+            trace_id
+            or _current_trace_id.get()
+            or registration_trace_id
+            or f"trace_{uuid4().hex}"
+        )
         self._token = None
         self._event_token = None
         self._root_token = None
@@ -352,7 +382,9 @@ class TaskContext:
             self._reset_trace()
         return False
 
-    def _completion_event(self, exc: Optional[BaseException]) -> tuple[str, dict[str, Any], OpenMeshSeverity]:
+    def _completion_event(
+        self, exc: Optional[BaseException]
+    ) -> tuple[str, dict[str, Any], OpenMeshSeverity]:
         event_type = "task.failed" if exc else "task.completed"
         severity: OpenMeshSeverity = "error" if exc else "info"
         payload: dict[str, Any] = {"task": self.name}
@@ -479,7 +511,9 @@ class ToolContext:
         self._reset_context()
         return False
 
-    def _completion_event(self, exc: Optional[BaseException]) -> tuple[str, dict[str, Any], OpenMeshSeverity]:
+    def _completion_event(
+        self, exc: Optional[BaseException]
+    ) -> tuple[str, dict[str, Any], OpenMeshSeverity]:
         event_type = "tool.call.failed" if exc else "tool.call.completed"
         severity: OpenMeshSeverity = "error" if exc else "info"
         payload: dict[str, Any] = {"tool": self.name}

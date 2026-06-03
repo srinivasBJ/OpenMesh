@@ -1,5 +1,12 @@
+# ruff: noqa: E402
+from pathlib import Path
+import sys
 import unittest
 from unittest.mock import patch
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from src.db.openmesh_events import record_to_event
 from src.sdk import OpenMeshClient
@@ -59,7 +66,9 @@ class OpenMeshCrewAIIntegrationTests(unittest.TestCase):
                 trace_id="trace_crewai",
                 source="examples/crewai_basic.py",
             )
-            researcher = mesh.agent(id="researcher", name="Research Agent", role="Researcher")
+            researcher = mesh.agent(
+                id="researcher", name="Research Agent", role="Researcher"
+            )
             writer = mesh.agent(id="writer", name="Writing Agent", role="Writer")
 
             with mesh.workflow():
@@ -84,9 +93,15 @@ class OpenMeshCrewAIIntegrationTests(unittest.TestCase):
         self.assertEqual({event["trace_id"] for event in events}, {"trace_crewai"})
 
         workflow_started = events[0]
-        task_started = [event for event in events if event["event_type"] == "task.started"][0]
-        tool_started = [event for event in events if event["event_type"] == "tool.call.started"][0]
-        transition = [event for event in events if event["event_type"] == "node.transition"][0]
+        task_started = [
+            event for event in events if event["event_type"] == "task.started"
+        ][0]
+        tool_started = [
+            event for event in events if event["event_type"] == "tool.call.started"
+        ][0]
+        transition = [
+            event for event in events if event["event_type"] == "node.transition"
+        ][0]
 
         self.assertEqual(task_started["parent_span_id"], workflow_started["span_id"])
         self.assertEqual(tool_started["parent_span_id"], task_started["span_id"])
@@ -100,7 +115,9 @@ class OpenMeshCrewAIIntegrationTests(unittest.TestCase):
                 trace_id="trace_crewai",
                 source="examples/crewai_basic.py",
             )
-            researcher = mesh.agent(id="researcher", name="Research Agent", role="Researcher")
+            researcher = mesh.agent(
+                id="researcher", name="Research Agent", role="Researcher"
+            )
 
             with mesh.workflow():
                 with researcher.task("Research vector databases") as task:
@@ -117,7 +134,9 @@ class OpenMeshCrewAIIntegrationTests(unittest.TestCase):
         framework_names = {entry["name"] for entry in discovery["frameworks"]}
         workflow_names = {entry["name"] for entry in discovery["workflows"]}
         tool_names = {entry["name"] for entry in discovery["tools"]}
-        ecosystem_workflows = {entry["name"] for entry in ecosystem["entities"]["workflows"]}
+        ecosystem_workflows = {
+            entry["name"] for entry in ecosystem["entities"]["workflows"]
+        }
 
         self.assertIn("runs", edge_types)
         self.assertIn("uses", edge_types)
@@ -128,7 +147,9 @@ class OpenMeshCrewAIIntegrationTests(unittest.TestCase):
         self.assertIn("CrewAI Research Crew", workflow_names)
         self.assertIn("web_search", tool_names)
         self.assertIn("CrewAI Research Crew", ecosystem_workflows)
-        self.assertTrue(all(edge["validation_status"] == "valid" for edge in graph["edges"]))
+        self.assertTrue(
+            all(edge["validation_status"] == "valid" for edge in graph["edges"])
+        )
 
     def test_crewai_task_failure_emits_failed_events(self):
         class ExpectedError(RuntimeError):
@@ -140,7 +161,9 @@ class OpenMeshCrewAIIntegrationTests(unittest.TestCase):
                 crew_name="CrewAI Failure Crew",
                 trace_id="trace_crewai_failure",
             )
-            researcher = mesh.agent(id="researcher", name="Research Agent", role="Researcher")
+            researcher = mesh.agent(
+                id="researcher", name="Research Agent", role="Researcher"
+            )
             with self.assertRaises(ExpectedError):
                 with mesh.workflow():
                     with researcher.task("Broken task"):
@@ -148,8 +171,12 @@ class OpenMeshCrewAIIntegrationTests(unittest.TestCase):
 
         records = self.collect_records(action)
         events = [record_to_event(record) for record in records]
-        task_failed = [event for event in events if event["event_type"] == "task.failed"][0]
-        workflow_failed = [event for event in events if event["event_type"] == "workflow.failed"][0]
+        task_failed = [
+            event for event in events if event["event_type"] == "task.failed"
+        ][0]
+        workflow_failed = [
+            event for event in events if event["event_type"] == "workflow.failed"
+        ][0]
 
         self.assertEqual(task_failed["severity"], "error")
         self.assertEqual(task_failed["payload"]["error_type"], "ExpectedError")

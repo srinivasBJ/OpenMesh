@@ -18,7 +18,12 @@ _current_crewai_task: ContextVar[Optional["CrewAITaskContext"]] = ContextVar(
 
 
 def _stable_id(value: str) -> str:
-    return "".join(character.lower() if character.isalnum() else "-" for character in value).strip("-") or "entity"
+    return (
+        "".join(
+            character.lower() if character.isalnum() else "-" for character in value
+        ).strip("-")
+        or "entity"
+    )
 
 
 def _safe_payload(value: Any) -> dict[str, Any]:
@@ -77,7 +82,9 @@ class OpenMeshCrewAI:
         role: Optional[str] = None,
         crewai_agent: Any = None,
     ) -> "CrewAIAgentHandle":
-        agent_name = name or role or str(_attr(crewai_agent, "role", "name") or "CrewAI Agent")
+        agent_name = (
+            name or role or str(_attr(crewai_agent, "role", "name") or "CrewAI Agent")
+        )
         agent_role = role or str(_attr(crewai_agent, "role") or agent_name)
         agent_id = id or f"crewai:agent:{_stable_id(agent_role)}"
         if agent_id not in self._agents:
@@ -264,12 +271,14 @@ class OpenMeshCrewAI:
             root_event_id=self._root_event_id,
             span_id=self._workflow_span_id,
             parent_event_id=previous["event_id"],
-            links=[{
-                "trace_id": self.trace_id,
-                "span_id": previous["span_id"],
-                "event_id": previous["event_id"],
-                "relationship": "follows_from",
-            }],
+            links=[
+                {
+                    "trace_id": self.trace_id,
+                    "span_id": previous["span_id"],
+                    "event_id": previous["event_id"],
+                    "relationship": "follows_from",
+                }
+            ],
         )
         self._remember_root(event)
         return event
@@ -513,7 +522,9 @@ class CrewAITaskContext:
             "runtime": self.mesh._runtime_payload(),
         }
 
-    def _completion_event(self, exc: Optional[BaseException]) -> tuple[str, dict[str, Any], OpenMeshSeverity]:
+    def _completion_event(
+        self, exc: Optional[BaseException]
+    ) -> tuple[str, dict[str, Any], OpenMeshSeverity]:
         payload = self._payload()
         if exc:
             payload["error"] = str(exc)
@@ -541,7 +552,11 @@ class CrewAIToolContext:
 
     def __enter__(self) -> "CrewAIToolContext":
         self.agent.ensure_registered()
-        parent_event_id = self.task.start_event_id if self.task else self.mesh._ensure_workflow_started()["event_id"]
+        parent_event_id = (
+            self.task.start_event_id
+            if self.task
+            else self.mesh._ensure_workflow_started()["event_id"]
+        )
         parent_span_id = self.task.span_id if self.task else self.mesh._workflow_span_id
         event = self.mesh.client.emit(
             "tool.call.started",
@@ -578,7 +593,9 @@ class CrewAIToolContext:
             trace_id=self.mesh.trace_id,
             root_event_id=self.mesh._root_event_id,
             span_id=self.span_id,
-            parent_span_id=self.task.span_id if self.task else self.mesh._workflow_span_id,
+            parent_span_id=self.task.span_id
+            if self.task
+            else self.mesh._workflow_span_id,
             parent_event_id=self.start_event_id,
             severity=severity,
         )

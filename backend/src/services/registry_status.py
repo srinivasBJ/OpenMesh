@@ -5,7 +5,11 @@ from typing import Any, Iterable, Optional
 from ..db.models import OpenMeshEventRecord
 from .graph_state import reduce_graph_state
 from .node_types import node_type_registry, node_type_validation_metadata
-from .registry_compatibility import compatibility_status, registry_versions, validate_registry_versions
+from .registry_compatibility import (
+    compatibility_status,
+    registry_versions,
+    validate_registry_versions,
+)
 from .relationship_types import relationship_registry, relationship_registry_metadata
 
 

@@ -15,8 +15,8 @@ except ImportError as exc:
         "LangGraph is not installed. Install it with `pip install langgraph` to run this example."
     ) from exc
 
-from src.sdk import OpenMeshClient
-from src.sdk.integrations.langgraph import OpenMeshLangGraph
+from src.sdk import OpenMeshClient  # noqa: E402
+from src.sdk.integrations.langgraph import OpenMeshLangGraph  # noqa: E402
 
 
 class ResearchState(TypedDict):
@@ -31,7 +31,10 @@ mesh = OpenMeshLangGraph(
 
 
 def node_a(state: ResearchState) -> ResearchState:
-    return {**state, "notes": [*state["notes"], f"collected context for {state['topic']}"]}
+    return {
+        **state,
+        "notes": [*state["notes"], f"collected context for {state['topic']}"],
+    }
 
 
 def node_b(state: ResearchState) -> ResearchState:

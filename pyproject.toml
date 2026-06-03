@@ -81,3 +81,9 @@ src = "backend/src"
 
 [tool.setuptools.package-data]
 "src.db" = ["migrations/*.sql"]
+
+[tool.ruff]
+extend-exclude = [
+  "* 2.py",
+  "* 3.py",
+]

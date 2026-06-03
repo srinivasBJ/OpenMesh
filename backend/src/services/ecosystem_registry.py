@@ -26,7 +26,9 @@ def build_ecosystem_registry(records: Iterable[OpenMeshEventRecord]) -> dict[str
     record_list = list(records)
     graph = reduce_graph_state(record_list)
     relationship_counts = _relationship_counts(graph.get("edges", []))
-    registry: dict[str, list[dict[str, Any]]] = {group: [] for group in ECOSYSTEM_GROUPS}
+    registry: dict[str, list[dict[str, Any]]] = {
+        group: [] for group in ECOSYSTEM_GROUPS
+    }
 
     for node in graph.get("nodes", []):
         group = ECOSYSTEM_NODE_TYPES.get(node.get("type"))
@@ -68,15 +70,26 @@ def validate_ecosystem_entities(entities: Iterable[dict[str, Any]]) -> dict[str,
     conflicting_definitions = []
 
     for entity in entity_list:
-        by_type_name[(str(entity.get("type")), str(entity.get("name")).lower())].append(entity)
+        by_type_name[(str(entity.get("type")), str(entity.get("name")).lower())].append(
+            entity
+        )
         by_id[str(entity.get("id"))].append(entity)
         if entity.get("relationship_count", 0) == 0:
             orphan_entities.append(entity)
-        if entity.get("type") in {"agent", "tool", "workflow", "mcp_server", "capability"} and entity.get("relationship_count", 0) == 0:
+        if (
+            entity.get("type")
+            in {"agent", "tool", "workflow", "mcp_server", "capability"}
+            and entity.get("relationship_count", 0) == 0
+        ):
             missing_relationships.append(entity)
 
     duplicates = [
-        {"type": entity_type, "name": name, "count": len(values), "ids": [item["id"] for item in values]}
+        {
+            "type": entity_type,
+            "name": name,
+            "count": len(values),
+            "ids": [item["id"] for item in values],
+        }
         for (entity_type, name), values in by_type_name.items()
         if len(values) > 1
     ]
@@ -86,7 +99,12 @@ def validate_ecosystem_entities(entities: Iterable[dict[str, Any]]) -> dict[str,
             (
                 item.get("type"),
                 item.get("name"),
-                tuple(sorted((key, repr(value)) for key, value in (item.get("metadata") or {}).items())),
+                tuple(
+                    sorted(
+                        (key, repr(value))
+                        for key, value in (item.get("metadata") or {}).items()
+                    )
+                ),
             )
             for item in values
         }
@@ -131,7 +149,9 @@ def _entity_from_config(config: dict[str, Any]) -> dict[str, Any]:
         "status": "observed",
         "first_seen": config.get("first_seen") or config.get("last_seen"),
         "last_seen": config.get("last_seen"),
-        "relationship_count": config.get("relationship_count", 1 if config.get("server") else 0),
+        "relationship_count": config.get(
+            "relationship_count", 1 if config.get("server") else 0
+        ),
         "event_count": config.get("event_count", 0),
         "metadata": {
             "source": config.get("source"),
@@ -153,4 +173,9 @@ def _relationship_counts(edges: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def _stable_id(value: str) -> str:
-    return "".join(character.lower() if character.isalnum() else "-" for character in value).strip("-") or "entity"
+    return (
+        "".join(
+            character.lower() if character.isalnum() else "-" for character in value
+        ).strip("-")
+        or "entity"
+    )

@@ -1,5 +1,12 @@
+# ruff: noqa: E402
+from pathlib import Path
+import sys
 import unittest
 from unittest.mock import patch
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from src.db.openmesh_events import record_to_event
 from src.sdk import OpenMeshClient
@@ -72,8 +79,12 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
 
         events = self.collect_events(action)
         event_types = [event["event_type"] for event in events]
-        transition = [event for event in events if event["event_type"] == "node.transition"][0]
-        workflow_completed = [event for event in events if event["event_type"] == "workflow.completed"][0]
+        transition = [
+            event for event in events if event["event_type"] == "node.transition"
+        ][0]
+        workflow_completed = [
+            event for event in events if event["event_type"] == "workflow.completed"
+        ][0]
 
         self.assertEqual(
             event_types,
@@ -88,7 +99,9 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
             ],
         )
         workflow = events[0]
-        node_starts = [event for event in events if event["event_type"] == "node.started"]
+        node_starts = [
+            event for event in events if event["event_type"] == "node.started"
+        ]
         self.assertEqual(transition["source"]["name"], "Node A")
         self.assertEqual(transition["target"]["name"], "Node B")
         self.assertEqual(transition["trace_id"], "trace_langgraph")
@@ -119,7 +132,9 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
 
         events = self.collect_events(action)
         failed = [event for event in events if event["event_type"] == "node.failed"][0]
-        workflow = [event for event in events if event["event_type"] == "workflow.started"][0]
+        workflow = [
+            event for event in events if event["event_type"] == "workflow.started"
+        ][0]
 
         self.assertEqual(failed["severity"], "error")
         self.assertEqual(failed["payload"]["error_type"], "ExpectedError")
@@ -142,12 +157,18 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
                 mesh.fail(exc)
 
         events = self.collect_events(action)
-        workflow_started = [event for event in events if event["event_type"] == "workflow.started"][0]
-        workflow_failed = [event for event in events if event["event_type"] == "workflow.failed"][0]
+        workflow_started = [
+            event for event in events if event["event_type"] == "workflow.started"
+        ][0]
+        workflow_failed = [
+            event for event in events if event["event_type"] == "workflow.failed"
+        ][0]
 
         self.assertEqual(workflow_failed["severity"], "error")
         self.assertEqual(workflow_failed["span_id"], workflow_started["span_id"])
-        self.assertEqual(workflow_failed["parent_event_id"], workflow_started["event_id"])
+        self.assertEqual(
+            workflow_failed["parent_event_id"], workflow_started["event_id"]
+        )
 
     def test_registry_reports_langgraph_and_future_integrations(self):
         integrations = {item["key"]: item for item in list_integrations()}
@@ -177,8 +198,12 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
             mesh.add_edge(workflow, "__start__", "Node A")
 
         events = self.collect_events(action)
-        transitions = [event for event in events if event["event_type"] == "node.transition"]
-        workflow = [event for event in events if event["event_type"] == "workflow.started"][0]
+        transitions = [
+            event for event in events if event["event_type"] == "node.transition"
+        ]
+        workflow = [
+            event for event in events if event["event_type"] == "workflow.started"
+        ][0]
 
         self.assertEqual(len(transitions), 1)
         self.assertEqual(transitions[0]["source"]["name"], "Node A")
@@ -235,8 +260,12 @@ class OpenMeshAsyncLangGraphIntegrationTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         workflow = events[0]
-        node_starts = [event for event in events if event["event_type"] == "node.started"]
-        workflow_completed = [event for event in events if event["event_type"] == "workflow.completed"][0]
+        node_starts = [
+            event for event in events if event["event_type"] == "node.started"
+        ]
+        workflow_completed = [
+            event for event in events if event["event_type"] == "workflow.completed"
+        ][0]
         self.assertEqual(node_starts[0]["parent_span_id"], workflow["span_id"])
         self.assertNotEqual(node_starts[0]["span_id"], node_starts[1]["span_id"])
         self.assertEqual(workflow_completed["span_id"], workflow["span_id"])

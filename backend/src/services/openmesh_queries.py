@@ -6,14 +6,31 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import OpenMeshEventRecord
-from ..db.openmesh_events import list_openmesh_events, record_to_event, records_to_events
-from ..db.openmesh_sessions import get_openmesh_session, list_openmesh_sessions, session_to_dict
+from ..db.openmesh_events import (
+    list_openmesh_events,
+    record_to_event,
+    records_to_events,
+)
+from ..db.openmesh_sessions import (
+    get_openmesh_session,
+    list_openmesh_sessions,
+    session_to_dict,
+)
 from .graph_state import reduce_graph_state
-from .trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace, validate_trace_semantics
+from .trace_semantics import (
+    build_event_hierarchy,
+    build_span_summary,
+    build_span_tree,
+    graph_edges_for_trace,
+    validate_trace_semantics,
+)
 
 
 def trace_status(events: list[dict]) -> str:
-    if any(e.get("severity") == "error" or e.get("event_type", "").endswith(".failed") for e in events):
+    if any(
+        e.get("severity") == "error" or e.get("event_type", "").endswith(".failed")
+        for e in events
+    ):
         return "failed"
     if events and events[-1].get("event_type", "").endswith(".started"):
         return "active"
@@ -21,7 +38,9 @@ def trace_status(events: list[dict]) -> str:
 
 
 def trace_summary(trace_id: str, records: list[OpenMeshEventRecord]) -> Dict[str, Any]:
-    events = [record_to_event(record) for record in sorted(records, key=lambda r: r.timestamp)]
+    events = [
+        record_to_event(record) for record in sorted(records, key=lambda r: r.timestamp)
+    ]
     agents = set()
     tools = set()
     for event in events:
@@ -54,7 +73,10 @@ async def get_traces(db: AsyncSession, limit: int = 1000) -> list[dict]:
     grouped: Dict[str, list[OpenMeshEventRecord]] = {}
     for record in records:
         grouped.setdefault(record.trace_id, []).append(record)
-    summaries = [trace_summary(trace_id, trace_records) for trace_id, trace_records in grouped.items()]
+    summaries = [
+        trace_summary(trace_id, trace_records)
+        for trace_id, trace_records in grouped.items()
+    ]
     return sorted(summaries, key=lambda t: t["started_at"] or "", reverse=True)[:limit]
 
 
@@ -99,8 +121,14 @@ async def get_session(db: AsyncSession, session_id: str) -> dict | None:
 
 async def get_health(db: AsyncSession) -> dict:
     await db.execute(text("SELECT 1"))
-    event_count = (await db.execute(select(func.count(OpenMeshEventRecord.id)))).scalar() or 0
-    trace_count = (await db.execute(select(func.count(func.distinct(OpenMeshEventRecord.trace_id))))).scalar() or 0
+    event_count = (
+        await db.execute(select(func.count(OpenMeshEventRecord.id)))
+    ).scalar() or 0
+    trace_count = (
+        await db.execute(
+            select(func.count(func.distinct(OpenMeshEventRecord.trace_id)))
+        )
+    ).scalar() or 0
     graph = await get_graph(db)
     return {
         "collector": "OK",

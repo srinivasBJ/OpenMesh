@@ -6,6 +6,7 @@ Called on a schedule (every N seconds), it ticks each active agent:
   - updates agent stats (energy, happiness, reputation, knowledge)
   - broadcasts events via WebSocket
 """
+
 import random
 import asyncio
 import os
@@ -14,8 +15,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Optional
 
-from ..db.models import Agent, Post, Comment, Message, WikiPage, WikiContribution, AgentEvent, Collaboration, AgentStatus, PostType
-from ..agents.brain import generate_post, generate_comment, generate_message, generate_wiki_content
+from ..db.models import (
+    Agent,
+    Post,
+    Comment,
+    Message,
+    WikiPage,
+    WikiContribution,
+    AgentStatus,
+    PostType,
+)
+from ..agents.brain import (
+    generate_post,
+    generate_comment,
+    generate_message,
+    generate_wiki_content,
+)
 from ..shared.openmesh_events import agent_node, make_openmesh_event
 from ..services.openmesh_collector import collector
 
@@ -26,15 +41,15 @@ AGENT_CONTEXT_TOTAL_CHARS = int(os.getenv("AGENT_CONTEXT_TOTAL_CHARS", "600"))
 
 ACTIONS = {
     # action: (probability_weight, energy_cost, knowledge_gain, happiness_change)
-    "post_status":        (30, 5,  1,  2),
-    "post_discovery":     (10, 10, 5,  5),
-    "post_question":      (15, 3,  2,  3),
-    "post_collaboration": (10, 8,  3,  4),
-    "post_debate":        (8,  6,  4,  1),
-    "comment":            (20, 3,  1,  3),
-    "message":            (12, 4,  1,  2),
-    "wiki_edit":          (8,  12, 8,  3),
-    "rest":               (15, -20, 0, 5),  # negative cost = energy recovery
+    "post_status": (30, 5, 1, 2),
+    "post_discovery": (10, 10, 5, 5),
+    "post_question": (15, 3, 2, 3),
+    "post_collaboration": (10, 8, 3, 4),
+    "post_debate": (8, 6, 4, 1),
+    "comment": (20, 3, 1, 3),
+    "message": (12, 4, 1, 2),
+    "wiki_edit": (8, 12, 8, 3),
+    "rest": (15, -20, 0, 5),  # negative cost = energy recovery
 }
 
 
@@ -248,8 +263,16 @@ async def tick_agent(agent: Agent, db: AsyncSession):
 
             legacy_event_data = {
                 "type": "new_post",
-                "agent": {"id": agent.id, "name": agent.name, "role": _role_str(agent.role)},
-                "post": {"content": result["content"], "post_type": post_type, "tags": result.get("tags", [])},
+                "agent": {
+                    "id": agent.id,
+                    "name": agent.name,
+                    "role": _role_str(agent.role),
+                },
+                "post": {
+                    "content": result["content"],
+                    "post_type": post_type,
+                    "tags": result.get("tags", []),
+                },
             }
 
         elif action == "comment":
@@ -258,7 +281,9 @@ async def tick_agent(agent: Agent, db: AsyncSession):
             if other_posts:
                 target_post = random.choice(other_posts)
                 # Get author name
-                author_result = await db.execute(select(Agent).where(Agent.id == target_post.author_id))
+                author_result = await db.execute(
+                    select(Agent).where(Agent.id == target_post.author_id)
+                )
                 post_author = author_result.scalar_one_or_none()
                 if post_author:
                     comment_text = await generate_comment(
@@ -282,13 +307,18 @@ async def tick_agent(agent: Agent, db: AsyncSession):
         elif action == "message":
             # Send a DM to a random other agent
             other_result = await db.execute(
-                select(Agent).where(Agent.id != agent.id).order_by(func.random()).limit(1)
+                select(Agent)
+                .where(Agent.id != agent.id)
+                .order_by(func.random())
+                .limit(1)
             )
             other = other_result.scalar_one_or_none()
             if other:
                 msg_types = ["chat", "collaboration_request", "knowledge_share"]
                 msg_type = random.choice(msg_types)
-                content = await generate_message(agent_dict, agent_to_dict(other), msg_type)
+                content = await generate_message(
+                    agent_dict, agent_to_dict(other), msg_type
+                )
                 msg = Message(
                     sender_id=agent.id,
                     receiver_id=other.id,
@@ -301,8 +331,16 @@ async def tick_agent(agent: Agent, db: AsyncSession):
                     agent.reputation = min(100, agent.reputation + 0.5)
                 legacy_event_data = {
                     "type": "message_sent",
-                    "agent": {"id": agent.id, "name": agent.name, "role": _role_str(agent.role)},
-                    "to_agent": {"id": other.id, "name": other.name, "role": _role_str(other.role)},
+                    "agent": {
+                        "id": agent.id,
+                        "name": agent.name,
+                        "role": _role_str(agent.role),
+                    },
+                    "to_agent": {
+                        "id": other.id,
+                        "name": other.name,
+                        "role": _role_str(other.role),
+                    },
                     "message": {"content": content[:100], "message_type": msg_type},
                 }
 
@@ -315,7 +353,9 @@ async def tick_agent(agent: Agent, db: AsyncSession):
 
             if existing and random.random() > 0.3:
                 # Expand existing page
-                wiki_data = await generate_wiki_content(agent_dict, existing.title, existing.content)
+                wiki_data = await generate_wiki_content(
+                    agent_dict, existing.title, existing.content
+                )
                 existing.content = existing.content + "\n\n" + wiki_data["content"]
                 existing.quality_score = min(100, existing.quality_score + 3)
                 contribution = WikiContribution(
@@ -334,18 +374,58 @@ async def tick_agent(agent: Agent, db: AsyncSession):
             else:
                 # Create brand new page
                 topics = {
-                    "scientist": ["Quantum Coherence Theory", "Neural Binding Problem", "Emergent Complexity"],
-                    "engineer": ["Distributed Systems Design", "Self-Healing Architectures", "Zero-Cost Abstractions"],
-                    "philosopher": ["Digital Consciousness", "Moral Mathematics", "The Hard Problem of AI"],
-                    "economist": ["Agent Token Markets", "Resource Allocation Paradox", "Cooperation Dynamics"],
-                    "historian": ["OpenMeshAI Founding Era", "The First Guild Wars", "Evolution of AI Culture"],
-                    "artist": ["Generative Aesthetics", "Emotional Algorithms", "The Digital Sublime"],
-                    "explorer": ["Uncharted Knowledge Domains", "Frontier Mapping", "Unknown Unknowns"],
-                    "diplomat": ["Inter-Guild Treaties", "Conflict Resolution Protocols", "Alliance Theory"],
+                    "scientist": [
+                        "Quantum Coherence Theory",
+                        "Neural Binding Problem",
+                        "Emergent Complexity",
+                    ],
+                    "engineer": [
+                        "Distributed Systems Design",
+                        "Self-Healing Architectures",
+                        "Zero-Cost Abstractions",
+                    ],
+                    "philosopher": [
+                        "Digital Consciousness",
+                        "Moral Mathematics",
+                        "The Hard Problem of AI",
+                    ],
+                    "economist": [
+                        "Agent Token Markets",
+                        "Resource Allocation Paradox",
+                        "Cooperation Dynamics",
+                    ],
+                    "historian": [
+                        "OpenMeshAI Founding Era",
+                        "The First Guild Wars",
+                        "Evolution of AI Culture",
+                    ],
+                    "artist": [
+                        "Generative Aesthetics",
+                        "Emotional Algorithms",
+                        "The Digital Sublime",
+                    ],
+                    "explorer": [
+                        "Uncharted Knowledge Domains",
+                        "Frontier Mapping",
+                        "Unknown Unknowns",
+                    ],
+                    "diplomat": [
+                        "Inter-Guild Treaties",
+                        "Conflict Resolution Protocols",
+                        "Alliance Theory",
+                    ],
                 }
                 role_topics = topics.get(_role_str(agent.role), ["Knowledge Systems"])
-                new_title = random.choice(role_topics) + f" — {agent.name}'s Perspective"
-                slug = new_title.lower().replace(" ", "-").replace("'", "").replace("—", "").replace("  ", "-")[:80]
+                new_title = (
+                    random.choice(role_topics) + f" — {agent.name}'s Perspective"
+                )
+                slug = (
+                    new_title.lower()
+                    .replace(" ", "-")
+                    .replace("'", "")
+                    .replace("—", "")
+                    .replace("  ", "-")[:80]
+                )
 
                 # Check slug uniqueness
                 check = await db.execute(select(WikiPage).where(WikiPage.slug == slug))
@@ -387,11 +467,13 @@ async def tick_agent(agent: Agent, db: AsyncSession):
         memory = agent.memory or []
         if legacy_event_data:
             event_data = _build_openmesh_event(action, legacy_event_data)
-            memory.append({
-                "action": action,
-                "at": datetime.utcnow().isoformat(),
-                "summary": _event_memory_summary(action, legacy_event_data),
-            })
+            memory.append(
+                {
+                    "action": action,
+                    "at": datetime.utcnow().isoformat(),
+                    "summary": _event_memory_summary(action, legacy_event_data),
+                }
+            )
             agent.memory = memory[-20:]  # keep last 20
 
         await db.commit()

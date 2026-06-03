@@ -14,7 +14,11 @@ from ..sdk.integrations import list_integrations
 from .ecosystem_registry import build_ecosystem_registry
 from .graph_state import reduce_graph_state
 from .mcp_capabilities import build_capability_registry, validate_capability_entries
-from .mcp_config_discovery import build_mcp_config_registry, discover_mcp_configs, validate_mcp_config_entries
+from .mcp_config_discovery import (
+    build_mcp_config_registry,
+    discover_mcp_configs,
+    validate_mcp_config_entries,
+)
 from .openmesh_collector import collector
 from .registry_status import build_registry_status
 from .trace_semantics import build_span_summary, validate_trace_semantics
@@ -43,48 +47,88 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
 
     try:
         await db.execute(text("SELECT 1"))
-        checks.append({"name": "database", "status": "OK", "severity": "INFO", "detail": "connection succeeded"})
+        checks.append(
+            {
+                "name": "database",
+                "status": "OK",
+                "severity": "INFO",
+                "detail": "connection succeeded",
+            }
+        )
     except Exception as exc:
-        checks.append({"name": "database", "status": "ERROR", "severity": "ERROR", "detail": str(exc)})
+        checks.append(
+            {
+                "name": "database",
+                "status": "ERROR",
+                "severity": "ERROR",
+                "detail": str(exc),
+            }
+        )
 
     try:
         connection = await db.connection()
-        tables = await connection.run_sync(lambda sync_connection: set(inspect(sync_connection).get_table_names()))
+        tables = await connection.run_sync(
+            lambda sync_connection: set(inspect(sync_connection).get_table_names())
+        )
         missing = sorted(REQUIRED_TABLES - tables)
-        checks.append({
-            "name": "migrations",
-            "status": "OK" if not missing else "ERROR",
-            "severity": "INFO" if not missing else "ERROR",
-            "detail": "all required tables exist" if not missing else f"missing tables: {', '.join(missing)}",
-        })
+        checks.append(
+            {
+                "name": "migrations",
+                "status": "OK" if not missing else "ERROR",
+                "severity": "INFO" if not missing else "ERROR",
+                "detail": "all required tables exist"
+                if not missing
+                else f"missing tables: {', '.join(missing)}",
+            }
+        )
     except Exception as exc:
-        checks.append({"name": "migrations", "status": "ERROR", "severity": "ERROR", "detail": str(exc)})
+        checks.append(
+            {
+                "name": "migrations",
+                "status": "ERROR",
+                "severity": "ERROR",
+                "detail": str(exc),
+            }
+        )
 
-    checks.append({
-        "name": "collector",
-        "status": "OK" if collector else "ERROR",
-        "severity": "INFO" if collector else "ERROR",
-        "detail": "collector service importable",
-    })
+    checks.append(
+        {
+            "name": "collector",
+            "status": "OK" if collector else "ERROR",
+            "severity": "INFO" if collector else "ERROR",
+            "detail": "collector service importable",
+        }
+    )
 
     try:
         integrations = list_integrations()
-        langgraph = next((item for item in integrations if item["key"] == "langgraph"), None)
-        checks.append({
-            "name": "Integration Health",
-            "status": "OK",
-            "severity": "INFO",
-            "detail": {
-                "LangGraph": langgraph["status_label"] if langgraph else "Unknown",
-                "Graph Reducer": "OK",
-                "integrations": [
-                    f"{item['name']}: {item['status_label']}"
-                    for item in integrations
-                ],
-            },
-        })
+        langgraph = next(
+            (item for item in integrations if item["key"] == "langgraph"), None
+        )
+        checks.append(
+            {
+                "name": "Integration Health",
+                "status": "OK",
+                "severity": "INFO",
+                "detail": {
+                    "LangGraph": langgraph["status_label"] if langgraph else "Unknown",
+                    "Graph Reducer": "OK",
+                    "integrations": [
+                        f"{item['name']}: {item['status_label']}"
+                        for item in integrations
+                    ],
+                },
+            }
+        )
     except Exception as exc:
-        checks.append({"name": "integration health", "status": "ERROR", "severity": "ERROR", "detail": str(exc)})
+        checks.append(
+            {
+                "name": "integration health",
+                "status": "ERROR",
+                "severity": "ERROR",
+                "detail": str(exc),
+            }
+        )
 
     try:
         records = await list_openmesh_events(db, limit=5000)
@@ -96,31 +140,48 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
         checks.append(build_capability_diagnostics(records))
         checks.append(build_workflow_registry_diagnostics(records))
         checks.append(build_ecosystem_diagnostics(records))
-        checks.append(build_mcp_config_diagnostics(records, discovered=discover_mcp_configs()))
+        checks.append(
+            build_mcp_config_diagnostics(records, discovered=discover_mcp_configs())
+        )
     except Exception as exc:
-        checks.append({"name": "OpenMesh Diagnostics", "status": "ERROR", "severity": "ERROR", "detail": str(exc)})
+        checks.append(
+            {
+                "name": "OpenMesh Diagnostics",
+                "status": "ERROR",
+                "severity": "ERROR",
+                "detail": str(exc),
+            }
+        )
 
     migrations_dir = Path(__file__).resolve().parents[1] / "db" / "migrations"
     migration_files = sorted(path.name for path in migrations_dir.glob("*.sql"))
-    checks.append({
-        "name": "configuration",
-        "status": "OK",
-        "severity": "INFO",
-        "detail": {
-            "database_url": _safe_url(DATABASE_URL),
-            "async_url": _safe_url(ASYNC_URL),
-            "migrations": migration_files,
-        },
-    })
+    checks.append(
+        {
+            "name": "configuration",
+            "status": "OK",
+            "severity": "INFO",
+            "detail": {
+                "database_url": _safe_url(DATABASE_URL),
+                "async_url": _safe_url(ASYNC_URL),
+                "migrations": migration_files,
+            },
+        }
+    )
 
     severities = {check.get("severity", check["status"]) for check in checks}
     return {
-        "status": "ERROR" if "ERROR" in severities else "WARNING" if "WARNING" in severities else "OK",
+        "status": "ERROR"
+        if "ERROR" in severities
+        else "WARNING"
+        if "WARNING" in severities
+        else "OK",
         "checks": checks,
     }
 
 
-def build_trace_diagnostics(records: list[Any], *, now: datetime | None = None) -> list[dict[str, Any]]:
+def build_trace_diagnostics(
+    records: list[Any], *, now: datetime | None = None
+) -> list[dict[str, Any]]:
     now = now or datetime.utcnow()
     sorted_records = sorted(records, key=lambda item: item.timestamp)
     events = records_to_events(sorted_records)
@@ -151,17 +212,21 @@ def build_trace_diagnostics(records: list[Any], *, now: datetime | None = None) 
         for trace_id, trace_events in events_by_trace.items()
     }
     all_span_ids_by_trace = {
-        trace_id: {event.get("span_id") for event in trace_events if event.get("span_id")}
+        trace_id: {
+            event.get("span_id") for event in trace_events if event.get("span_id")
+        }
         for trace_id, trace_events in events_by_trace.items()
     }
 
     for trace_id, trace_events in events_by_trace.items():
         validation = validate_trace_semantics(trace_events)
         trace_detail["broken_parent_span_events"].extend(
-            _with_trace(trace_id, event_id) for event_id in validation.get("missing_parent_spans", [])
+            _with_trace(trace_id, event_id)
+            for event_id in validation.get("missing_parent_spans", [])
         )
         trace_detail["malformed_link_events"].extend(
-            _with_trace(trace_id, event_id) for event_id in validation.get("malformed_links", [])
+            _with_trace(trace_id, event_id)
+            for event_id in validation.get("malformed_links", [])
         )
 
         trace_event_ids = all_event_ids_by_trace[trace_id]
@@ -169,10 +234,16 @@ def build_trace_diagnostics(records: list[Any], *, now: datetime | None = None) 
         for record in records_by_trace[trace_id]:
             root_event_id = getattr(record, "root_event_id", None)
             if not root_event_id:
-                trace_detail["missing_root_event_events"].append(_with_trace(trace_id, record.event_id))
+                trace_detail["missing_root_event_events"].append(
+                    _with_trace(trace_id, record.event_id)
+                )
             elif root_event_id not in trace_event_ids:
                 trace_detail["broken_root_event_events"].append(
-                    {"trace_id": trace_id, "event_id": record.event_id, "root_event_id": root_event_id}
+                    {
+                        "trace_id": trace_id,
+                        "event_id": record.event_id,
+                        "root_event_id": root_event_id,
+                    }
                 )
 
         spans = build_span_summary(trace_events)
@@ -180,17 +251,32 @@ def build_trace_diagnostics(records: list[Any], *, now: datetime | None = None) 
             parent_span_id = span.get("parent_span_id")
             if parent_span_id and parent_span_id not in trace_span_ids:
                 trace_detail["orphan_spans"].append(
-                    {"trace_id": trace_id, "span_id": span["span_id"], "parent_span_id": parent_span_id}
+                    {
+                        "trace_id": trace_id,
+                        "span_id": span["span_id"],
+                        "parent_span_id": parent_span_id,
+                    }
                 )
-            if span.get("status") == "active" and _is_long_running(span.get("started_at"), now):
+            if span.get("status") == "active" and _is_long_running(
+                span.get("started_at"), now
+            ):
                 trace_detail["long_running_active_spans"].append(
-                    {"trace_id": trace_id, "span_id": span["span_id"], "started_at": span.get("started_at")}
+                    {
+                        "trace_id": trace_id,
+                        "span_id": span["span_id"],
+                        "started_at": span.get("started_at"),
+                    }
                 )
             if "workflow.started" in span.get("event_types", []) and not any(
-                event_type in {"workflow.completed", "workflow.failed"} for event_type in span.get("event_types", [])
+                event_type in {"workflow.completed", "workflow.failed"}
+                for event_type in span.get("event_types", [])
             ):
                 workflow_detail["incomplete_workflow_spans"].append(
-                    {"trace_id": trace_id, "span_id": span["span_id"], "started_at": span.get("started_at")}
+                    {
+                        "trace_id": trace_id,
+                        "span_id": span["span_id"],
+                        "started_at": span.get("started_at"),
+                    }
                 )
 
         for event in trace_events:
@@ -200,7 +286,9 @@ def build_trace_diagnostics(records: list[Any], *, now: datetime | None = None) 
                 linked_trace_id = link.get("trace_id")
                 if not linked_trace_id or linked_trace_id == trace_id:
                     continue
-                if _is_valid_cross_trace_link(link, all_trace_ids, all_event_ids_by_trace, all_span_ids_by_trace):
+                if _is_valid_cross_trace_link(
+                    link, all_trace_ids, all_event_ids_by_trace, all_span_ids_by_trace
+                ):
                     trace_detail["valid_cross_trace_links"] += 1
                 else:
                     trace_detail["invalid_cross_trace_links"].append(
@@ -227,8 +315,16 @@ def build_trace_diagnostics(records: list[Any], *, now: datetime | None = None) 
     return [
         {
             "name": "Trace Integrity",
-            "status": "ERROR" if trace_errors else "WARNING" if trace_warnings else "OK",
-            "severity": "ERROR" if trace_errors else "WARNING" if trace_warnings else "INFO",
+            "status": "ERROR"
+            if trace_errors
+            else "WARNING"
+            if trace_warnings
+            else "OK",
+            "severity": "ERROR"
+            if trace_errors
+            else "WARNING"
+            if trace_warnings
+            else "INFO",
             "detail": trace_detail,
         },
         {
@@ -261,7 +357,11 @@ def build_graph_diagnostics(records: list[Any]) -> dict[str, Any]:
         "broken_references": validation.get("broken_references", []),
         "stale_relationships": stale_edges,
     }
-    errors = detail["missing_provenance"] or detail["invalid_relationships"] or detail["broken_references"]
+    errors = (
+        detail["missing_provenance"]
+        or detail["invalid_relationships"]
+        or detail["broken_references"]
+    )
     warnings = detail["stale_relationships"]
     return {
         "name": "Graph Integrity",
@@ -279,7 +379,9 @@ def build_relationship_diagnostics(records: list[Any]) -> dict[str, Any]:
         "edges_checked": len(graph.get("edges", [])),
         "valid_relationships": len(graph.get("edges", [])) - len(invalid_relationships),
         "invalid_relationship_types": validation.get("invalid_relationship_types", []),
-        "deprecated_relationship_types": validation.get("deprecated_relationship_types", []),
+        "deprecated_relationship_types": validation.get(
+            "deprecated_relationship_types", []
+        ),
         "removed_relationship_types": validation.get("removed_relationship_types", []),
         "invalid_source_types": validation.get("invalid_source_types", []),
         "invalid_target_types": validation.get("invalid_target_types", []),
@@ -308,9 +410,13 @@ def build_node_diagnostics(records: list[Any]) -> dict[str, Any]:
         "deprecated_node_types": validation.get("deprecated_node_types", []),
         "removed_node_types": validation.get("removed_node_types", []),
         "invalid_node_metadata": validation.get("invalid_node_metadata", []),
-        "missing_required_identifiers": validation.get("missing_required_identifiers", []),
+        "missing_required_identifiers": validation.get(
+            "missing_required_identifiers", []
+        ),
         "invalid_node_categories": validation.get("invalid_node_categories", []),
-        "invalid_relationship_endpoints": validation.get("invalid_relationship_endpoints", []),
+        "invalid_relationship_endpoints": validation.get(
+            "invalid_relationship_endpoints", []
+        ),
     }
     errors = (
         detail["unknown_node_types"]
@@ -362,7 +468,9 @@ def build_mcp_config_diagnostics(
 ) -> dict[str, Any]:
     persisted = build_mcp_config_registry(records)
     discovered = discovered or {"entries": [], "issues": []}
-    validation = validate_mcp_config_entries([*persisted, *discovered.get("entries", [])])
+    validation = validate_mcp_config_entries(
+        [*persisted, *discovered.get("entries", [])]
+    )
     detail = {
         "persisted_configs": len(persisted),
         "discovered_configs": len(discovered.get("entries", [])),
@@ -452,10 +560,14 @@ def _is_valid_cross_trace_link(
     if linked_trace_id not in trace_ids:
         return False
     linked_event_id = link.get("event_id")
-    if linked_event_id and linked_event_id not in event_ids_by_trace.get(linked_trace_id, set()):
+    if linked_event_id and linked_event_id not in event_ids_by_trace.get(
+        linked_trace_id, set()
+    ):
         return False
     linked_span_id = link.get("span_id")
-    if linked_span_id and linked_span_id not in span_ids_by_trace.get(linked_trace_id, set()):
+    if linked_span_id and linked_span_id not in span_ids_by_trace.get(
+        linked_trace_id, set()
+    ):
         return False
     return True
 
@@ -464,7 +576,9 @@ def _is_long_running(started_at: str | None, now: datetime) -> bool:
     if not started_at:
         return False
     try:
-        started = datetime.fromisoformat(started_at.replace("Z", "+00:00")).replace(tzinfo=None)
+        started = datetime.fromisoformat(started_at.replace("Z", "+00:00")).replace(
+            tzinfo=None
+        )
     except ValueError:
         return False
     return now - started > ACTIVE_SPAN_WARNING_AFTER

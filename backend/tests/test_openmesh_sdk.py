@@ -1,5 +1,12 @@
+# ruff: noqa: E402
+from pathlib import Path
+import sys
 import unittest
 from unittest.mock import patch
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from src.db.openmesh_events import record_to_event
 from src.sdk import OpenMeshClient
@@ -71,9 +78,14 @@ class OpenMeshSdkTests(unittest.TestCase):
                 pass
 
         events = self.collect_events(action)
-        task_events = [event for event in events if event["event_type"].startswith("task.")]
+        task_events = [
+            event for event in events if event["event_type"].startswith("task.")
+        ]
 
-        self.assertEqual([event["event_type"] for event in task_events], ["task.started", "task.completed"])
+        self.assertEqual(
+            [event["event_type"] for event in task_events],
+            ["task.started", "task.completed"],
+        )
         self.assertEqual(task_events[0]["trace_id"], task_events[1]["trace_id"])
 
     def test_task_context_emits_failed_and_reraises(self):
@@ -102,9 +114,14 @@ class OpenMeshSdkTests(unittest.TestCase):
                     pass
 
         events = self.collect_events(action)
-        tool_events = [event for event in events if event["event_type"].startswith("tool.call.")]
+        tool_events = [
+            event for event in events if event["event_type"].startswith("tool.call.")
+        ]
 
-        self.assertEqual([event["event_type"] for event in tool_events], ["tool.call.started", "tool.call.completed"])
+        self.assertEqual(
+            [event["event_type"] for event in tool_events],
+            ["tool.call.started", "tool.call.completed"],
+        )
         self.assertEqual(tool_events[0]["target"]["node_type"], "tool")
         self.assertEqual(tool_events[0]["target"]["name"], "web_search")
         self.assertEqual(tool_events[0]["trace_id"], tool_events[1]["trace_id"])
@@ -132,9 +149,13 @@ class OpenMeshSdkTests(unittest.TestCase):
                 pass
 
         events = self.collect_events(action)
-        tool_events = [event for event in events if event["event_type"].startswith("tool.call.")]
+        tool_events = [
+            event for event in events if event["event_type"].startswith("tool.call.")
+        ]
 
-        self.assertEqual(tool_events[0]["root_event_id"], tool_events[1]["root_event_id"])
+        self.assertEqual(
+            tool_events[0]["root_event_id"], tool_events[1]["root_event_id"]
+        )
         self.assertEqual(tool_events[0]["span_id"], tool_events[1]["span_id"])
 
 
@@ -159,7 +180,9 @@ class OpenMeshAsyncSdkTests(unittest.IsolatedAsyncioTestCase):
             agent = client.agent(id="async-research-agent", name="Async Research Agent")
             async with agent.task("Research vector databases"):
                 async with agent.tool("web_search"):
-                    await agent.emit_async("message.sent", {"message": "async summary ready"})
+                    await agent.emit_async(
+                        "message.sent", {"message": "async summary ready"}
+                    )
 
         events = await self.collect_events(action)
         event_types = [event["event_type"] for event in events]
@@ -193,8 +216,12 @@ class OpenMeshAsyncSdkTests(unittest.IsolatedAsyncioTestCase):
 
         events = await self.collect_events(action)
         event_types = [event["event_type"] for event in events]
-        tool_failed = [event for event in events if event["event_type"] == "tool.call.failed"][0]
-        task_failed = [event for event in events if event["event_type"] == "task.failed"][0]
+        tool_failed = [
+            event for event in events if event["event_type"] == "tool.call.failed"
+        ][0]
+        task_failed = [
+            event for event in events if event["event_type"] == "task.failed"
+        ][0]
 
         self.assertIn("tool.call.failed", event_types)
         self.assertIn("task.failed", event_types)

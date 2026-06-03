@@ -47,16 +47,24 @@ async def complete_openmesh_session(
     return record
 
 
-async def get_openmesh_session(db: AsyncSession, session_id: str) -> Optional[OpenMeshSessionRecord]:
+async def get_openmesh_session(
+    db: AsyncSession, session_id: str
+) -> Optional[OpenMeshSessionRecord]:
     result = await db.execute(
-        select(OpenMeshSessionRecord).where(OpenMeshSessionRecord.session_id == session_id)
+        select(OpenMeshSessionRecord).where(
+            OpenMeshSessionRecord.session_id == session_id
+        )
     )
     return result.scalar_one_or_none()
 
 
-async def list_openmesh_sessions(db: AsyncSession, *, limit: int = 100) -> list[OpenMeshSessionRecord]:
+async def list_openmesh_sessions(
+    db: AsyncSession, *, limit: int = 100
+) -> list[OpenMeshSessionRecord]:
     result = await db.execute(
-        select(OpenMeshSessionRecord).order_by(desc(OpenMeshSessionRecord.started_at)).limit(limit)
+        select(OpenMeshSessionRecord)
+        .order_by(desc(OpenMeshSessionRecord.started_at))
+        .limit(limit)
     )
     return list(result.scalars().all())
 

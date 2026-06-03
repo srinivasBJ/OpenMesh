@@ -24,8 +24,20 @@ class NodeType:
 
 
 NODE_TYPES: dict[str, NodeType] = {
-    "agent": NodeType("agent", "Agent", "An autonomous or assisted agent.", "agents", COMMON_METADATA + ("role",)),
-    "tool": NodeType("tool", "Tool", "A callable tool used by an agent or runtime.", "tools", COMMON_METADATA + ("capabilities",)),
+    "agent": NodeType(
+        "agent",
+        "Agent",
+        "An autonomous or assisted agent.",
+        "agents",
+        COMMON_METADATA + ("role",),
+    ),
+    "tool": NodeType(
+        "tool",
+        "Tool",
+        "A callable tool used by an agent or runtime.",
+        "tools",
+        COMMON_METADATA + ("capabilities",),
+    ),
     "workflow": NodeType(
         "workflow",
         "Workflow",
@@ -33,8 +45,20 @@ NODE_TYPES: dict[str, NodeType] = {
         "workflows",
         COMMON_METADATA + ("graph", "source"),
     ),
-    "process": NodeType("process", "Process", "An observed operating system process.", "processes", COMMON_METADATA + ("session_id", "pid")),
-    "command": NodeType("command", "Command", "A command executed by a process.", "processes", COMMON_METADATA + ("executable",)),
+    "process": NodeType(
+        "process",
+        "Process",
+        "An observed operating system process.",
+        "processes",
+        COMMON_METADATA + ("session_id", "pid"),
+    ),
+    "command": NodeType(
+        "command",
+        "Command",
+        "A command executed by a process.",
+        "processes",
+        COMMON_METADATA + ("executable",),
+    ),
     "service": NodeType(
         "service",
         "Service",
@@ -42,7 +66,13 @@ NODE_TYPES: dict[str, NodeType] = {
         "services",
         COMMON_METADATA + ("graph", "endpoint", "source", "config_path"),
     ),
-    "framework": NodeType("framework", "Framework", "An observed agent framework.", "frameworks", COMMON_METADATA),
+    "framework": NodeType(
+        "framework",
+        "Framework",
+        "An observed agent framework.",
+        "frameworks",
+        COMMON_METADATA,
+    ),
     "mcp_server": NodeType(
         "mcp_server",
         "MCP Server",
@@ -57,15 +87,65 @@ NODE_TYPES: dict[str, NodeType] = {
         "capabilities",
         COMMON_METADATA + ("server", "description", "category"),
     ),
-    "model": NodeType("model", "Model", "An AI model used by an agent or service.", "models", COMMON_METADATA),
-    "memory": NodeType("memory", "Memory", "A memory store or memory operation target.", "memory", COMMON_METADATA),
-    "file": NodeType("file", "File", "A file observed in an execution.", "files", COMMON_METADATA + ("path",)),
-    "browser": NodeType("browser", "Browser", "A browser or browser automation runtime.", "services", COMMON_METADATA + ("session_id",)),
-    "user": NodeType("user", "User", "A human participant in an observed system.", "users", COMMON_METADATA),
-    "runtime": NodeType("runtime", "Runtime", "An execution runtime hosting agents or workflows.", "services", COMMON_METADATA),
-    "guild": NodeType("guild", "Guild", "A legacy OpenMesh collaboration group.", "services", COMMON_METADATA),
-    "wiki": NodeType("wiki", "Wiki", "A legacy OpenMesh knowledge surface.", "services", COMMON_METADATA),
-    "post": NodeType("post", "Post", "A legacy OpenMesh content entity.", "services", COMMON_METADATA),
+    "model": NodeType(
+        "model",
+        "Model",
+        "An AI model used by an agent or service.",
+        "models",
+        COMMON_METADATA,
+    ),
+    "memory": NodeType(
+        "memory",
+        "Memory",
+        "A memory store or memory operation target.",
+        "memory",
+        COMMON_METADATA,
+    ),
+    "file": NodeType(
+        "file",
+        "File",
+        "A file observed in an execution.",
+        "files",
+        COMMON_METADATA + ("path",),
+    ),
+    "browser": NodeType(
+        "browser",
+        "Browser",
+        "A browser or browser automation runtime.",
+        "services",
+        COMMON_METADATA + ("session_id",),
+    ),
+    "user": NodeType(
+        "user",
+        "User",
+        "A human participant in an observed system.",
+        "users",
+        COMMON_METADATA,
+    ),
+    "runtime": NodeType(
+        "runtime",
+        "Runtime",
+        "An execution runtime hosting agents or workflows.",
+        "services",
+        COMMON_METADATA,
+    ),
+    "guild": NodeType(
+        "guild",
+        "Guild",
+        "A legacy OpenMesh collaboration group.",
+        "services",
+        COMMON_METADATA,
+    ),
+    "wiki": NodeType(
+        "wiki",
+        "Wiki",
+        "A legacy OpenMesh knowledge surface.",
+        "services",
+        COMMON_METADATA,
+    ),
+    "post": NodeType(
+        "post", "Post", "A legacy OpenMesh content entity.", "services", COMMON_METADATA
+    ),
 }
 
 
@@ -107,7 +187,8 @@ def validate_node(node: Any) -> dict[str, Any]:
         return _validation_result(None, None, errors, warnings)
 
     missing_identifiers = [
-        field for field in REQUIRED_IDENTIFIERS
+        field
+        for field in REQUIRED_IDENTIFIERS
         if not isinstance(node.get(field), str) or not node.get(field, "").strip()
     ]
     if missing_identifiers:
@@ -121,13 +202,20 @@ def validate_node(node: Any) -> dict[str, Any]:
     node_type = node.get("node_type")
     definition = node_type_definition(node_type) if isinstance(node_type, str) else None
     if node_type and not definition:
-        errors.append({"code": "unknown_node_type", "message": f"Unknown node type: {node_type}"})
+        errors.append(
+            {"code": "unknown_node_type", "message": f"Unknown node type: {node_type}"}
+        )
 
     metadata = node.get("metadata", {})
     if metadata is None:
         metadata = {}
     if not isinstance(metadata, dict):
-        errors.append({"code": "invalid_node_metadata", "message": "Node metadata must be an object"})
+        errors.append(
+            {
+                "code": "invalid_node_metadata",
+                "message": "Node metadata must be an object",
+            }
+        )
     elif definition:
         if definition.get("removed_in"):
             errors.append(
@@ -144,7 +232,9 @@ def validate_node(node: Any) -> dict[str, Any]:
                 }
             )
         allowed_metadata = set(definition["allowed_metadata"])
-        unsupported = sorted(str(key) for key in metadata if key not in allowed_metadata)
+        unsupported = sorted(
+            str(key) for key in metadata if key not in allowed_metadata
+        )
         if unsupported:
             warnings.append(
                 {

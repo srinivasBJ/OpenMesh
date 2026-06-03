@@ -118,4 +118,6 @@ def make_openmesh_event(
 
 
 def is_openmesh_event(data: Dict[str, Any]) -> bool:
-    return data.get("spec_version") == "0.1" and "event_type" in data and "source" in data
+    return (
+        data.get("spec_version") == "0.1" and "event_type" in data and "source" in data
+    )

@@ -79,10 +79,16 @@ def build_mcp_registry(records: Iterable[OpenMeshEventRecord]) -> list[dict[str,
 
         if record.source_json and record.target_json:
             for node in (record.source_json, record.target_json):
-                if node and node.get("node_type") == "mcp_server" and node["node_id"] in entries:
+                if (
+                    node
+                    and node.get("node_type") == "mcp_server"
+                    and node["node_id"] in entries
+                ):
                     entries[node["node_id"]]["relationship_count"] += 1
 
-    return sorted(entries.values(), key=lambda item: (item["server"].lower(), item["id"]))
+    return sorted(
+        entries.values(), key=lambda item: (item["server"].lower(), item["id"])
+    )
 
 
 async def get_mcp_registry(db: AsyncSession, limit: int = 5000) -> list[dict[str, Any]]:
@@ -124,4 +130,9 @@ async def register_mcp_server(
 
 
 def _stable_id(value: str) -> str:
-    return "".join(character.lower() if character.isalnum() else "-" for character in value).strip("-") or "server"
+    return (
+        "".join(
+            character.lower() if character.isalnum() else "-" for character in value
+        ).strip("-")
+        or "server"
+    )

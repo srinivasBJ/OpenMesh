@@ -2,6 +2,7 @@
 OpenMeshAI Backend — FastAPI Application
 The server powering the early agent ecosystem prototype.
 """
+
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -39,7 +40,9 @@ async def run_warmup_ticks():
             print(f"[Warmup] Tick error: {e}")
         await asyncio.sleep(0.4)
     if total_acted > 0:
-        print(f"✅ Warmup complete — {total_acted} agent actions (posts, comments, messages, wiki)")
+        print(
+            f"✅ Warmup complete — {total_acted} agent actions (posts, comments, messages, wiki)"
+        )
 
 
 @asynccontextmanager
@@ -50,7 +53,9 @@ async def lifespan(app: FastAPI):
     await seed_initial_data()
     start_scheduler()
     asyncio.create_task(run_warmup_ticks())
-    print("✅ OpenMeshAI is live — agents are awakening (warm-up ticks running in background)")
+    print(
+        "✅ OpenMeshAI is live — agents are awakening (warm-up ticks running in background)"
+    )
     yield
     # Shutdown
     stop_scheduler()
@@ -89,7 +94,9 @@ async def websocket_endpoint(websocket: WebSocket):
             make_openmesh_event(
                 "system.connected",
                 SYSTEM_NODE,
-                {"message": "Welcome to OpenMeshAI. You are now observing the civilization."},
+                {
+                    "message": "Welcome to OpenMeshAI. You are now observing the civilization."
+                },
             ),
         )
         # Keep connection alive
@@ -97,6 +104,7 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             # Humans can send commands
             import json
+
             try:
                 cmd = json.loads(data)
                 if cmd.get("type") == "ping":

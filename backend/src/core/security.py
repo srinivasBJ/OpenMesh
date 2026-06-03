@@ -1,6 +1,7 @@
 """
 Security helpers for write endpoint protection and basic rate limiting.
 """
+
 from collections import defaultdict, deque
 from hashlib import sha256
 import hmac
@@ -24,7 +25,9 @@ REQUIRE_WRITE_API_KEY = _env_bool("REQUIRE_WRITE_API_KEY", ENVIRONMENT == "produ
 WRITE_API_KEY = os.getenv("WRITE_API_KEY", os.getenv("ADMIN_API_KEY", "")).strip()
 
 WRITE_RATE_LIMIT_ENABLED = _env_bool("WRITE_RATE_LIMIT_ENABLED", True)
-WRITE_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("WRITE_RATE_LIMIT_WINDOW_SECONDS", "60"))
+WRITE_RATE_LIMIT_WINDOW_SECONDS = int(
+    os.getenv("WRITE_RATE_LIMIT_WINDOW_SECONDS", "60")
+)
 WRITE_RATE_LIMIT_MAX_REQUESTS = int(os.getenv("WRITE_RATE_LIMIT_MAX_REQUESTS", "30"))
 
 
@@ -33,7 +36,9 @@ class SlidingWindowRateLimiter:
         self._events: Dict[str, Deque[float]] = defaultdict(deque)
         self._lock = Lock()
 
-    def allow(self, key: str, max_requests: int, window_seconds: int) -> Tuple[bool, int]:
+    def allow(
+        self, key: str, max_requests: int, window_seconds: int
+    ) -> Tuple[bool, int]:
         now = monotonic()
         with self._lock:
             q = self._events[key]
@@ -122,4 +127,3 @@ def security_status() -> dict:
         "write_rate_limit_max_requests": WRITE_RATE_LIMIT_MAX_REQUESTS,
         "write_rate_limit_window_seconds": WRITE_RATE_LIMIT_WINDOW_SECONDS,
     }
-

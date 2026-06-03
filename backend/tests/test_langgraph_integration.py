@@ -12,6 +12,14 @@ from src.db.openmesh_events import record_to_event
 from src.sdk import OpenMeshClient
 from src.sdk.integrations.langgraph import OpenMeshLangGraph
 from src.sdk.integrations.registry import get_integration, list_integrations
+from src.services.plugins import (
+    PLUGIN_API_VERSION,
+    PLUGIN_REGISTRY_VERSION,
+    list_plugins,
+    load_plugin,
+    plugin_registry_metadata,
+    validate_plugin,
+)
 
 
 class FakeAsyncSession:
@@ -178,6 +186,59 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
         self.assertIn("autogen", integrations)
         self.assertIn("openhands", integrations)
         self.assertEqual(get_integration("langgraph")["name"], "LangGraph")
+
+    def test_plugin_registry_discovers_integration_plugins(self):
+        plugins = {item["plugin_id"]: item for item in list_plugins(kind="integration")}
+
+        self.assertIn("langgraph", plugins)
+        self.assertIn("crewai", plugins)
+        self.assertIn("autogen", plugins)
+        self.assertIn("openhands", plugins)
+        self.assertIn("claude-code", plugins)
+        self.assertEqual(plugins["langgraph"]["entrypoint"], "OpenMeshLangGraph")
+        self.assertEqual(plugins["crewai"]["entrypoint"], "OpenMeshCrewAI")
+        self.assertEqual(plugins["autogen"]["status"], "planned")
+        self.assertEqual(plugins["openhands"]["status"], "planned")
+        self.assertEqual(plugins["claude-code"]["status"], "planned")
+        self.assertEqual(
+            plugins["langgraph"]["registry_version"], PLUGIN_REGISTRY_VERSION
+        )
+        self.assertEqual(
+            plugins["langgraph"]["supported_plugin_api_version"], PLUGIN_API_VERSION
+        )
+        self.assertEqual(plugins["langgraph"]["validation"]["errors"], [])
+
+    def test_plugin_registry_metadata_reports_versions(self):
+        metadata = plugin_registry_metadata()
+
+        self.assertEqual(metadata["registry_version"], PLUGIN_REGISTRY_VERSION)
+        self.assertEqual(metadata["plugin_api_version"], PLUGIN_API_VERSION)
+        self.assertEqual(metadata["entry_point_group"], "openmesh.plugins")
+        self.assertGreaterEqual(metadata["plugin_count"], 5)
+
+    def test_plugin_loader_loads_reference_integration_entrypoint(self):
+        loaded = load_plugin("langgraph")
+
+        self.assertEqual(loaded.plugin["plugin_id"], "langgraph")
+        self.assertIs(loaded.entrypoint, OpenMeshLangGraph)
+
+    def test_plugin_validation_reports_bad_metadata(self):
+        validation = validate_plugin(
+            {
+                "plugin_id": "Bad Id",
+                "name": "Bad Plugin",
+                "version": "1.0.0",
+                "plugin_api_version": "9.0",
+                "kind": "integration",
+                "module": "missing.openmesh.plugin",
+            }
+        )
+        error_codes = {error["code"] for error in validation["errors"]}
+
+        self.assertEqual(validation["status"], "invalid")
+        self.assertIn("invalid_plugin_id", error_codes)
+        self.assertIn("unsupported_plugin_api_version", error_codes)
+        self.assertIn("module_not_found", error_codes)
 
     def test_add_edge_emits_transition_for_observable_nodes(self):
         class FakeWorkflow:

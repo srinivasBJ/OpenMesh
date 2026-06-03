@@ -32,6 +32,12 @@ CrewAI is the second official integration because its agent, task, tool, and cre
 
 The CrewAI adapter observes metadata and lifecycle boundaries only. It does not execute tools, inspect credentials, analyze results, or create a parallel event pipeline.
 
+## Integrations Are Plugins
+
+Framework integrations should register plugin metadata instead of adding hardcoded integration records.
+
+The plugin registry discovers module-level `OPENMESH_PLUGIN` definitions and Python entry points from the `openmesh.plugins` group. Existing `openmesh integrations` output is preserved as a compatibility view over integration plugins.
+
 ## Event-Derived Registries
 
 Discovery, workflow, MCP metadata, capability, and ecosystem registries are derived from stored OpenMesh events.

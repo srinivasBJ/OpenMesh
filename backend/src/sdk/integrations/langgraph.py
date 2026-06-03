@@ -13,6 +13,26 @@ from .registry import mark_integration_active
 
 T = TypeVar("T", bound=Callable[..., Any])
 
+OPENMESH_PLUGIN = {
+    "plugin_id": "langgraph",
+    "name": "LangGraph",
+    "version": "0.1.0",
+    "plugin_api_version": "1.0",
+    "kind": "integration",
+    "status": "reference",
+    "package": "langgraph",
+    "entrypoint": "OpenMeshLangGraph",
+    "description": "Observe LangGraph workflow, node lifecycle, and transition events.",
+    "capabilities": [
+        "workflow.lifecycle",
+        "node.lifecycle",
+        "node.transition",
+        "trace.spans",
+        "graph.relationships",
+    ],
+    "metadata": {"framework": "LangGraph"},
+}
+
 
 def _safe_payload(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):

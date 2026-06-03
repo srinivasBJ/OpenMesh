@@ -4,7 +4,7 @@
 
 - Prepare the v0.1 release package and documentation.
 - Keep API, dashboard, CLI, and TUI reading from shared query services.
-- Keep LangGraph and CrewAI integrations SDK-backed and observable through the existing collector path.
+- Keep LangGraph and CrewAI integration plugins SDK-backed and observable through the existing collector path.
 - Keep tests focused on protocol, trace, graph, discovery, diagnostics, SDK, and integration behavior.
 - Keep ecosystem snapshots derived from existing reducers rather than introducing a parallel graph or registry model.
 - Keep snapshot diffs derived from persisted snapshot payloads rather than introducing a second graph or registry model.
@@ -26,7 +26,7 @@
 
 ## Later
 
-- Add AutoGen and OpenHands integrations after v0.1 stabilizes.
+- Add AutoGen, OpenHands, and Claude Code integration plugins after v0.1 stabilizes.
 - Improve terminal UI inspection depth after the plain CLI workflows are reliable.
 - Explore Active Analysis and MCP intelligence as a future layer:
   - MCP endpoint health checks

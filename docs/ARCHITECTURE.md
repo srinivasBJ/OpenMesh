@@ -3,7 +3,7 @@
 Current event flow:
 
 ```text
-simulator, CLI runtime, SDK example, LangGraph, or CrewAI
+simulator, CLI runtime, SDK example, or OpenMesh plugin
   -> OpenMesh event builder
   -> OpenMesh collector
   -> database persistence
@@ -22,6 +22,7 @@ Core backend pieces:
 - `backend/src/services/graph_state.py`: derives nodes and edges from events.
 - `backend/src/services/discovery.py`: derives observed frameworks, agents, tools, workflows, services, and processes.
 - `backend/src/services/ecosystem_registry.py`: aggregates observed entities into one ecosystem inventory.
+- `backend/src/services/plugins.py`: discovers, validates, and loads OpenMesh plugins.
 - `backend/src/sdk/client.py`: Python SDK entry point for agent, task, and tool events.
 - `backend/src/sdk/integrations/langgraph.py`: LangGraph reference integration.
 - `backend/src/sdk/integrations/crewai.py`: CrewAI reference integration.
@@ -47,13 +48,19 @@ Postgres remains supported through `DATABASE_URL`.
 Integration flow:
 
 ```text
-LangGraph / CrewAI adapter
+OpenMesh plugin, such as LangGraph or CrewAI
   -> Python SDK client
   -> collector
   -> openmesh_events
   -> trace reconstruction, graph reducer, discovery, ecosystem registry
   -> CLI, TUI, dashboard, and API views
 ```
+
+The compatibility command `openmesh integrations` reads from the plugin registry.
+New integration metadata should be exposed through module-level `OPENMESH_PLUGIN`
+definitions or Python entry points in the `openmesh.plugins` group rather than
+adding central hardcoded integration records. The registry validates plugin API
+major-version compatibility before loading a plugin entrypoint.
 
 Snapshot flow:
 

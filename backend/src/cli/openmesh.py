@@ -38,6 +38,7 @@ from ..services.openmesh_queries import (
     inspect_workflow,
     list_workflows,
 )
+from ..services.plugins import get_plugin, list_plugins, load_plugin
 from ..services.query_engine import SAVED_QUERIES, execute_query
 from ..services.replay import (
     get_replay,
@@ -434,6 +435,86 @@ def _print_integrations(integrations: list[dict[str, Any]]) -> None:
             f"{_integration_symbol(integration)} {integration['name']}{suffix} "
             f"- {integration['status_label']} - version: {version}"
         )
+
+
+def _print_plugins(plugins: list[dict[str, Any]]) -> None:
+    print("OpenMesh Plugins")
+    print()
+    if not plugins:
+        print("No OpenMesh plugins discovered.")
+        return
+    print(f"{'plugin':<18} {'kind':<12} {'status':<14} {'version':<10} module")
+    for plugin in plugins:
+        print(
+            f"{plugin['plugin_id']:<18} "
+            f"{plugin.get('kind', '-'):<12} "
+            f"{plugin.get('status_label', '-'):<14} "
+            f"{plugin.get('version', '-'):<10} "
+            f"{plugin.get('module', '-')}"
+        )
+
+
+def _print_plugin_detail(plugin: dict[str, Any]) -> None:
+    print(f"OpenMesh Plugin: {plugin['name']}")
+    print()
+    print(f"plugin_id: {plugin['plugin_id']}")
+    print(f"kind: {plugin.get('kind')}")
+    print(f"status: {plugin.get('status')}")
+    print(f"status_label: {plugin.get('status_label')}")
+    print(f"version: {plugin.get('version')}")
+    print(f"plugin_api_version: {plugin.get('plugin_api_version')}")
+    print(f"registry_version: {plugin.get('registry_version')}")
+    print(f"supported_plugin_api_version: {plugin.get('supported_plugin_api_version')}")
+    print(f"module: {plugin.get('module')}")
+    print(f"entrypoint: {plugin.get('entrypoint') or '-'}")
+    print(f"package: {plugin.get('package') or '-'}")
+    print(f"package_version: {plugin.get('package_version') or '-'}")
+    print(f"available: {plugin.get('available')}")
+    print(f"active: {plugin.get('active')}")
+    if plugin.get("description"):
+        print(f"description: {plugin['description']}")
+    print()
+    print("Capabilities")
+    capabilities = plugin.get("capabilities") or []
+    if not capabilities:
+        print("  none")
+    for capability in capabilities:
+        print(f"  - {capability}")
+    validation = plugin.get("validation") or {}
+    print()
+    print(f"Validation: {validation.get('status', 'unknown')}")
+    for error in validation.get("errors", []):
+        print(f"  ERROR {error.get('code')}: {error.get('message')}")
+    for warning in validation.get("warnings", []):
+        print(f"  WARNING {warning.get('code')}: {warning.get('message')}")
+    try:
+        loaded = load_plugin(plugin["plugin_id"])
+    except Exception as exc:
+        print(f"loadable: no ({exc})")
+    else:
+        entrypoint = loaded.entrypoint
+        print(f"loadable: yes ({getattr(entrypoint, '__name__', 'module')})")
+
+
+def _print_plugin_validation(plugin: dict[str, Any]) -> None:
+    validation = plugin.get("validation") or {}
+    print(f"OpenMesh Plugin Validation: {plugin['plugin_id']}")
+    print()
+    print(f"status: {validation.get('status', 'unknown')}")
+    print(f"registry_version: {validation.get('registry_version')}")
+    print(
+        "supported_plugin_api_version: "
+        f"{validation.get('supported_plugin_api_version')}"
+    )
+    errors = validation.get("errors", [])
+    warnings = validation.get("warnings", [])
+    if not errors and not warnings:
+        print("No validation issues found.")
+        return
+    for error in errors:
+        print(f"ERROR {error.get('code')}: {error.get('message')}")
+    for warning in warnings:
+        print(f"WARNING {warning.get('code')}: {warning.get('message')}")
 
 
 def _print_discovery(discovery: dict[str, list[dict[str, Any]]]) -> None:
@@ -1378,6 +1459,35 @@ async def _integrations(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _plugins(args: argparse.Namespace) -> int:
+    _print_plugins(list_plugins())
+    return 0
+
+
+async def _plugins_list(args: argparse.Namespace) -> int:
+    _print_plugins(list_plugins())
+    return 0
+
+
+async def _plugins_inspect(args: argparse.Namespace) -> int:
+    plugin = get_plugin(args.plugin_id)
+    if not plugin:
+        print(f"OpenMesh plugin not found: {args.plugin_id}")
+        return 1
+    _print_plugin_detail(plugin)
+    return 0
+
+
+async def _plugins_validate(args: argparse.Namespace) -> int:
+    plugin = get_plugin(args.plugin_id)
+    if not plugin:
+        print(f"OpenMesh plugin not found: {args.plugin_id}")
+        return 1
+    _print_plugin_validation(plugin)
+    validation = plugin.get("validation") or {}
+    return 1 if validation.get("status") == "invalid" else 0
+
+
 async def _discover(args: argparse.Namespace) -> int:
     async def run(db):
         discovery = await get_discovery(db, limit=args.limit)
@@ -1813,6 +1923,22 @@ def build_parser() -> argparse.ArgumentParser:
         "integrations", help="Show OpenMesh framework integration status."
     )
     integrations.set_defaults(func=_integrations)
+
+    plugins = subparsers.add_parser("plugins", help="Show OpenMesh plugin status.")
+    plugins.set_defaults(func=_plugins)
+    plugin_subparsers = plugins.add_subparsers(dest="plugin_command")
+    plugins_list = plugin_subparsers.add_parser("list", help="List OpenMesh plugins.")
+    plugins_list.set_defaults(func=_plugins_list)
+    plugins_inspect = plugin_subparsers.add_parser(
+        "inspect", help="Inspect one OpenMesh plugin."
+    )
+    plugins_inspect.add_argument("plugin_id", help="Plugin id to inspect.")
+    plugins_inspect.set_defaults(func=_plugins_inspect)
+    plugins_validate = plugin_subparsers.add_parser(
+        "validate", help="Validate one OpenMesh plugin."
+    )
+    plugins_validate.add_argument("plugin_id", help="Plugin id to validate.")
+    plugins_validate.set_defaults(func=_plugins_validate)
 
     discover = subparsers.add_parser(
         "discover", help="Show observed OpenMesh ecosystem registry."

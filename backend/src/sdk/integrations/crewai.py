@@ -11,6 +11,27 @@ from src.shared.openmesh_events import OpenMeshEvent, OpenMeshNode, OpenMeshSeve
 from .registry import mark_integration_active
 
 
+OPENMESH_PLUGIN = {
+    "plugin_id": "crewai",
+    "name": "CrewAI",
+    "version": "0.1.0",
+    "plugin_api_version": "1.0",
+    "kind": "integration",
+    "status": "reference",
+    "package": "crewai",
+    "entrypoint": "OpenMeshCrewAI",
+    "description": "Observe CrewAI agents, tasks, tools, and crew workflow lifecycle.",
+    "capabilities": [
+        "agent.lifecycle",
+        "task.lifecycle",
+        "tool.lifecycle",
+        "workflow.lifecycle",
+        "graph.relationships",
+    ],
+    "metadata": {"framework": "CrewAI"},
+}
+
+
 _current_crewai_task: ContextVar[Optional["CrewAITaskContext"]] = ContextVar(
     "openmesh_crewai_task",
     default=None,

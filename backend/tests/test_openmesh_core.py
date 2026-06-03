@@ -130,6 +130,9 @@ from src.cli.openmesh import (
     _print_ecosystem,
     _print_mcp,
     _print_mcp_config,
+    _print_plugin_detail,
+    _print_plugin_validation,
+    _print_plugins,
     _print_snapshot_detail,
     _print_snapshot_diff,
     _print_snapshots,
@@ -3398,6 +3401,46 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Filesystem MCP", printed)
         self.assertIn("read_file", printed)
         self.assertIn("filesystem", printed)
+
+    def test_cli_plugin_printers_display_metadata(self):
+        plugin = {
+            "plugin_id": "langgraph",
+            "name": "LangGraph",
+            "kind": "integration",
+            "status": "reference",
+            "status_label": "Available",
+            "version": "0.1.0",
+            "plugin_api_version": "1.0",
+            "registry_version": "0.1",
+            "supported_plugin_api_version": "1.0",
+            "module": "src.sdk.integrations.langgraph",
+            "entrypoint": "OpenMeshLangGraph",
+            "package": "langgraph",
+            "package_version": "1.0.0",
+            "available": True,
+            "active": False,
+            "description": "Observe LangGraph workflows.",
+            "capabilities": ["node.lifecycle"],
+            "validation": {
+                "status": "valid",
+                "errors": [],
+                "warnings": [],
+            },
+        }
+        with patch("builtins.print") as printer:
+            _print_plugins([plugin])
+            _print_plugin_detail(plugin)
+            _print_plugin_validation(plugin)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Plugins", printed)
+        self.assertIn("langgraph", printed)
+        self.assertIn("OpenMesh Plugin: LangGraph", printed)
+        self.assertIn("OpenMesh Plugin Validation: langgraph", printed)
+        self.assertIn("node.lifecycle", printed)
+        self.assertIn("loadable: yes", printed)
 
     def test_cli_workflow_printer_displays_metadata(self):
         with patch("builtins.print") as printer:

@@ -77,6 +77,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Python SDK v0.1 for external programs to register agents and emit task/tool events through the collector
 - LangGraph reference integration for node lifecycle and transition observability
 - CrewAI reference integration for agent, task, tool, and workflow observability
+- Plugin registry for discovering, validating, loading, and inspecting OpenMesh integrations
 - Discovery, workflow, capability, MCP metadata, and unified ecosystem registries derived from observed events
 - Ecosystem snapshots for freezing graph, discovery, traces, sessions, registries, and provenance at a point in time
 - Historical snapshot diffs for comparing nodes, relationships, workflows, MCP servers, capabilities, traces, sessions, and graph statistics across time
@@ -322,6 +323,10 @@ openmesh query nodes added between snapshots
 openmesh query traces involving <node_id>
 openmesh capabilities
 openmesh integrations
+openmesh plugins
+openmesh plugins list
+openmesh plugins inspect langgraph
+openmesh plugins validate langgraph
 openmesh tui
 ```
 
@@ -334,6 +339,7 @@ python -m pip install openmesh
 ```
 
 See [docs/INSTALLATION.md](docs/INSTALLATION.md) and [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
+Plugin metadata and validation are documented in [docs/PLUGINS.md](docs/PLUGINS.md).
 
 Run the basic Python SDK example from the repository root:
 

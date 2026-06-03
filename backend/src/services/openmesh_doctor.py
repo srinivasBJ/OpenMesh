@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db.openmesh_events import list_openmesh_events, records_to_events
 from ..db.session import ASYNC_URL, DATABASE_URL
 from ..sdk.integrations import list_integrations
+from .ecosystem_registry import build_ecosystem_registry
 from .graph_state import reduce_graph_state
 from .mcp_capabilities import build_capability_registry, validate_capability_entries
 from .mcp_config_discovery import build_mcp_config_registry, discover_mcp_configs, validate_mcp_config_entries
@@ -94,6 +95,7 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
         checks.append(build_registry_compatibility_diagnostics(records))
         checks.append(build_capability_diagnostics(records))
         checks.append(build_workflow_registry_diagnostics(records))
+        checks.append(build_ecosystem_diagnostics(records))
         checks.append(build_mcp_config_diagnostics(records, discovered=discover_mcp_configs()))
     except Exception as exc:
         checks.append({"name": "OpenMesh Diagnostics", "status": "ERROR", "severity": "ERROR", "detail": str(exc)})
@@ -410,6 +412,26 @@ def build_workflow_registry_diagnostics(records: list[Any]) -> dict[str, Any]:
     warnings = detail["duplicate_workflows"]
     return {
         "name": "Workflow Registry Integrity",
+        "status": "ERROR" if errors else "WARNING" if warnings else "OK",
+        "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
+        "detail": detail,
+    }
+
+
+def build_ecosystem_diagnostics(records: list[Any]) -> dict[str, Any]:
+    ecosystem = build_ecosystem_registry(records)
+    validation = ecosystem["validation"]
+    detail = {
+        "entities_checked": ecosystem["summary"]["entity_count"],
+        "duplicate_entities": validation["duplicate_entities"],
+        "conflicting_definitions": validation["conflicting_definitions"],
+        "orphan_entities": validation["orphan_entities"],
+        "missing_relationships": validation["missing_relationships"],
+    }
+    errors = detail["duplicate_entities"] or detail["conflicting_definitions"]
+    warnings = detail["orphan_entities"] or detail["missing_relationships"]
+    return {
+        "name": "Ecosystem Integrity",
         "status": "ERROR" if errors else "WARNING" if warnings else "OK",
         "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
         "detail": detail,

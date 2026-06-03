@@ -13,6 +13,7 @@ from textual.widgets import DataTable, Footer, Static
 from ..db.openmesh_events import list_openmesh_events
 from ..db.session import AsyncSessionLocal
 from ..services.discovery import get_discovery
+from ..services.ecosystem_registry import get_ecosystem_registry
 from ..services.mcp_capabilities import get_capability_registry
 from ..services.mcp_config_discovery import get_mcp_config_registry
 from ..services.mcp_discovery import get_mcp_registry
@@ -46,6 +47,7 @@ class TuiSnapshot:
     mcp_configs: list[dict[str, Any]]
     capabilities: list[dict[str, Any]]
     workflows: list[dict[str, Any]]
+    ecosystem: dict[str, Any]
     registry_status: dict[str, Any]
     loaded_at: datetime
 
@@ -65,6 +67,7 @@ async def load_snapshot() -> TuiSnapshot:
             mcp_configs=await get_mcp_config_registry(db, limit=5000),
             capabilities=await get_capability_registry(db, limit=5000),
             workflows=await get_workflow_registry(db, limit=5000),
+            ecosystem=await get_ecosystem_registry(db, limit=5000),
             registry_status=build_registry_status(registry_records),
             loaded_at=datetime.utcnow(),
         )
@@ -358,6 +361,39 @@ def workflow_rows(snapshot: TuiSnapshot) -> list[str]:
     return rows
 
 
+def ecosystem_rows(snapshot: TuiSnapshot) -> list[str]:
+    ecosystem = snapshot.ecosystem
+    summary = ecosystem.get("summary", {})
+    rows = [
+        "Ecosystem",
+        f"  entities {summary.get('entity_count', 0)} relationships {summary.get('relationship_count', 0)}",
+        "",
+    ]
+    labels = [
+        ("Agents", "agents"),
+        ("Tools", "tools"),
+        ("Processes", "processes"),
+        ("Workflows", "workflows"),
+        ("MCP Servers", "mcp_servers"),
+        ("MCP Configs", "mcp_configs"),
+        ("Capabilities", "capabilities"),
+    ]
+    entities_by_group = ecosystem.get("entities", {})
+    for label, key in labels:
+        rows.append(label)
+        entities = entities_by_group.get(key, [])
+        if not entities:
+            rows.append("  none observed")
+        for entity in entities[:5]:
+            rows.append(
+                f"  {_short(entity.get('name'), 17):<17} "
+                f"{_short(entity.get('status'), 8):<8} "
+                f"e:{entity.get('event_count', 0)} r:{entity.get('relationship_count', 0)}"
+            )
+        rows.append("")
+    return rows
+
+
 def trace_detail_rows(snapshot: TuiSnapshot, trace_id: str) -> list[str]:
     events = sorted(
         [event for event in snapshot.events if event.get("trace_id") == trace_id],
@@ -583,6 +619,7 @@ class OpenMeshTui(App):
         ("9", "show_mcp_config", "MCP Config"),
         ("0", "show_capabilities", "Capabilities"),
         ("w", "show_workflows", "Workflows"),
+        ("e", "show_ecosystem", "Ecosystem"),
         ("enter", "inspect_selected", "Inspect"),
         ("q", "quit", "Quit"),
     ]
@@ -639,7 +676,7 @@ class OpenMeshTui(App):
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -725,6 +762,10 @@ class OpenMeshTui(App):
             self.query_one("#event-title", Static).update("WORKFLOWS")
             self.query_one("#event-body", Static).update("\n".join(workflow_rows(self.snapshot)))
             return
+        if self.lower_right_mode == "ecosystem":
+            self.query_one("#event-title", Static).update("ECOSYSTEM")
+            self.query_one("#event-body", Static).update("\n".join(ecosystem_rows(self.snapshot)))
+            return
         if self.lower_right_mode == "trace" and self.selected_trace_id:
             self.query_one("#event-title", Static).update("TRACE DETAIL")
             self.query_one("#event-body", Static).update("\n".join(trace_detail_rows(self.snapshot, self.selected_trace_id)))
@@ -784,6 +825,11 @@ class OpenMeshTui(App):
 
     def action_show_workflows(self) -> None:
         self.lower_right_mode = "workflows"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_show_ecosystem(self) -> None:
+        self.lower_right_mode = "ecosystem"
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
 

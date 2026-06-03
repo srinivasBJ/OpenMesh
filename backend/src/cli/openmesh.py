@@ -14,6 +14,7 @@ from ..db.openmesh_events import list_openmesh_events
 from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_session
 from ..services.openmesh_collector import collector
 from ..services.discovery import get_discovery
+from ..services.ecosystem_registry import get_ecosystem_registry
 from ..services.mcp_config_discovery import (
     get_mcp_config_registry,
     register_discovered_mcp_configs,
@@ -394,6 +395,38 @@ def _print_workflows(workflows: list[dict[str, Any]]) -> None:
         )
 
 
+def _print_ecosystem(ecosystem: dict[str, Any]) -> None:
+    print("OpenMesh Ecosystem")
+    print()
+    summary = ecosystem.get("summary", {})
+    print(f"Entities: {summary.get('entity_count', 0)}")
+    print(f"Relationships: {summary.get('relationship_count', 0)}")
+    print()
+    labels = [
+        ("Agents", "agents"),
+        ("Tools", "tools"),
+        ("Processes", "processes"),
+        ("Workflows", "workflows"),
+        ("MCP Servers", "mcp_servers"),
+        ("MCP Configs", "mcp_configs"),
+        ("Capabilities", "capabilities"),
+    ]
+    for title, key in labels:
+        print(title)
+        entities = ecosystem.get("entities", {}).get(key, [])
+        if not entities:
+            print("  none observed")
+        for entity in entities:
+            print(
+                f"  {_short(entity.get('name'), 28):<28} "
+                f"{_short(entity.get('status'), 10):<10} "
+                f"e:{entity.get('event_count', 0):<3} "
+                f"r:{entity.get('relationship_count', 0):<3} "
+                f"{entity.get('last_seen') or '-'}"
+            )
+        print()
+
+
 def _utc_now() -> datetime:
     return datetime.utcnow()
 
@@ -623,6 +656,14 @@ async def _workflows(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _ecosystem(args: argparse.Namespace) -> int:
+    async def run(db):
+        ecosystem = await get_ecosystem_registry(db, limit=args.limit)
+        _print_ecosystem(ecosystem)
+
+    return await _with_db(run)
+
+
 def _paths_by_source(raw_paths: list[str] | None) -> dict[str, list[Path]]:
     paths: dict[str, list[Path]] = {}
     for raw in raw_paths or []:
@@ -839,6 +880,10 @@ def build_parser() -> argparse.ArgumentParser:
     workflows = subparsers.add_parser("workflows", help="Show discovered workflow metadata.")
     workflows.add_argument("--limit", type=int, default=5000, help="Maximum events to derive workflow registry from.")
     workflows.set_defaults(func=_workflows)
+
+    ecosystem = subparsers.add_parser("ecosystem", help="Show unified OpenMesh ecosystem inventory.")
+    ecosystem.add_argument("--limit", type=int, default=5000, help="Maximum events to derive ecosystem registry from.")
+    ecosystem.set_defaults(func=_ecosystem)
 
     tui = subparsers.add_parser("tui", help="Launch the OpenMesh terminal UI.")
     tui.add_argument("--once", action="store_true", help="Render one terminal capture and exit.")

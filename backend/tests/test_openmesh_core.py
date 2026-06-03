@@ -38,8 +38,10 @@ from src.services.mcp_capabilities import (
     register_mcp_capability,
     validate_capability_entries,
 )
+from src.services.ecosystem_registry import build_ecosystem_registry, validate_ecosystem_entities
 from src.services.openmesh_doctor import (
     build_capability_diagnostics,
+    build_ecosystem_diagnostics,
     build_graph_diagnostics,
     build_mcp_config_diagnostics,
     build_node_diagnostics,
@@ -75,7 +77,7 @@ from src.services.workflow_registry import (
     workflow_node,
 )
 from src.shared.openmesh_events import agent_node, make_openmesh_event
-from src.cli.openmesh import _print_capabilities, _print_mcp, _print_mcp_config, _print_workflows
+from src.cli.openmesh import _print_capabilities, _print_ecosystem, _print_mcp, _print_mcp_config, _print_workflows
 from src.cli.tui import (
     TuiSnapshot,
     capability_rows,
@@ -85,6 +87,7 @@ from src.cli.tui import (
     node_detail_rows,
     registry_rows,
     render_plain,
+    ecosystem_rows,
     workflow_rows,
 )
 
@@ -797,6 +800,82 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(diagnostics["severity"], "ERROR")
         self.assertEqual(len(diagnostics["detail"]["missing_required_metadata"]), 1)
 
+    def test_ecosystem_registry_unifies_observed_entities(self):
+        agent = agent_node("agent:research", "Research Agent", "researcher")
+        workflow = workflow_node(WorkflowEntry(
+            workflow="Research Flow",
+            framework="LangGraph",
+            version="0.1.0",
+            source="examples/langgraph_basic.py",
+        ))
+        tool = {"node_id": "tool:web_search", "node_type": "tool", "name": "web_search", "runtime": "mcp"}
+        mcp = mcp_server_node(name="Search MCP", transport="http", endpoint="http://localhost:8765/mcp")
+        capability = capability_node(MCPCapabilityEntry(
+            server="Search MCP",
+            capability="web_search",
+            description="Search query metadata",
+            category="search",
+        ))
+        config_source = {
+            "node_id": "mcp_config:codex:config",
+            "node_type": "service",
+            "name": "Codex MCP Config",
+            "runtime": "mcp.config",
+            "metadata": {"source": "Codex", "config_path": "/tmp/config.toml"},
+        }
+        events = [
+            make_openmesh_event("workflow.registered", agent, {"workflow": "Research Flow", "framework": "LangGraph", "source": "examples/langgraph_basic.py"}, target=workflow),
+            make_openmesh_event("workflow.tool.used", workflow, {"workflow": "Research Flow"}, target=tool),
+            make_openmesh_event("workflow.mcp.connected", workflow, {"workflow": "Research Flow"}, target=mcp),
+            make_openmesh_event("mcp.capability.discovered", mcp, {"server": "Search MCP", "capability": "web_search", "category": "search"}, target=capability),
+            make_openmesh_event(
+                "mcp.config.discovered",
+                config_source,
+                {
+                    "source": "Codex",
+                    "config_path": "/tmp/config.toml",
+                    "server": "Search MCP",
+                    "transport": "http",
+                    "endpoint": "http://localhost:8765/mcp",
+                },
+                target=mcp,
+            ),
+        ]
+        registry = build_ecosystem_registry([record_from_event(event) for event in events])
+
+        self.assertEqual(registry["summary"]["groups"]["agents"], 1)
+        self.assertEqual(registry["summary"]["groups"]["tools"], 1)
+        self.assertEqual(registry["summary"]["groups"]["workflows"], 1)
+        self.assertEqual(registry["summary"]["groups"]["mcp_servers"], 1)
+        self.assertEqual(registry["summary"]["groups"]["mcp_configs"], 1)
+        self.assertEqual(registry["summary"]["groups"]["capabilities"], 1)
+        self.assertEqual(registry["validation"]["status"], "OK")
+
+    def test_ecosystem_validation_detects_duplicates_and_orphans(self):
+        validation = validate_ecosystem_entities([
+            {"id": "agent:a", "type": "agent", "name": "Agent A", "relationship_count": 0, "metadata": {}},
+            {"id": "agent:b", "type": "agent", "name": "Agent A", "relationship_count": 1, "metadata": {}},
+            {"id": "tool:a", "type": "tool", "name": "Tool A", "relationship_count": 0, "metadata": {}},
+        ])
+
+        self.assertEqual(validation["status"], "ERROR")
+        self.assertEqual(len(validation["duplicate_entities"]), 1)
+        self.assertEqual(len(validation["orphan_entities"]), 2)
+        self.assertEqual(len(validation["missing_relationships"]), 2)
+
+    def test_doctor_ecosystem_diagnostics_reports_integrity_issues(self):
+        event = make_openmesh_event(
+            "agent.started",
+            {"node_id": "agent:solo", "node_type": "agent", "name": "Solo Agent"},
+            {"status": "started"},
+        )
+
+        diagnostics = build_ecosystem_diagnostics([record_from_event(event)])
+
+        self.assertEqual(diagnostics["name"], "Ecosystem Integrity")
+        self.assertEqual(diagnostics["severity"], "WARNING")
+        self.assertEqual(len(diagnostics["detail"]["orphan_entities"]), 1)
+
     def test_graph_validation_distinguishes_relationship_integrity_errors(self):
         nodes = {
             "agent:a": {"id": "agent:a", "type": "agent", "name": "Agent A", "category": "agents"},
@@ -1210,6 +1289,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             mcp_configs=[],
             capabilities=[],
             workflows=[],
+            ecosystem={
+                "entities": {"agents": [], "tools": [], "processes": [], "workflows": [], "mcp_servers": [], "mcp_configs": [], "capabilities": []},
+                "summary": {"entity_count": 0, "relationship_count": 0},
+                "validation": {"status": "OK"},
+            },
             registry_status=build_registry_status([]),
             loaded_at=datetime.utcnow(),
         )
@@ -1263,6 +1347,35 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "source": "examples/langgraph_basic.py",
                 "last_seen": "2026-06-03T10:00:00Z",
             }],
+            ecosystem={
+                "entities": {
+                    "agents": [],
+                    "tools": [],
+                    "processes": [],
+                    "workflows": [{
+                        "id": "workflow:research",
+                        "type": "workflow",
+                        "name": "Research Flow",
+                        "status": "active",
+                        "event_count": 3,
+                        "relationship_count": 2,
+                        "last_seen": "2026-06-03T10:00:00Z",
+                    }],
+                    "mcp_servers": [{
+                        "id": "mcp:filesystem",
+                        "type": "mcp_server",
+                        "name": "Filesystem MCP",
+                        "status": "active",
+                        "event_count": 1,
+                        "relationship_count": 1,
+                        "last_seen": "2026-06-03T10:00:00Z",
+                    }],
+                    "mcp_configs": [],
+                    "capabilities": [],
+                },
+                "summary": {"entity_count": 2, "relationship_count": 2},
+                "validation": {"status": "OK"},
+            },
             registry_status=build_registry_status([]),
             loaded_at=datetime.utcnow(),
         )
@@ -1280,6 +1393,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         workflow_output = "\n".join(workflow_rows(snapshot))
         self.assertIn("Research Flow", workflow_output)
         self.assertIn("LangGraph", workflow_output)
+        ecosystem_output = "\n".join(ecosystem_rows(snapshot))
+        self.assertIn("Ecosystem", ecosystem_output)
+        self.assertIn("Research Flow", ecosystem_output)
 
     def test_cli_mcp_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
@@ -1332,6 +1448,26 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
         self.assertIn("Research Flow", printed)
         self.assertIn("LangGraph", printed)
+
+    def test_cli_ecosystem_printer_displays_grouped_inventory(self):
+        with patch("builtins.print") as printer:
+            _print_ecosystem({
+                "entities": {
+                    "agents": [{"name": "Research Agent", "status": "active", "event_count": 1, "relationship_count": 1, "last_seen": "2026-06-03T10:00:00Z"}],
+                    "tools": [],
+                    "processes": [],
+                    "workflows": [{"name": "Research Flow", "status": "active", "event_count": 3, "relationship_count": 2, "last_seen": "2026-06-03T10:00:00Z"}],
+                    "mcp_servers": [],
+                    "mcp_configs": [],
+                    "capabilities": [],
+                },
+                "summary": {"entity_count": 2, "relationship_count": 2},
+            })
+
+        printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
+        self.assertIn("OpenMesh Ecosystem", printed)
+        self.assertIn("Research Agent", printed)
+        self.assertIn("Research Flow", printed)
 
 
 if __name__ == "__main__":

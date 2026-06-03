@@ -21,6 +21,7 @@ from ...core.security import protect_write
 from ...shared.openmesh_events import agent_node, make_openmesh_event
 from ...services.openmesh_collector import collector
 from ...services.discovery import get_discovery
+from ...services.ecosystem_registry import get_ecosystem_registry
 from ...services.mcp_capabilities import get_capability_registry
 from ...services.mcp_config_discovery import get_mcp_config_registry
 from ...services.mcp_discovery import get_mcp_registry
@@ -561,6 +562,14 @@ async def get_openmesh_workflows(
     db: AsyncSession = Depends(get_db),
 ):
     return {"workflows": await get_workflow_registry(db, limit=limit)}
+
+
+@router.get("/openmesh/ecosystem")
+async def get_openmesh_ecosystem(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_ecosystem_registry(db, limit=limit)
 
 
 # ── STATS ─────────────────────────────────────────────────────────────────────

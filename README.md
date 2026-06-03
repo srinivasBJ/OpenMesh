@@ -322,19 +322,30 @@ openmesh tui
 
 The TUI uses a terminal-first control-room layout where the network panel stays visible while agents/processes, traces, and live events update from persisted OpenMesh data.
 
-See [docs/INSTALLATION.md](docs/INSTALLATION.md) and [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
+See [docs/INSTALLATION.md](docs/INSTALLATION.md), [STARTUP_GUIDE.md](STARTUP_GUIDE.md), [TROUBLESHOOTING.md](TROUBLESHOOTING.md), and [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
 Plugin metadata and validation are documented in [docs/PLUGINS.md](docs/PLUGINS.md).
 Graph exploration is documented in [docs/GRAPH_EXPLORATION.md](docs/GRAPH_EXPLORATION.md).
 Federation metadata exchange is documented in [docs/FEDERATION.md](docs/FEDERATION.md).
 Evaluation benchmarks are documented in [docs/EVALUATION.md](docs/EVALUATION.md).
 Integration guides are documented in [docs/integrations](docs/integrations).
 
-Run the basic Python SDK example from the repository root:
+Run the core Python SDK examples from the repository root:
 
 ```bash
 python examples/python_basic_agent.py
 python examples/python_async_agent.py
+```
+
+The LangGraph example requires LangGraph:
+
+```bash
+python -m pip install langgraph
 python examples/langgraph_basic.py
+```
+
+Other integration examples are useful for ecosystem metadata validation, but may require optional framework packages or local runtime configuration:
+
+```bash
 python examples/crewai_basic.py
 python examples/autogen_basic.py
 python examples/openhands_basic.py

@@ -52,7 +52,13 @@ class OpenMeshSdkTests(unittest.TestCase):
             sessions.append(session)
             return FakeSessionContext(session)
 
-        with patch("src.sdk.client.AsyncSessionLocal", session_factory):
+        async def fake_init_db(*, announce=True):
+            return None
+
+        with (
+            patch("src.sdk.client.AsyncSessionLocal", session_factory),
+            patch("src.sdk.client.init_db", fake_init_db),
+        ):
             action()
 
         records = [session.added[0] for session in sessions if session.added]
@@ -69,6 +75,29 @@ class OpenMeshSdkTests(unittest.TestCase):
         self.assertEqual(events[0]["source"]["node_type"], "agent")
         self.assertEqual(events[0]["source"]["runtime"], "openmesh.sdk.python")
         self.assertEqual(events[0]["session_id"], "sess_sdk")
+
+    def test_client_bootstraps_database_once_per_client(self):
+        sessions = []
+        init_calls = []
+
+        def session_factory():
+            session = FakeAsyncSession()
+            sessions.append(session)
+            return FakeSessionContext(session)
+
+        async def fake_init_db(*, announce=True):
+            init_calls.append(announce)
+
+        with (
+            patch("src.sdk.client.AsyncSessionLocal", session_factory),
+            patch("src.sdk.client.init_db", fake_init_db),
+        ):
+            client = OpenMeshClient(session_id="sess_sdk", broadcast=False)
+            agent = client.agent(id="research-agent", name="Research Agent")
+            agent.emit("message.sent", {"message": "ready"})
+
+        self.assertEqual(init_calls, [False])
+        self.assertEqual(len([session for session in sessions if session.added]), 2)
 
     def test_task_context_emits_started_and_completed_on_same_trace(self):
         def action():
@@ -168,7 +197,13 @@ class OpenMeshAsyncSdkTests(unittest.IsolatedAsyncioTestCase):
             sessions.append(session)
             return FakeSessionContext(session)
 
-        with patch("src.sdk.client.AsyncSessionLocal", session_factory):
+        async def fake_init_db(*, announce=True):
+            return None
+
+        with (
+            patch("src.sdk.client.AsyncSessionLocal", session_factory),
+            patch("src.sdk.client.init_db", fake_init_db),
+        ):
             await action()
 
         records = [session.added[0] for session in sessions if session.added]

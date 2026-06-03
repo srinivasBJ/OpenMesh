@@ -230,6 +230,15 @@ class OpenMeshLangGraph:
             },
         }
 
+    def _runtime_node(self) -> OpenMeshNode:
+        return {
+            "node_id": "framework:langgraph",
+            "node_type": "service",
+            "name": "LangGraph",
+            "runtime": "langgraph",
+            "metadata": {"framework": "langgraph", "source": "langgraph"},
+        }
+
     def _remember_root(self, event: dict[str, Any]) -> None:
         if self._root_event_id is None:
             self._root_event_id = event.get("root_event_id") or event["event_id"]
@@ -242,12 +251,13 @@ class OpenMeshLangGraph:
             }
         event = self.client.emit(
             "workflow.started",
-            self._workflow_node(),
+            self._runtime_node(),
             {
                 "graph": self.graph_name,
                 "source": "langgraph",
                 "runtime": {"framework": "langgraph", "graph": self.graph_name},
             },
+            target=self._workflow_node(),
             trace_id=self.trace_id,
             span_id=self._workflow_span_id,
         )
@@ -263,12 +273,13 @@ class OpenMeshLangGraph:
             }
         event = await self.client.emit_async(
             "workflow.started",
-            self._workflow_node(),
+            self._runtime_node(),
             {
                 "graph": self.graph_name,
                 "source": "langgraph",
                 "runtime": {"framework": "langgraph", "graph": self.graph_name},
             },
+            target=self._workflow_node(),
             trace_id=self.trace_id,
             span_id=self._workflow_span_id,
         )

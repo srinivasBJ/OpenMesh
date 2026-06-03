@@ -17,6 +17,13 @@ The CLI now quietly runs the same SQLAlchemy schema bootstrap used by backend
 startup before database-backed commands. Errors are not hidden: if schema
 creation fails, the CLI reports the database exception.
 
+Follow-up validation found and fixed two additional first-user blockers:
+
+- Python SDK examples could fail on a fresh database with `no such table:
+  openmesh_events` because the SDK opened sessions without schema bootstrap.
+- The LangGraph example created a workflow node with no graph relationship,
+  causing `openmesh doctor` ecosystem warnings after the example ran.
+
 ## Phase 1 - Repository Audit
 
 ### Backend
@@ -194,9 +201,21 @@ OpenMesh Diagnostics: ERROR
 - `backend/src/db/session.py` now supports `init_db(announce=False)`.
 - `backend/src/cli/openmesh.py` calls `init_db(announce=False)` inside `_with_db`
   before opening a database session.
+- `backend/src/sdk/client.py` calls `init_db(announce=False)` once per
+  `OpenMeshClient` before its first persisted event.
 
 This creates the schema for SQLite or Postgres-backed CLI commands. If database
 creation fails, the command still returns a database error.
+
+### Example Flow Finding
+
+The SDK examples previously failed on a clean database unless `openmesh doctor`
+or backend startup had already created tables. This is fixed by SDK bootstrap.
+
+The LangGraph example previously generated a workflow node without a
+relationship, so ecosystem diagnostics reported the workflow as orphaned. The
+LangGraph integration now emits `LangGraph -> runs -> <workflow>` through the
+existing `workflow.started` event shape.
 
 ### Packaging Finding
 
@@ -275,6 +294,63 @@ OPENMESH_DB_MODE=sqlite OPENMESH_SQLITE_PATH=/tmp/openmesh-first-user.db openmes
 
 All commands completed successfully after schema bootstrap.
 
+### Clean Clone Product Audit
+
+Validated from a clean `git archive HEAD` copy with no local database:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+npm install --prefix frontend
+```
+
+Validation commands:
+
+```bash
+openmesh doctor
+openmesh discover
+openmesh ecosystem
+openmesh graph
+openmesh integrations
+openmesh run -- python -c "print('hello openmesh product audit')"
+openmesh graph --details
+openmesh inspect openmesh.cli
+openmesh timeline
+openmesh replay --control step
+openmesh query relationships created since 2020-01-01T00:00:00Z
+openmesh tui --once
+```
+
+All commands completed successfully.
+
+SDK and LangGraph examples were validated from a fresh database:
+
+```bash
+python examples/python_basic_agent.py
+python examples/python_async_agent.py
+python -m pip install langgraph
+python examples/langgraph_basic.py
+openmesh doctor
+openmesh discover
+openmesh graph --details
+openmesh timeline
+openmesh replay --control step
+openmesh query traces involving research-agent
+```
+
+The fixed example database ended with `openmesh doctor` reporting `Overall: OK`.
+Graph output included:
+
+```text
+Research Agent --uses--> web_search
+Async Research Agent --uses--> web_search
+LangGraph --runs--> LangGraph Basic
+Node A --transitions_to--> Node B
+Node B --transitions_to--> Node C
+```
+
 Backend startup was validated with:
 
 ```bash
@@ -306,8 +382,10 @@ Updated:
 
 - `README.md`
 - `docs/INSTALLATION.md`
+- `STARTUP_GUIDE.md`
+- `TROUBLESHOOTING.md`
 
-Both now document:
+Together they document:
 
 - Python 3.11-3.13 support
 - SQLite-first setup
@@ -318,6 +396,10 @@ Both now document:
 - CLI/TUI commands
 - troubleshooting
 
+`STARTUP_GUIDE.md` documents the exact first-user path. `TROUBLESHOOTING.md`
+documents observed install, schema, SDK, LangGraph, frontend, and legacy naming
+issues.
+
 ## Remaining Risks
 
 - Repository still contains duplicate `* 2.*` files in the working tree.
@@ -325,3 +407,6 @@ Both now document:
 - Optional integrations report `Not installed` unless their external framework
   packages are installed.
 - Python 3.14 should remain unsupported until dependencies are validated there.
+- `npm install` in the frontend reports existing dependency audit warnings.
+- There is no standalone migration command; first-user schema creation is
+  currently handled by CLI, SDK, and backend bootstrap.

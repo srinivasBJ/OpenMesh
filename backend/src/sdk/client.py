@@ -12,7 +12,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from src.db.session import AsyncSessionLocal  # noqa: E402
+from src.db.session import AsyncSessionLocal, init_db  # noqa: E402
 from src.services.openmesh_collector import collector  # noqa: E402
 from src.shared.openmesh_events import (  # noqa: E402
     OpenMeshEvent,
@@ -69,10 +69,13 @@ class OpenMeshClient:
         workspace_id: str = "local",
         session_id: Optional[str] = None,
         broadcast: bool = True,
+        bootstrap_db: bool = True,
     ) -> None:
         self.workspace_id = workspace_id
         self.session_id = session_id or f"sess_{uuid4().hex}"
         self.broadcast = broadcast
+        self.bootstrap_db = bootstrap_db
+        self._db_bootstrapped = False
 
     def agent(
         self,
@@ -163,9 +166,16 @@ class OpenMeshClient:
             parent_span_id=parent_span_id,
             links=links,
         )
+        await self._ensure_database_ready()
         async with AsyncSessionLocal() as db:
             await collector.accept(db, event, broadcast=self.broadcast)
         return event
+
+    async def _ensure_database_ready(self) -> None:
+        if not self.bootstrap_db or self._db_bootstrapped:
+            return
+        await init_db(announce=False)
+        self._db_bootstrapped = True
 
     @staticmethod
     def _has_running_loop() -> bool:

@@ -26,6 +26,8 @@ This installs:
 - `from openmesh import OpenMeshClient`
 - the `openmesh` CLI command
 
+For the complete startup flow, see [../STARTUP_GUIDE.md](../STARTUP_GUIDE.md).
+
 ## Local SQLite Mode
 
 OpenMesh defaults to SQLite in development when `aiosqlite` is installed. You
@@ -68,6 +70,33 @@ openmesh timeline
 openmesh replay --control step
 openmesh query relationships created since 2020-01-01T00:00:00Z
 openmesh tui --once
+```
+
+## SDK Examples
+
+Run the core SDK examples:
+
+```bash
+python examples/python_basic_agent.py
+python examples/python_async_agent.py
+```
+
+LangGraph is optional:
+
+```bash
+python -m pip install langgraph
+python examples/langgraph_basic.py
+```
+
+Validate example output:
+
+```bash
+openmesh doctor
+openmesh discover
+openmesh graph --details
+openmesh timeline
+openmesh replay --control step
+openmesh query traces involving research-agent
 ```
 
 ## Backend API
@@ -132,5 +161,8 @@ openmesh tui --once
 - `openmesh: command not found`: activate the virtualenv where you installed OpenMesh.
 - `Requires-Python` or `psycopg2` build errors: use Python 3.11, 3.12, or 3.13.
 - `openmesh doctor` reports missing tables: upgrade to the latest checkout and rerun `openmesh doctor`; schema bootstrap now runs before database-backed CLI commands.
+- SDK examples report `no such table: openmesh_events`: upgrade to the latest checkout and reinstall; the SDK now bootstraps schema before its first event.
 - `Not installed` integration status: the OpenMesh plugin exists, but the optional external framework package is not installed.
 - Postgres connection errors: verify `DATABASE_URL`, the database server, and credentials, then rerun `openmesh doctor`.
+
+For more recovery paths, see [../TROUBLESHOOTING.md](../TROUBLESHOOTING.md).

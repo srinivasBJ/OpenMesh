@@ -53,7 +53,13 @@ class OpenMeshCrewAIIntegrationTests(unittest.TestCase):
             sessions.append(session)
             return FakeSessionContext(session)
 
-        with patch("src.sdk.client.AsyncSessionLocal", session_factory):
+        async def fake_init_db(*, announce=True):
+            return None
+
+        with (
+            patch("src.sdk.client.AsyncSessionLocal", session_factory),
+            patch("src.sdk.client.init_db", fake_init_db),
+        ):
             action()
 
         return [session.added[0] for session in sessions if session.added]

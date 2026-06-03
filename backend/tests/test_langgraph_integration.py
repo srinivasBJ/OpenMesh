@@ -59,7 +59,13 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
             sessions.append(session)
             return FakeSessionContext(session)
 
-        with patch("src.sdk.client.AsyncSessionLocal", session_factory):
+        async def fake_init_db(*, announce=True):
+            return None
+
+        with (
+            patch("src.sdk.client.AsyncSessionLocal", session_factory),
+            patch("src.sdk.client.init_db", fake_init_db),
+        ):
             action()
 
         records = [session.added[0] for session in sessions if session.added]
@@ -110,6 +116,10 @@ class OpenMeshLangGraphIntegrationTests(unittest.TestCase):
         node_starts = [
             event for event in events if event["event_type"] == "node.started"
         ]
+        self.assertEqual(workflow["source"]["node_type"], "service")
+        self.assertEqual(workflow["source"]["name"], "LangGraph")
+        self.assertEqual(workflow["target"]["node_type"], "workflow")
+        self.assertEqual(workflow["target"]["name"], "Basic Flow")
         self.assertEqual(transition["source"]["name"], "Node A")
         self.assertEqual(transition["target"]["name"], "Node B")
         self.assertEqual(transition["trace_id"], "trace_langgraph")
@@ -289,7 +299,13 @@ class OpenMeshAsyncLangGraphIntegrationTests(unittest.IsolatedAsyncioTestCase):
             sessions.append(session)
             return FakeSessionContext(session)
 
-        with patch("src.sdk.client.AsyncSessionLocal", session_factory):
+        async def fake_init_db(*, announce=True):
+            return None
+
+        with (
+            patch("src.sdk.client.AsyncSessionLocal", session_factory),
+            patch("src.sdk.client.init_db", fake_init_db),
+        ):
             await action()
 
         records = [session.added[0] for session in sessions if session.added]

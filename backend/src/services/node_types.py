@@ -26,7 +26,13 @@ class NodeType:
 NODE_TYPES: dict[str, NodeType] = {
     "agent": NodeType("agent", "Agent", "An autonomous or assisted agent.", "agents", COMMON_METADATA + ("role",)),
     "tool": NodeType("tool", "Tool", "A callable tool used by an agent or runtime.", "tools", COMMON_METADATA + ("capabilities",)),
-    "workflow": NodeType("workflow", "Workflow", "A coordinated execution flow.", "workflows", COMMON_METADATA + ("graph",)),
+    "workflow": NodeType(
+        "workflow",
+        "Workflow",
+        "A coordinated execution flow.",
+        "workflows",
+        COMMON_METADATA + ("graph", "source"),
+    ),
     "process": NodeType("process", "Process", "An observed operating system process.", "processes", COMMON_METADATA + ("session_id", "pid")),
     "command": NodeType("command", "Command", "A command executed by a process.", "processes", COMMON_METADATA + ("executable",)),
     "service": NodeType(

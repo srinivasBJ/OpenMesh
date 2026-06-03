@@ -46,6 +46,7 @@ from src.services.openmesh_doctor import (
     build_registry_compatibility_diagnostics,
     build_relationship_diagnostics,
     build_trace_diagnostics,
+    build_workflow_registry_diagnostics,
 )
 from src.services.registry_compatibility import (
     NODE_REGISTRY_VERSION,
@@ -66,8 +67,15 @@ from src.services.relationship_types import (
     validate_relationship,
 )
 from src.services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace, validate_trace_semantics
+from src.services.workflow_registry import (
+    WorkflowEntry,
+    build_workflow_registry,
+    register_workflow,
+    validate_workflow_entries,
+    workflow_node,
+)
 from src.shared.openmesh_events import agent_node, make_openmesh_event
-from src.cli.openmesh import _print_capabilities, _print_mcp, _print_mcp_config
+from src.cli.openmesh import _print_capabilities, _print_mcp, _print_mcp_config, _print_workflows
 from src.cli.tui import (
     TuiSnapshot,
     capability_rows,
@@ -77,6 +85,7 @@ from src.cli.tui import (
     node_detail_rows,
     registry_rows,
     render_plain,
+    workflow_rows,
 )
 
 
@@ -668,6 +677,126 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(diagnostics["severity"], "ERROR")
         self.assertEqual(len(diagnostics["detail"]["missing_required_metadata"]), 1)
 
+    async def test_workflow_registration_uses_collector_and_metadata_only(self):
+        db = FakeAsyncSession()
+        entry = WorkflowEntry(
+            workflow="Research Flow",
+            framework="LangGraph",
+            version="0.1.0",
+            source="examples/langgraph_basic.py",
+        )
+
+        event = await register_workflow(
+            db,
+            entry,
+            source=agent_node("agent:research", "Research Agent", "researcher"),
+            broadcast=False,
+        )
+
+        self.assertEqual(event["event_type"], "workflow.registered")
+        self.assertEqual(event["source"]["node_type"], "agent")
+        self.assertEqual(event["target"]["node_type"], "workflow")
+        self.assertEqual(event["target"]["metadata"]["framework"], "LangGraph")
+        self.assertEqual(event["target"]["metadata"]["source"], "examples/langgraph_basic.py")
+        self.assertEqual(len(db.added), 1)
+
+    def test_workflow_registry_graph_and_discovery_are_event_derived(self):
+        agent = agent_node("agent:research", "Research Agent", "researcher")
+        workflow = workflow_node(WorkflowEntry(
+            workflow="Research Flow",
+            framework="LangGraph",
+            version="0.1.0",
+            source="examples/langgraph_basic.py",
+        ))
+        tool = {
+            "node_id": "tool:web_search",
+            "node_type": "tool",
+            "name": "web_search",
+            "runtime": "mcp",
+        }
+        mcp = mcp_server_node(name="Search MCP", transport="http", endpoint="http://localhost:8765/mcp")
+        events = [
+            make_openmesh_event(
+                "workflow.registered",
+                agent,
+                {
+                    "workflow": "Research Flow",
+                    "framework": "LangGraph",
+                    "version": "0.1.0",
+                    "source": "examples/langgraph_basic.py",
+                },
+                target=workflow,
+                session_id="sess_workflow",
+                trace_id="trace_workflow",
+            ),
+            make_openmesh_event(
+                "workflow.tool.used",
+                workflow,
+                {"workflow": "Research Flow", "tool": "web_search"},
+                target=tool,
+                session_id="sess_workflow",
+                trace_id="trace_workflow",
+            ),
+            make_openmesh_event(
+                "workflow.mcp.connected",
+                workflow,
+                {"workflow": "Research Flow", "server": "Search MCP"},
+                target=mcp,
+                session_id="sess_workflow",
+                trace_id="trace_workflow",
+            ),
+        ]
+        records = [record_from_event(event) for event in events]
+
+        registry = build_workflow_registry(records)
+        discovery = build_discovery(records)
+        graph = reduce_graph_state(records)
+        edge_types = {edge["type"] for edge in graph["edges"]}
+
+        self.assertEqual(registry[0]["workflow"], "Research Flow")
+        self.assertEqual(registry[0]["framework"], "LangGraph")
+        self.assertTrue(any(entry["type"] == "workflow" for entry in discovery["workflows"]))
+        self.assertEqual(edge_types, {"runs", "uses", "connects_to"})
+        self.assertTrue(all(edge["validation_status"] == "valid" for edge in graph["edges"]))
+
+    def test_workflow_validation_detects_duplicates_and_missing_metadata(self):
+        validation = validate_workflow_entries([
+            {
+                "workflow": "Research Flow",
+                "framework": "LangGraph",
+                "source": "examples/langgraph_basic.py",
+                "metadata": {},
+            },
+            {
+                "workflow": "Research Flow",
+                "framework": "LangGraph",
+                "source": "examples/other.py",
+                "metadata": {},
+            },
+            {
+                "workflow": "Broken Flow",
+                "metadata": [],
+            },
+        ])
+
+        self.assertEqual(len(validation["duplicates"]), 1)
+        self.assertEqual(len(validation["missing_required_metadata"]), 1)
+        self.assertEqual(len(validation["malformed_metadata"]), 1)
+
+    def test_doctor_workflow_registry_diagnostics_reports_integrity_issues(self):
+        event = make_openmesh_event(
+            "workflow.registered",
+            agent_node("agent:research", "Research Agent", "researcher"),
+            {"workflow": "Broken Flow"},
+            target=workflow_node({"workflow": "Broken Flow", "metadata": {}}),
+        )
+
+        diagnostics = build_workflow_registry_diagnostics([record_from_event(event)])
+
+        self.assertEqual(diagnostics["name"], "Workflow Registry Integrity")
+        self.assertEqual(diagnostics["severity"], "ERROR")
+        self.assertEqual(len(diagnostics["detail"]["missing_required_metadata"]), 1)
+
     def test_graph_validation_distinguishes_relationship_integrity_errors(self):
         nodes = {
             "agent:a": {"id": "agent:a", "type": "agent", "name": "Agent A", "category": "agents"},
@@ -1076,10 +1205,11 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             }],
             sessions=[],
             integrations=[],
-            discovery={"frameworks": [], "agents": [], "tools": [], "capabilities": [], "processes": [], "services": []},
+            discovery={"frameworks": [], "agents": [], "tools": [], "capabilities": [], "workflows": [], "processes": [], "services": []},
             mcp_servers=[],
             mcp_configs=[],
             capabilities=[],
+            workflows=[],
             registry_status=build_registry_status([]),
             loaded_at=datetime.utcnow(),
         )
@@ -1107,7 +1237,7 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             events=[],
             sessions=[],
             integrations=[],
-            discovery={"frameworks": [], "agents": [], "tools": [], "capabilities": [], "processes": [], "services": []},
+            discovery={"frameworks": [], "agents": [], "tools": [], "capabilities": [], "workflows": [], "processes": [], "services": []},
             mcp_servers=[{
                 "server": "Filesystem MCP",
                 "version": "1.0.0",
@@ -1127,6 +1257,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "category": "filesystem",
                 "description": "Read file metadata",
             }],
+            workflows=[{
+                "workflow": "Research Flow",
+                "framework": "LangGraph",
+                "source": "examples/langgraph_basic.py",
+                "last_seen": "2026-06-03T10:00:00Z",
+            }],
             registry_status=build_registry_status([]),
             loaded_at=datetime.utcnow(),
         )
@@ -1141,6 +1277,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         capability_output = "\n".join(capability_rows(snapshot))
         self.assertIn("read_file", capability_output)
         self.assertIn("filesystem", capability_output)
+        workflow_output = "\n".join(workflow_rows(snapshot))
+        self.assertIn("Research Flow", workflow_output)
+        self.assertIn("LangGraph", workflow_output)
 
     def test_cli_mcp_printer_displays_metadata(self):
         with patch("builtins.print") as printer:
@@ -1181,6 +1320,18 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Filesystem MCP", printed)
         self.assertIn("read_file", printed)
         self.assertIn("filesystem", printed)
+
+    def test_cli_workflow_printer_displays_metadata(self):
+        with patch("builtins.print") as printer:
+            _print_workflows([{
+                "workflow": "Research Flow",
+                "framework": "LangGraph",
+                "last_seen": "2026-06-03T10:00:00Z",
+            }])
+
+        printed = "\n".join(str(call.args[0]) for call in printer.call_args_list if call.args)
+        self.assertIn("Research Flow", printed)
+        self.assertIn("LangGraph", printed)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ from ..services.mcp_discovery import get_mcp_registry
 from ..services.openmesh_doctor import run_doctor
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_trace, get_traces
 from ..services.registry_status import build_registry_status
+from ..services.workflow_registry import get_workflow_registry
 from ..shared.openmesh_events import make_openmesh_event
 from ..sdk.integrations import list_integrations
 from .tui import run_tui
@@ -307,6 +308,7 @@ def _print_discovery(discovery: dict[str, list[dict[str, Any]]]) -> None:
         ("Agents", "agents"),
         ("Tools", "tools"),
         ("Capabilities", "capabilities"),
+        ("Workflows", "workflows"),
         ("Processes", "processes"),
         ("Services", "services"),
     ]
@@ -374,6 +376,21 @@ def _print_capabilities(capabilities: list[dict[str, Any]]) -> None:
             f"{_short(capability.get('capability'), 28):<28} "
             f"{_short(capability.get('category') or '-', 14):<14} "
             f"{capability.get('version') or '-'}"
+        )
+
+
+def _print_workflows(workflows: list[dict[str, Any]]) -> None:
+    print("Workflows")
+    print()
+    if not workflows:
+        print("No workflows discovered.")
+        return
+    print(f"{'workflow':<30} {'framework':<16} last_seen")
+    for workflow in workflows:
+        print(
+            f"{_short(workflow.get('workflow'), 30):<30} "
+            f"{_short(workflow.get('framework') or '-', 16):<16} "
+            f"{workflow.get('last_seen') or '-'}"
         )
 
 
@@ -598,6 +615,14 @@ async def _capabilities(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _workflows(args: argparse.Namespace) -> int:
+    async def run(db):
+        workflows = await get_workflow_registry(db, limit=args.limit)
+        _print_workflows(workflows)
+
+    return await _with_db(run)
+
+
 def _paths_by_source(raw_paths: list[str] | None) -> dict[str, list[Path]]:
     paths: dict[str, list[Path]] = {}
     for raw in raw_paths or []:
@@ -810,6 +835,10 @@ def build_parser() -> argparse.ArgumentParser:
     capabilities = subparsers.add_parser("capabilities", help="Show discovered MCP capability metadata.")
     capabilities.add_argument("--limit", type=int, default=5000, help="Maximum events to derive capability registry from.")
     capabilities.set_defaults(func=_capabilities)
+
+    workflows = subparsers.add_parser("workflows", help="Show discovered workflow metadata.")
+    workflows.add_argument("--limit", type=int, default=5000, help="Maximum events to derive workflow registry from.")
+    workflows.set_defaults(func=_workflows)
 
     tui = subparsers.add_parser("tui", help="Launch the OpenMesh terminal UI.")
     tui.add_argument("--once", action="store_true", help="Render one terminal capture and exit.")

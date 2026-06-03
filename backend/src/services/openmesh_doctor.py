@@ -17,6 +17,7 @@ from .mcp_config_discovery import build_mcp_config_registry, discover_mcp_config
 from .openmesh_collector import collector
 from .registry_status import build_registry_status
 from .trace_semantics import build_span_summary, validate_trace_semantics
+from .workflow_registry import build_workflow_registry, validate_workflow_entries
 
 
 REQUIRED_TABLES = {
@@ -92,6 +93,7 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
         checks.append(build_relationship_diagnostics(records))
         checks.append(build_registry_compatibility_diagnostics(records))
         checks.append(build_capability_diagnostics(records))
+        checks.append(build_workflow_registry_diagnostics(records))
         checks.append(build_mcp_config_diagnostics(records, discovered=discover_mcp_configs()))
     except Exception as exc:
         checks.append({"name": "OpenMesh Diagnostics", "status": "ERROR", "severity": "ERROR", "detail": str(exc)})
@@ -389,6 +391,25 @@ def build_capability_diagnostics(records: list[Any]) -> dict[str, Any]:
     warnings = detail["duplicate_capabilities"]
     return {
         "name": "Capability Integrity",
+        "status": "ERROR" if errors else "WARNING" if warnings else "OK",
+        "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
+        "detail": detail,
+    }
+
+
+def build_workflow_registry_diagnostics(records: list[Any]) -> dict[str, Any]:
+    workflows = build_workflow_registry(records)
+    validation = validate_workflow_entries(workflows)
+    detail = {
+        "workflows_checked": len(workflows),
+        "duplicate_workflows": validation["duplicates"],
+        "malformed_metadata": validation["malformed_metadata"],
+        "missing_required_metadata": validation["missing_required_metadata"],
+    }
+    errors = detail["malformed_metadata"] or detail["missing_required_metadata"]
+    warnings = detail["duplicate_workflows"]
+    return {
+        "name": "Workflow Registry Integrity",
         "status": "ERROR" if errors else "WARNING" if warnings else "OK",
         "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
         "detail": detail,

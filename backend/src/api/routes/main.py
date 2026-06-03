@@ -29,6 +29,7 @@ from ...services.openmesh_queries import get_graph, get_session, get_sessions, g
 from ...services.node_types import node_type_registry, node_type_validation_metadata
 from ...services.registry_status import build_registry_status
 from ...services.relationship_types import relationship_registry
+from ...services.workflow_registry import get_workflow_registry
 from ...sdk.integrations import list_integrations
 
 router = APIRouter()
@@ -552,6 +553,14 @@ async def get_openmesh_capabilities(
     db: AsyncSession = Depends(get_db),
 ):
     return {"capabilities": await get_capability_registry(db, limit=limit)}
+
+
+@router.get("/openmesh/workflows")
+async def get_openmesh_workflows(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"workflows": await get_workflow_registry(db, limit=limit)}
 
 
 # ── STATS ─────────────────────────────────────────────────────────────────────

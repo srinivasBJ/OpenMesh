@@ -19,6 +19,7 @@ from ..services.mcp_discovery import get_mcp_registry
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_sessions, get_traces
 from ..services.registry_status import build_registry_status
 from ..services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace
+from ..services.workflow_registry import get_workflow_registry
 from ..sdk.integrations import list_integrations
 
 
@@ -44,6 +45,7 @@ class TuiSnapshot:
     mcp_servers: list[dict[str, Any]]
     mcp_configs: list[dict[str, Any]]
     capabilities: list[dict[str, Any]]
+    workflows: list[dict[str, Any]]
     registry_status: dict[str, Any]
     loaded_at: datetime
 
@@ -62,6 +64,7 @@ async def load_snapshot() -> TuiSnapshot:
             mcp_servers=await get_mcp_registry(db, limit=5000),
             mcp_configs=await get_mcp_config_registry(db, limit=5000),
             capabilities=await get_capability_registry(db, limit=5000),
+            workflows=await get_workflow_registry(db, limit=5000),
             registry_status=build_registry_status(registry_records),
             loaded_at=datetime.utcnow(),
         )
@@ -130,7 +133,7 @@ def network_lines(snapshot: TuiSnapshot, limit: int = 80) -> list[str]:
     if not nodes:
         return ["No network data yet."]
 
-    hero_types = {"agent", "process", "service"}
+    hero_types = {"agent", "process", "service", "workflow"}
     visible = [node for node in nodes.values() if node["type"] in hero_types]
     visible.sort(key=lambda node: (node["type"] != "agent", node["type"], node["name"]))
 
@@ -252,6 +255,7 @@ def discovery_rows(snapshot: TuiSnapshot) -> list[str]:
         ("Agents", "agents"),
         ("Tools", "tools"),
         ("Capabilities", "capabilities"),
+        ("Workflows", "workflows"),
         ("Processes", "processes"),
         ("Services", "services"),
     ]
@@ -337,6 +341,20 @@ def capability_rows(snapshot: TuiSnapshot) -> list[str]:
         )
         if capability.get("description"):
             rows.append(f"    {_short(capability.get('description'), 34)}")
+    return rows
+
+
+def workflow_rows(snapshot: TuiSnapshot) -> list[str]:
+    if not snapshot.workflows:
+        return ["No workflows discovered"]
+    rows = ["Workflows"]
+    for workflow in snapshot.workflows[:12]:
+        rows.append(
+            f"  {_short(workflow.get('workflow'), 18):<18} "
+            f"{_short(workflow.get('framework') or '-', 10):<10}"
+        )
+        rows.append(f"    source {_short(workflow.get('source') or '-', 24)}")
+        rows.append(f"    last {_time(workflow.get('last_seen'))}")
     return rows
 
 
@@ -564,6 +582,7 @@ class OpenMeshTui(App):
         ("8", "show_mcp", "MCP"),
         ("9", "show_mcp_config", "MCP Config"),
         ("0", "show_capabilities", "Capabilities"),
+        ("w", "show_workflows", "Workflows"),
         ("enter", "inspect_selected", "Inspect"),
         ("q", "quit", "Quit"),
     ]
@@ -620,7 +639,7 @@ class OpenMeshTui(App):
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -702,6 +721,10 @@ class OpenMeshTui(App):
             self.query_one("#event-title", Static).update("CAPABILITIES")
             self.query_one("#event-body", Static).update("\n".join(capability_rows(self.snapshot)))
             return
+        if self.lower_right_mode == "workflows":
+            self.query_one("#event-title", Static).update("WORKFLOWS")
+            self.query_one("#event-body", Static).update("\n".join(workflow_rows(self.snapshot)))
+            return
         if self.lower_right_mode == "trace" and self.selected_trace_id:
             self.query_one("#event-title", Static).update("TRACE DETAIL")
             self.query_one("#event-body", Static).update("\n".join(trace_detail_rows(self.snapshot, self.selected_trace_id)))
@@ -756,6 +779,11 @@ class OpenMeshTui(App):
 
     def action_show_capabilities(self) -> None:
         self.lower_right_mode = "capabilities"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_show_workflows(self) -> None:
+        self.lower_right_mode = "workflows"
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
 

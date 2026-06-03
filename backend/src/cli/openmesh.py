@@ -159,6 +159,11 @@ def _print_graph(graph: dict[str, Any], *, details: bool = False) -> None:
             target = nodes.get(edge["target"], {"name": edge["target"]})
             print(f"{branch} {edge['type']} -> {target['name']}")
             if details:
+                definition = edge.get("relationship_definition") or {}
+                print(f"   relationship: {edge.get('relationship_type', edge['type'])}")
+                print(f"   validation: {edge.get('validation_status', 'unknown')}")
+                if definition.get("description"):
+                    print(f"   definition: {definition['description']}")
                 print(f"   observations: {edge.get('observation_count', edge.get('event_count', 0))}")
                 print(f"   lifecycle: {edge.get('lifecycle_state', 'unknown')}")
                 print(f"   first_seen: {edge.get('first_seen')}")
@@ -172,10 +177,16 @@ def _print_graph(graph: dict[str, Any], *, details: bool = False) -> None:
         print(f"Validation: {validation.get('status', 'UNKNOWN')}")
         missing = validation.get("missing_provenance") or []
         invalid = validation.get("invalid_relationships") or []
+        invalid_types = validation.get("invalid_relationship_types") or []
+        invalid_sources = validation.get("invalid_source_types") or []
+        invalid_targets = validation.get("invalid_target_types") or []
         broken = validation.get("broken_references") or []
         if missing or invalid or broken:
             print(f"missing_provenance: {len(missing)}")
             print(f"invalid_relationships: {len(invalid)}")
+            print(f"invalid_relationship_types: {len(invalid_types)}")
+            print(f"invalid_source_types: {len(invalid_sources)}")
+            print(f"invalid_target_types: {len(invalid_targets)}")
             print(f"broken_references: {len(broken)}")
 
 

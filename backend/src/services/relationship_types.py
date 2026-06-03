@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass(frozen=True)
@@ -118,11 +118,60 @@ def relationship_type_for(
 
 
 def is_relationship_valid(relationship_type: str, source_type: str, target_type: str) -> bool:
-    spec = RELATIONSHIP_TYPES.get(relationship_type)
-    if not spec:
-        return False
-    return source_type in spec.source_types and target_type in spec.target_types
+    return validate_relationship(relationship_type, source_type, target_type)["valid"]
 
 
 def relationship_registry() -> list[dict[str, object]]:
-    return [asdict(spec) for spec in RELATIONSHIP_TYPES.values()]
+    return [
+        definition
+        for spec in RELATIONSHIP_TYPES.values()
+        if (definition := relationship_definition(spec.type)) is not None
+    ]
+
+
+def relationship_definition(relationship_type: str) -> Optional[dict[str, object]]:
+    spec = RELATIONSHIP_TYPES.get(relationship_type)
+    if not spec:
+        return None
+    definition = asdict(spec)
+    definition["name"] = spec.type
+    return definition
+
+
+def validate_relationship(relationship_type: str, source_type: str, target_type: str) -> dict[str, Any]:
+    spec = RELATIONSHIP_TYPES.get(relationship_type)
+    definition = relationship_definition(relationship_type)
+    errors: list[dict[str, str]] = []
+
+    if not spec:
+        errors.append(
+            {
+                "code": "invalid_relationship_type",
+                "message": f"Unknown relationship type: {relationship_type}",
+            }
+        )
+    else:
+        if source_type not in spec.source_types:
+            errors.append(
+                {
+                    "code": "invalid_source_type",
+                    "message": f"{source_type} cannot be the source of {relationship_type}",
+                }
+            )
+        if target_type not in spec.target_types:
+            errors.append(
+                {
+                    "code": "invalid_target_type",
+                    "message": f"{target_type} cannot be the target of {relationship_type}",
+                }
+            )
+
+    return {
+        "status": "valid" if not errors else "invalid",
+        "valid": not errors,
+        "relationship_type": relationship_type,
+        "source_type": source_type,
+        "target_type": target_type,
+        "definition": definition,
+        "errors": errors,
+    }

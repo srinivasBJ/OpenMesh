@@ -22,6 +22,7 @@ from ...services.openmesh_collector import collector
 from ...services.discovery import get_discovery
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
 from ...services.openmesh_queries import get_graph, get_session, get_sessions, get_trace, get_traces
+from ...services.relationship_types import relationship_registry
 from ...sdk.integrations import list_integrations
 
 router = APIRouter()
@@ -470,6 +471,11 @@ async def get_openmesh_graph(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_graph(db, limit=limit)
+
+
+@router.get("/openmesh/relationships")
+async def get_openmesh_relationships():
+    return {"relationships": relationship_registry()}
 
 
 @router.get("/openmesh/sessions")

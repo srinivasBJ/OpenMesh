@@ -294,8 +294,11 @@ def edge_detail_rows(snapshot: TuiSnapshot, edge_id: str) -> list[str]:
         return [f"Relationship {edge_id}", "No loaded relationship detail"]
     source = nodes.get(edge["source"], {"name": edge["source"]})
     target = nodes.get(edge["target"], {"name": edge["target"]})
+    definition = edge.get("relationship_definition") or {}
     rows = [
         f"{_short(source['name'], 18)} {edge['type']} {_short(target['name'], 18)}",
+        f"validation: {edge.get('validation_status', 'unknown')}",
+        f"definition: {_short(definition.get('description'), 46)}",
         f"state: {edge.get('lifecycle_state', 'unknown')}",
         f"observations: {edge.get('observation_count', edge.get('event_count', 0))}",
         f"first_seen: {_time(edge.get('first_seen'))}",

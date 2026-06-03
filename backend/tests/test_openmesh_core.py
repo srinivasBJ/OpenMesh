@@ -9,14 +9,19 @@ from fastapi import HTTPException
 from src.db.openmesh_events import create_openmesh_event, record_to_event
 from src.db.openmesh_sessions import complete_openmesh_session, create_openmesh_session, session_to_dict
 from src.services.discovery import build_discovery
-from src.services.graph_state import reduce_graph_state
-from src.services.openmesh_doctor import build_graph_diagnostics, build_trace_diagnostics
+from src.services.graph_state import reduce_graph_state, validate_graph_state
+from src.services.openmesh_doctor import build_graph_diagnostics, build_relationship_diagnostics, build_trace_diagnostics
 from src.services.openmesh_collector import OpenMeshCollector
 from src.services.openmesh_queries import trace_summary
-from src.services.relationship_types import relationship_registry, relationship_type_for
+from src.services.relationship_types import (
+    relationship_definition,
+    relationship_registry,
+    relationship_type_for,
+    validate_relationship,
+)
 from src.services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace, validate_trace_semantics
 from src.shared.openmesh_events import agent_node, make_openmesh_event
-from src.cli.tui import TuiSnapshot, render_plain
+from src.cli.tui import TuiSnapshot, edge_detail_rows, render_plain
 
 
 CLI_NODE = {
@@ -232,14 +237,53 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(edge["event_id"] for edge in graph["edges"]))
         self.assertTrue(all(edge["trace_id"] == "trace_test" for edge in graph["edges"]))
         self.assertTrue(all(edge["observation_count"] == 1 for edge in graph["edges"]))
+        self.assertTrue(all(edge["validation_status"] == "valid" for edge in graph["edges"]))
+        self.assertTrue(all(edge["relationship_definition"] for edge in graph["edges"]))
 
     def test_relationship_registry_maps_protocol_events_to_canonical_types(self):
         relationship_types = {item["type"] for item in relationship_registry()}
 
         self.assertIn("uses", relationship_types)
         self.assertIn("spawns", relationship_types)
+        self.assertEqual(relationship_definition("uses")["name"], "uses")
         self.assertEqual(relationship_type_for("tool.call.started", source_type="agent", target_type="tool"), "uses")
         self.assertEqual(relationship_type_for("process.started", source_type="service", target_type="process"), "spawns")
+
+    def test_relationship_registry_validates_types_and_pairs(self):
+        valid = validate_relationship("uses", "agent", "tool")
+        invalid_type = validate_relationship("unknown", "agent", "tool")
+        invalid_pair = validate_relationship("uses", "tool", "service")
+
+        self.assertEqual(valid["status"], "valid")
+        self.assertEqual(invalid_type["errors"][0]["code"], "invalid_relationship_type")
+        self.assertEqual(
+            {error["code"] for error in invalid_pair["errors"]},
+            {"invalid_source_type", "invalid_target_type"},
+        )
+
+    def test_graph_validation_distinguishes_relationship_integrity_errors(self):
+        nodes = {
+            "agent:a": {"id": "agent:a", "type": "agent"},
+            "tool:a": {"id": "tool:a", "type": "tool"},
+            "service:a": {"id": "service:a", "type": "service"},
+        }
+        edge_base = {
+            "trace_id": "trace_test",
+            "event_id": "evt_test",
+            "first_seen": "2026-06-03T00:00:00Z",
+            "last_seen": "2026-06-03T00:00:00Z",
+        }
+        edges = {
+            "unknown": {"id": "unknown", "source": "agent:a", "target": "tool:a", "type": "unknown", **edge_base},
+            "bad-source": {"id": "bad-source", "source": "tool:a", "target": "tool:a", "type": "uses", **edge_base},
+            "bad-target": {"id": "bad-target", "source": "agent:a", "target": "service:a", "type": "uses", **edge_base},
+        }
+
+        validation = validate_graph_state(nodes, edges)
+
+        self.assertEqual(len(validation["invalid_relationship_types"]), 1)
+        self.assertEqual(len(validation["invalid_source_types"]), 1)
+        self.assertEqual(len(validation["invalid_target_types"]), 1)
 
     def test_graph_reduction_langgraph_transition_edges(self):
         event = self.make_event("node.transition")
@@ -502,6 +546,18 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(len(detail["invalid_relationships"]), 1)
         self.assertGreaterEqual(len(detail["stale_relationships"]), 1)
 
+    def test_doctor_relationship_diagnostics_find_invalid_source_and_target_types(self):
+        invalid = self.make_event("node.transition")
+        invalid["source"] = agent_node("agent-a", "Research Agent", "researcher")
+        invalid["target"] = {"node_id": "tool:web_search", "node_type": "tool", "name": "web_search"}
+
+        diagnostics = build_relationship_diagnostics([record_from_event(invalid)])
+
+        self.assertEqual(diagnostics["name"], "Relationship Integrity")
+        self.assertEqual(diagnostics["severity"], "ERROR")
+        self.assertEqual(len(diagnostics["detail"]["invalid_source_types"]), 1)
+        self.assertEqual(len(diagnostics["detail"]["invalid_target_types"]), 1)
+
     async def test_session_creation_and_completion(self):
         db = FakeSessionStore()
         started = datetime.utcnow()
@@ -552,7 +608,16 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                     {"id": "agent-b", "type": "agent", "name": "Coding Agent", "event_count": 1, "last_seen": "2026-05-29T10:00:00Z"},
                 ],
                 "edges": [
-                    {"id": "edge-1", "source": "agent-a", "target": "agent-b", "type": "communicates_with", "event_count": 1, "last_seen": "2026-05-29T10:00:00Z"}
+                    {
+                        "id": "edge-1",
+                        "source": "agent-a",
+                        "target": "agent-b",
+                        "type": "communicates_with",
+                        "event_count": 1,
+                        "last_seen": "2026-05-29T10:00:00Z",
+                        "validation_status": "valid",
+                        "relationship_definition": {"description": "Agents communicate with each other."},
+                    }
                 ],
             },
             traces=[{"trace_id": "trace_test", "status": "completed", "event_count": 1, "started_at": "2026-05-29T10:00:00Z"}],
@@ -577,6 +642,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Agents / Processes", output)
         self.assertIn("Network", output)
         self.assertIn("communicates_with", output)
+        detail = "\n".join(edge_detail_rows(snapshot, "edge-1"))
+        self.assertIn("validation: valid", detail)
+        self.assertIn("Agents communicate with each other.", detail)
 
 
 if __name__ == "__main__":

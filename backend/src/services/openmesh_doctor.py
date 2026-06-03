@@ -85,6 +85,7 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
         records = await list_openmesh_events(db, limit=5000)
         checks.extend(build_trace_diagnostics(records))
         checks.append(build_graph_diagnostics(records))
+        checks.append(build_relationship_diagnostics(records))
     except Exception as exc:
         checks.append({"name": "OpenMesh Diagnostics", "status": "ERROR", "severity": "ERROR", "detail": str(exc)})
 
@@ -255,6 +256,30 @@ def build_graph_diagnostics(records: list[Any]) -> dict[str, Any]:
         "name": "Graph Integrity",
         "status": "ERROR" if errors else "WARNING" if warnings else "OK",
         "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
+        "detail": detail,
+    }
+
+
+def build_relationship_diagnostics(records: list[Any]) -> dict[str, Any]:
+    graph = reduce_graph_state(records)
+    validation = graph.get("validation", {})
+    invalid_relationships = validation.get("invalid_relationships", [])
+    detail = {
+        "edges_checked": len(graph.get("edges", [])),
+        "valid_relationships": len(graph.get("edges", [])) - len(invalid_relationships),
+        "invalid_relationship_types": validation.get("invalid_relationship_types", []),
+        "invalid_source_types": validation.get("invalid_source_types", []),
+        "invalid_target_types": validation.get("invalid_target_types", []),
+    }
+    errors = (
+        detail["invalid_relationship_types"]
+        or detail["invalid_source_types"]
+        or detail["invalid_target_types"]
+    )
+    return {
+        "name": "Relationship Integrity",
+        "status": "ERROR" if errors else "OK",
+        "severity": "ERROR" if errors else "INFO",
         "detail": detail,
     }
 

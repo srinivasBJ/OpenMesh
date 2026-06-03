@@ -12,6 +12,7 @@ from uuid import uuid4
 from ..db.session import AsyncSessionLocal, init_db
 from ..db.openmesh_events import list_openmesh_events
 from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_session
+from ..providers import verify_providers
 from ..services.openmesh_collector import collector
 from ..services.discovery import get_discovery
 from ..services.ecosystem_registry import get_ecosystem_registry
@@ -37,6 +38,7 @@ from ..services.graph_exploration import (
     graph_statistics,
     search_graph,
 )
+from ..services.llm_demo import event_types_for_cli, run_research_demo
 from ..services.mcp_config_discovery import (
     get_mcp_config_registry,
     register_discovered_mcp_configs,
@@ -70,6 +72,7 @@ from ..services.timeline import (
     get_workflow_timeline,
 )
 from ..services.registry_status import build_registry_status
+from ..providers.base import ProviderConfigurationError
 from ..shared.openmesh_events import make_openmesh_event
 from ..sdk.integrations import list_integrations
 from .tui import run_tui
@@ -1407,6 +1410,37 @@ def _query_result_line(item: dict[str, Any]) -> str:
     return _short(item.get("name") or item.get("id") or item, 120)
 
 
+def _print_provider_statuses(statuses: list[Any]) -> None:
+    print("OpenMesh LLM Providers")
+    print()
+    for status in statuses:
+        if status.connected:
+            marker = "✓"
+        elif status.configured:
+            marker = "✗"
+        else:
+            marker = "○"
+        print(f"{marker} {status.name} {status.message}")
+
+
+def _print_research_demo_result(result: dict[str, Any]) -> None:
+    print("OpenMesh Research Demo")
+    print()
+    print(f"Provider: {result['provider']}")
+    print(f"Model: {result['model']}")
+    print(f"Trace: {result['trace_id']}")
+    print(f"Session: {result['session_id']}")
+    if result.get("latency_ms") is not None:
+        print(f"Latency: {result['latency_ms']}ms")
+    print()
+    print("Events")
+    for event_type in event_types_for_cli(result):
+        print(f"- {event_type}")
+    print()
+    print("Response")
+    print(_short(result.get("response", ""), 1000))
+
+
 def _utc_now() -> datetime:
     return datetime.utcnow()
 
@@ -1819,6 +1853,20 @@ async def _integrations(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _providers(args: argparse.Namespace) -> int:
+    return await _providers_verify(args)
+
+
+async def _providers_verify(args: argparse.Namespace) -> int:
+    statuses = await verify_providers()
+    _print_provider_statuses(statuses)
+    configured_failures = [status for status in statuses if status.configured and not status.connected]
+    missing = [status for status in statuses if not status.configured]
+    if configured_failures or (getattr(args, "strict", False) and missing):
+        return 1
+    return 0
+
+
 async def _plugins(args: argparse.Namespace) -> int:
     _print_plugins(list_plugins())
     return 0
@@ -1919,6 +1967,32 @@ async def _simulate(args: argparse.Namespace) -> int:
             broadcast=False,
         )
         _print_simulation_summary(summary)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _run_demo_research(args: argparse.Namespace) -> int:
+    async def run(db):
+        try:
+            result = await run_research_demo(
+                db,
+                query=args.query,
+                provider_id=args.provider,
+                max_tokens=args.max_tokens,
+                broadcast=False,
+            )
+        except ProviderConfigurationError as exc:
+            print("OpenMesh research demo is not configured")
+            print()
+            print(str(exc))
+            return 2
+        except RuntimeError as exc:
+            print("OpenMesh research demo failed")
+            print()
+            print(str(exc))
+            return 1
+        _print_research_demo_result(result)
         return 0
 
     return await _with_db(run)
@@ -2405,6 +2479,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     integrations.set_defaults(func=_integrations)
 
+    providers = subparsers.add_parser(
+        "providers", help="Show OpenMesh LLM provider status."
+    )
+    providers.set_defaults(func=_providers)
+    provider_subparsers = providers.add_subparsers(dest="provider_command")
+    providers_verify = provider_subparsers.add_parser(
+        "verify", help="Verify configured LLM provider connections."
+    )
+    providers_verify.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail when any provider is missing an API key.",
+    )
+    providers_verify.set_defaults(func=_providers_verify)
+
     plugins = subparsers.add_parser("plugins", help="Show OpenMesh plugin status.")
     plugins.set_defaults(func=_plugins)
     plugin_subparsers = plugins.add_subparsers(dest="plugin_command")
@@ -2513,6 +2602,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional deterministic random seed.",
     )
     simulate.set_defaults(func=_simulate)
+
+    run_demo = subparsers.add_parser(
+        "run-demo", help="Run an OpenMesh real provider demo workflow."
+    )
+    run_demo_subparsers = run_demo.add_subparsers(
+        dest="demo_command", required=True
+    )
+    research_demo = run_demo_subparsers.add_parser(
+        "research", help="Run a real LLM research workflow through OpenMesh."
+    )
+    research_demo.add_argument(
+        "--provider",
+        choices=("auto", "openai", "anthropic", "openrouter"),
+        default="auto",
+        help="LLM provider to use. Defaults to first configured provider.",
+    )
+    research_demo.add_argument(
+        "--query",
+        default="What should an AI agent observability graph reveal?",
+        help="Research question to send to the LLM.",
+    )
+    research_demo.add_argument(
+        "--max-tokens",
+        type=int,
+        default=500,
+        help="Maximum response tokens for the LLM call.",
+    )
+    research_demo.set_defaults(func=_run_demo_research)
 
     discover = subparsers.add_parser(
         "discover", help="Show observed OpenMesh ecosystem registry."

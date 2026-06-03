@@ -1,5 +1,6 @@
 # ruff: noqa: E402
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -100,11 +101,14 @@ from src.services.registry_compatibility import (
 )
 from src.services.registry_status import build_registry_status
 from src.services.openmesh_collector import OpenMeshCollector
+from src.services.llm_demo import run_research_demo
 from src.services.openmesh_queries import (
     inspect_graph_node,
     inspect_graph_workflow,
     trace_summary,
 )
+from src.providers.base import LLMResponse
+from src.providers.settings import load_provider_settings
 from src.services.ecosystem_snapshot import build_ecosystem_snapshot
 from src.services.ecosystem_snapshot import compare_snapshot_payloads
 from src.services.evaluation import generate_synthetic_ecosystem, run_evaluation_suite
@@ -362,6 +366,88 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             session_id="sess_test",
             trace_id="trace_test",
         )
+
+    async def test_provider_settings_read_llm_api_keys(self):
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_API_KEY": "openai-key",
+                "ANTHROPIC_API_KEY": "anthropic-key",
+                "OPENROUTER_API_KEY": "openrouter-key",
+                "OPENAI_MODEL": "openai-model",
+                "ANTHROPIC_MODEL": "anthropic-model",
+                "OPENROUTER_MODEL": "openrouter-model",
+            },
+        ):
+            settings = load_provider_settings()
+
+        self.assertEqual(settings.openai_api_key, "openai-key")
+        self.assertEqual(settings.anthropic_api_key, "anthropic-key")
+        self.assertEqual(settings.openrouter_api_key, "openrouter-key")
+        self.assertEqual(settings.openai_model, "openai-model")
+        self.assertEqual(settings.anthropic_model, "anthropic-model")
+        self.assertEqual(settings.openrouter_model, "openrouter-model")
+
+    async def test_research_demo_emits_llm_trace_and_graph_events(self):
+        class FakeProvider:
+            provider_id = "openai"
+            display_name = "OpenAI"
+            env_var = "OPENAI_API_KEY"
+            model = "gpt-test"
+            configured = True
+
+            async def complete(self, **kwargs):
+                self.kwargs = kwargs
+                return LLMResponse(
+                    provider=self.provider_id,
+                    model=self.model,
+                    content="Finding one\nFinding two\nFinding three",
+                    usage={"input_tokens": 10, "output_tokens": 12},
+                    latency_ms=25,
+                )
+
+        async def fake_complete_session(*args, **kwargs):
+            return None
+
+        db = FakeSessionStore()
+        provider = FakeProvider()
+        with patch(
+            "src.services.llm_demo.complete_openmesh_session",
+            fake_complete_session,
+        ):
+            result = await run_research_demo(
+                db,
+                query="How should OpenMesh observe agent ecosystems?",
+                provider=provider,  # type: ignore[arg-type]
+            )
+
+        records = [record for record in db.added if hasattr(record, "event_type")]
+        event_types = [record.event_type for record in records]
+        self.assertEqual(result["provider"], "openai")
+        self.assertEqual(result["model"], "gpt-test")
+        self.assertEqual(
+            event_types,
+            [
+                "trace.started",
+                "llm.request",
+                "llm.response",
+                "tool.call.started",
+                "tool.call.completed",
+                "trace.completed",
+            ],
+        )
+        self.assertEqual({record.trace_id for record in records}, {result["trace_id"]})
+        graph = reduce_graph_state(records)
+        model_nodes = [node for node in graph["nodes"] if node["type"] == "model"]
+        self.assertEqual(len(model_nodes), 1)
+        uses_edges = [
+            edge
+            for edge in graph["edges"]
+            if edge["type"] == "uses" and edge["target"] == model_nodes[0]["id"]
+        ]
+        self.assertTrue(uses_edges)
+        self.assertEqual(uses_edges[0]["validation_status"], "valid")
+        self.assertIn(result["trace_id"], uses_edges[0]["provenance"]["trace_ids"])
 
     def make_exploration_graph(self):
         pairs = [

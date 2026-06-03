@@ -23,9 +23,9 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
     "uses": RelationshipType(
         type="uses",
         label="uses",
-        description="An agent, process, workflow, or service uses a tool.",
+        description="An agent, process, workflow, or service uses a tool or model.",
         source_types=("agent", "process", "service", "workflow"),
-        target_types=("tool",),
+        target_types=("tool", "model"),
     ),
     "runs": RelationshipType(
         type="runs",
@@ -123,6 +123,8 @@ EVENT_RELATIONSHIPS = {
     "tool.call.started": "uses",
     "tool.call.completed": "uses",
     "tool.call.failed": "uses",
+    "llm.request": "uses",
+    "llm.response": "uses",
     "message.sent": "communicates_with",
     "collaboration.created": "collaborates_with",
     "delegation.created": "delegates_to",

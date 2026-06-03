@@ -86,13 +86,14 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Ecosystem replays for playing back timeline, snapshot, trace, and workflow evolution without creating a second graph model
 - Structured query engine for asking graph, trace, session, snapshot, MCP, and capability questions from existing OpenMesh state
 - Federation metadata registry for multiple OpenMesh instances, peers, snapshots, timelines, and replay summaries
+- Phase 1 LLM provider observation for OpenAI, Anthropic, and OpenRouter; see [docs/LLM_INTEGRATION.md](docs/LLM_INTEGRATION.md)
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
 
 ### Planned Platform Capabilities
 
-- Provider abstraction for OpenAI, Anthropic, Ollama, Gemini, DeepSeek, OpenRouter, and custom endpoints
+- Additional providers such as Ollama, Gemini, DeepSeek, and custom endpoints
 - First-class mesh graph models for nodes, edges, sessions, events, and traces
 - Mesh Explorer UI with live graph updates
 - Replay controls for richer terminal playback of ecosystem history
@@ -319,7 +320,9 @@ Open `http://localhost:5173`.
 
 ```bash
 openmesh doctor
+openmesh providers verify
 openmesh simulate --agents 20 --events 500
+openmesh run-demo research --provider openai
 openmesh run -- <command>
 openmesh events
 openmesh traces

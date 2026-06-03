@@ -9,14 +9,6 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: agentverse
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: agentverse_db
-        ports: ["5432:5432"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

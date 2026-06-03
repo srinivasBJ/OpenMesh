@@ -75,6 +75,11 @@ from ...services.node_types import node_type_registry, node_type_validation_meta
 from ...services.registry_status import build_registry_status
 from ...services.relationship_types import relationship_registry
 from ...services.runtime_observability import get_runtime_metrics
+from ...services.mcp_tool_observability import (
+    get_mcp_observability_metrics,
+    get_resource_registry,
+    get_tool_registry,
+)
 from ...sdk.integrations import list_integrations
 
 router = APIRouter()
@@ -780,6 +785,30 @@ async def get_openmesh_mcp(
     db: AsyncSession = Depends(get_db),
 ):
     return {"servers": await get_mcp_registry(db, limit=limit)}
+
+
+@router.get("/openmesh/tools")
+async def get_openmesh_tools(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"tools": await get_tool_registry(db, limit=limit)}
+
+
+@router.get("/openmesh/resources")
+async def get_openmesh_resources(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"resources": await get_resource_registry(db, limit=limit)}
+
+
+@router.get("/openmesh/mcp/metrics")
+async def get_openmesh_mcp_metrics(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_mcp_observability_metrics(db, limit=limit)
 
 
 @router.get("/openmesh/mcp-config")

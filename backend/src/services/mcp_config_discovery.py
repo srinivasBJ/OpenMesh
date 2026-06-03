@@ -108,6 +108,26 @@ class CodexConfigProvider(MCPConfigProvider):
     )
 
 
+class CursorConfigProvider(MCPConfigProvider):
+    source = "Cursor"
+    candidate_paths = (
+        "~/Library/Application Support/Cursor/User/mcp.json",
+        "~/.cursor/mcp.json",
+        "~/.cursor/mcp_config.json",
+        ".cursor/mcp.json",
+    )
+
+
+class OpenCodeConfigProvider(MCPConfigProvider):
+    source = "OpenCode"
+    candidate_paths = (
+        "~/.config/opencode/mcp.json",
+        "~/.opencode/mcp.json",
+        ".opencode/mcp.json",
+        "opencode.json",
+    )
+
+
 class OpenHandsConfigProvider(MCPConfigProvider):
     source = "OpenHands"
     candidate_paths = (
@@ -116,11 +136,33 @@ class OpenHandsConfigProvider(MCPConfigProvider):
     )
 
 
+class LocalMCPConfigProvider(MCPConfigProvider):
+    source = "Local MCP"
+    candidate_paths = (
+        "~/.mcp/servers.json",
+        "~/.config/mcp/servers.json",
+    )
+
+
+class ProjectMCPManifestProvider(MCPConfigProvider):
+    source = "Project"
+    candidate_paths = (
+        "mcp.json",
+        ".mcp.json",
+        ".openmesh/mcp.json",
+        ".vscode/mcp.json",
+    )
+
+
 DEFAULT_MCP_CONFIG_PROVIDERS: tuple[MCPConfigProvider, ...] = (
     ClaudeDesktopConfigProvider(),
     ClaudeCodeConfigProvider(),
     CodexConfigProvider(),
+    CursorConfigProvider(),
+    OpenCodeConfigProvider(),
     OpenHandsConfigProvider(),
+    LocalMCPConfigProvider(),
+    ProjectMCPManifestProvider(),
 )
 
 

@@ -23,9 +23,9 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
     "uses": RelationshipType(
         type="uses",
         label="uses",
-        description="An agent, process, workflow, or service uses a tool or model.",
+        description="An agent, process, workflow, or service uses a tool, model, or MCP server.",
         source_types=("agent", "process", "service", "workflow"),
-        target_types=("tool", "model"),
+        target_types=("tool", "model", "mcp_server"),
     ),
     "runs": RelationshipType(
         type="runs",
@@ -62,6 +62,26 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
         source_types=("agent", "process", "workflow", "service"),
         target_types=("file",),
     ),
+    "calls": RelationshipType(
+        type="calls",
+        label="calls",
+        description="An agent, process, workflow, or service calls a tool.",
+        source_types=("agent", "process", "workflow", "service"),
+        target_types=("tool",),
+    ),
+    "accesses": RelationshipType(
+        type="accesses",
+        label="accesses",
+        description="A tool or runtime entity accesses an external resource.",
+        source_types=("tool", "agent", "process", "workflow", "service"),
+        target_types=(
+            "file",
+            "database",
+            "github_repository",
+            "api_endpoint",
+            "memory_store",
+        ),
+    ),
     "modifies": RelationshipType(
         type="modifies",
         label="modifies",
@@ -86,9 +106,9 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
     "exposes": RelationshipType(
         type="exposes",
         label="exposes",
-        description="A service or MCP server exposes a capability.",
+        description="A service or MCP server exposes a capability or tool.",
         source_types=("service", "mcp_server"),
-        target_types=("capability",),
+        target_types=("capability", "tool"),
     ),
     "served_by": RelationshipType(
         type="served_by",
@@ -143,10 +163,15 @@ EVENT_RELATIONSHIPS = {
     "file.read": "reads",
     "file.write": "writes",
     "file.modified": "modifies",
+    "mcp.connected": "uses",
+    "mcp.disconnected": "uses",
+    "tool.registered": "exposes",
     "tool.call.started": "uses",
     "tool.call.completed": "uses",
     "tool.call.failed": "uses",
-    "tool.called": "uses",
+    "tool.called": "calls",
+    "tool.failed": "calls",
+    "resource.accessed": "accesses",
     "llm.request": "uses",
     "llm.response": "uses",
     "model.request": "uses",
@@ -171,6 +196,16 @@ def relationship_type_for(
     relationship_type = EVENT_RELATIONSHIPS.get(event_type)
     if relationship_type:
         return relationship_type
+    if event_type == "tool.completed" and target_type in {
+        "file",
+        "database",
+        "github_repository",
+        "api_endpoint",
+        "memory_store",
+    }:
+        return "accesses"
+    if event_type == "tool.completed" and target_type == "tool":
+        return "calls"
     if target_type == "tool":
         return "uses"
     if target_type == "workflow":

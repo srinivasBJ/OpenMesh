@@ -36,7 +36,7 @@ NODE_TYPES: dict[str, NodeType] = {
         "Tool",
         "A callable tool used by an agent or runtime.",
         "tools",
-        COMMON_METADATA + ("capabilities",),
+        COMMON_METADATA + ("capabilities", "server", "description", "category", "name"),
     ),
     "workflow": NodeType(
         "workflow",
@@ -93,7 +93,16 @@ NODE_TYPES: dict[str, NodeType] = {
         "MCP Server",
         "An observed Model Context Protocol server.",
         "services",
-        COMMON_METADATA + ("endpoint", "transport", "config_source", "config_path"),
+        COMMON_METADATA
+        + (
+            "endpoint",
+            "transport",
+            "config_source",
+            "config_path",
+            "args",
+            "tools",
+            "resources",
+        ),
     ),
     "capability": NodeType(
         "capability",
@@ -121,7 +130,49 @@ NODE_TYPES: dict[str, NodeType] = {
         "File",
         "A file observed in an execution.",
         "files",
-        COMMON_METADATA + ("path",),
+        COMMON_METADATA
+        + ("path", "server", "resource_type", "locator", "name", "type"),
+    ),
+    "database": NodeType(
+        "database",
+        "Database",
+        "A database resource accessed by a tool or agent.",
+        "resources",
+        COMMON_METADATA
+        + ("server", "resource_type", "locator", "endpoint", "name", "type"),
+    ),
+    "github_repository": NodeType(
+        "github_repository",
+        "GitHub Repository",
+        "A GitHub repository resource accessed by a tool or agent.",
+        "resources",
+        COMMON_METADATA
+        + (
+            "server",
+            "resource_type",
+            "locator",
+            "owner",
+            "repo",
+            "url",
+            "name",
+            "type",
+        ),
+    ),
+    "api_endpoint": NodeType(
+        "api_endpoint",
+        "API Endpoint",
+        "An API endpoint resource accessed by a tool or agent.",
+        "resources",
+        COMMON_METADATA
+        + ("server", "resource_type", "locator", "url", "method", "name", "type"),
+    ),
+    "memory_store": NodeType(
+        "memory_store",
+        "Memory Store",
+        "A memory store resource accessed by a tool or agent.",
+        "resources",
+        COMMON_METADATA
+        + ("server", "resource_type", "locator", "scope", "name", "type"),
     ),
     "browser": NodeType(
         "browser",

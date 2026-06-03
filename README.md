@@ -89,6 +89,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Phase 1 LLM provider observation for OpenAI, Anthropic, and OpenRouter; see [docs/LLM_INTEGRATION.md](docs/LLM_INTEGRATION.md)
 - Phase 2 local model discovery and tracing for Ollama, LM Studio, and vLLM; see [docs/LOCAL_LLM_INTEGRATION.md](docs/LOCAL_LLM_INTEGRATION.md)
 - Phase 3 coding-agent runtime discovery and observation for Claude Code, Codex CLI, OpenCode, Aider, and Cursor; see [docs/RUNTIME_OBSERVABILITY.md](docs/RUNTIME_OBSERVABILITY.md)
+- Phase 4 MCP and tool ecosystem observability for MCP servers, tools, resources, and tool-call relationships; see [docs/MCP_OBSERVABILITY.md](docs/MCP_OBSERVABILITY.md)
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
@@ -328,6 +329,9 @@ openmesh models list
 openmesh runtimes discover
 openmesh observe codex
 openmesh observe claude
+openmesh mcp discover
+openmesh tools
+openmesh resources
 openmesh simulate --agents 20 --events 500
 openmesh run-demo research --provider openai
 openmesh run-demo research --provider ollama --model hermes3
@@ -463,6 +467,9 @@ This repository includes public-project workflow scaffolding:
 - `GET /api/openmesh/workflows`
 - `GET /api/openmesh/capabilities`
 - `GET /api/openmesh/mcp`
+- `GET /api/openmesh/tools`
+- `GET /api/openmesh/resources`
+- `GET /api/openmesh/mcp/metrics`
 - `GET /api/openmesh/mcp-config`
 - `GET /api/openmesh/registry`
 - `GET /api/openmesh/node-types`

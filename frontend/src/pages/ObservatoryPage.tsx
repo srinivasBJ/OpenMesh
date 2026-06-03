@@ -33,6 +33,13 @@ type RuntimeMetrics = {
   model_requests?: number;
   runtime_uptime?: { available?: number; total?: number; ratio?: number };
 };
+type McpMetrics = {
+  active_mcp_servers?: number;
+  tool_calls?: number;
+  failed_tool_calls?: number;
+  resource_activity?: number;
+  most_used_tools?: Array<{ tool?: string; calls?: number }>;
+};
 
 export default function ObservatoryPage() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: statsApi.get, refetchInterval: 30000 });
@@ -57,6 +64,11 @@ export default function ObservatoryPage() {
     queryFn: () => openmeshApi.runtimeMetrics(),
     refetchInterval: 15000,
   });
+  const { data: mcpMetrics = {} } = useQuery<McpMetrics>({
+    queryKey: ["openmesh-mcp-metrics"],
+    queryFn: () => openmeshApi.mcpMetrics(),
+    refetchInterval: 15000,
+  });
   const { events } = useWSStore();
 
   const graphNodes = graph.nodes as GraphNode[];
@@ -66,10 +78,13 @@ export default function ObservatoryPage() {
   const activeAgentNodes = graphNodes.filter((node) => node.type === "agent");
   const processNodes = graphNodes.filter((node) => node.type === "process");
   const workflowNodes = graphNodes.filter((node) => node.type === "workflow");
-  const serviceNodes = graphNodes.filter((node) => ["service", "mcp_server", "capability", "framework"].includes(node.type || ""));
+  const serviceNodes = graphNodes.filter((node) =>
+    ["service", "mcp_server", "capability", "framework", "database", "github_repository", "api_endpoint", "memory_store"].includes(node.type || ""),
+  );
   const activeTraces = traceList.filter((trace) => trace.status === "active");
   const healthState = graphNodes.length > 0 || events.length > 0 ? "operational" : "waiting";
   const relationshipActivity = graphEdges.reduce((count, edge) => count + Number(edge.event_count || 0), 0);
+  const topMcpTool = mcpMetrics.most_used_tools?.[0];
 
   return (
     <div className="om-page">
@@ -127,6 +142,11 @@ export default function ObservatoryPage() {
                   label="Run Uptime"
                   value={`${runtimeMetrics.runtime_uptime?.available || 0}/${runtimeMetrics.runtime_uptime?.total || 0}`}
                 />
+                <MetricCell label="MCP Active" value={mcpMetrics.active_mcp_servers || 0} />
+                <MetricCell label="Tool Calls" value={mcpMetrics.tool_calls || 0} />
+                <MetricCell label="Tool Failed" value={mcpMetrics.failed_tool_calls || 0} />
+                <MetricCell label="Resources" value={mcpMetrics.resource_activity || 0} />
+                <MetricCell label="Top Tool" value={topMcpTool?.tool ? `${topMcpTool.tool} (${topMcpTool.calls || 0})` : "-"} />
               </div>
             </div>
           </ControlPanel>

@@ -60,17 +60,26 @@ from src.services.mcp_config_discovery import (
     ClaudeDesktopConfigProvider,
     CodexConfigProvider,
     MCPConfigEntry,
+    ProjectMCPManifestProvider,
     build_mcp_config_registry,
     discover_mcp_configs,
     register_mcp_config_entry,
     validate_mcp_config_entries,
 )
+from src.mcp.registry import MCPResourceEntry, MCPToolEntry
 from src.services.mcp_capabilities import (
     MCPCapabilityEntry,
     build_capability_registry,
     capability_node,
     register_mcp_capability,
     validate_capability_entries,
+)
+from src.services.mcp_tool_observability import (
+    build_resource_registry,
+    build_tool_registry,
+    get_mcp_observability_metrics,
+    record_tool_interaction,
+    register_discovered_mcp_ecosystem,
 )
 from src.services.ecosystem_registry import (
     build_ecosystem_registry,
@@ -156,6 +165,7 @@ from src.cli.openmesh import (
     _print_federation_peers,
     _print_mcp,
     _print_mcp_config,
+    _print_mcp_discovery,
     _print_plugin_detail,
     _print_plugin_validation,
     _print_plugins,
@@ -166,6 +176,8 @@ from src.cli.openmesh import (
     _print_replay,
     _print_runtime_discovery,
     _print_runtime_observation,
+    _print_resources,
+    _print_tools,
     _print_timeline,
     _print_workflow_inspection,
     _print_workflows,
@@ -1342,6 +1354,8 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("collaborates_with", relationship_types)
         self.assertIn("reads", relationship_types)
         self.assertIn("writes", relationship_types)
+        self.assertIn("calls", relationship_types)
+        self.assertIn("accesses", relationship_types)
         self.assertEqual(
             node_type_definition("federation_node")["display_name"],
             "Federation Node",
@@ -1383,6 +1397,18 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             validate_relationship("executes", "agent", "command")["status"],
+            "valid",
+        )
+        self.assertEqual(
+            validate_relationship("calls", "agent", "tool")["status"],
+            "valid",
+        )
+        self.assertEqual(
+            validate_relationship("accesses", "tool", "database")["status"],
+            "valid",
+        )
+        self.assertEqual(
+            validate_relationship("uses", "agent", "mcp_server")["status"],
             "valid",
         )
 
@@ -1675,15 +1701,133 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
 
         registry = build_mcp_registry([record])
         discovery = build_discovery([record])
-        graph = reduce_graph_state([record])
 
         self.assertEqual(registry[0]["server"], "Filesystem MCP")
         self.assertEqual(registry[0]["transport"], "stdio")
         self.assertTrue(
             any(entry["type"] == "mcp_server" for entry in discovery["services"])
         )
-        self.assertEqual(graph["edges"][0]["type"], "connects_to")
-        self.assertEqual(graph["edges"][0]["validation_status"], "valid")
+
+    async def test_mcp_discovery_registers_tools_resources_and_relationships(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "mcp.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "filesystem-server": {
+                                "command": "npx",
+                                "args": ["@modelcontextprotocol/server-filesystem"],
+                                "tools": [
+                                    {
+                                        "name": "read_file",
+                                        "description": "Read workspace files",
+                                        "category": "filesystem",
+                                    }
+                                ],
+                                "resources": [
+                                    {
+                                        "name": "workspace",
+                                        "type": "file",
+                                        "locator": "/tmp/openmesh",
+                                    }
+                                ],
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            discovered = discover_mcp_configs(
+                providers=(ProjectMCPManifestProvider(),),
+                paths_by_source={"Project": [path]},
+            )
+            db = FakeAsyncSession()
+            result = await register_discovered_mcp_ecosystem(
+                db,
+                paths_by_source={"Project": [path]},
+                broadcast=False,
+            )
+
+        self.assertEqual(discovered["entries"][0]["server"], "filesystem-server")
+        self.assertEqual(result["servers"][0]["server"], "filesystem-server")
+        self.assertEqual(result["tools"][0]["tool"], "read_file")
+        self.assertEqual(result["resources"][0]["resource"], "workspace")
+
+        records = [record for record in db.added if getattr(record, "event_id", None)]
+        event_types = [record.event_type for record in records]
+        self.assertIn("mcp.connected", event_types)
+        self.assertIn("tool.registered", event_types)
+        self.assertIn("resource.discovered", event_types)
+
+        graph = reduce_graph_state(records)
+        edge_types = {edge["type"] for edge in graph["edges"]}
+        self.assertIn("uses", edge_types)
+        self.assertIn("exposes", edge_types)
+        self.assertTrue(
+            all(edge["validation_status"] == "valid" for edge in graph["edges"])
+        )
+
+        tools = build_tool_registry(records)
+        resources = build_resource_registry(records)
+        self.assertEqual(tools[0]["tool"], "read_file")
+        self.assertEqual(resources[0]["resource_type"], "file")
+
+    async def test_mcp_tool_interaction_records_calls_and_resource_access(self):
+        db = FakeAsyncSession()
+        tool = MCPToolEntry(
+            server="filesystem-server",
+            tool="read_file",
+            category="filesystem",
+        )
+        resource = MCPResourceEntry(
+            server="filesystem-server",
+            resource="workspace",
+            resource_type="file",
+            locator="/tmp/openmesh",
+        )
+
+        result = await record_tool_interaction(
+            db,
+            agent=agent_node("agent-a", "Research Agent", "researcher"),
+            tool=tool,
+            resource=resource,
+            broadcast=False,
+        )
+
+        records = [record for record in db.added if getattr(record, "event_id", None)]
+        event_types = [record.event_type for record in records]
+        self.assertEqual(event_types, ["tool.called", "tool.completed"])
+        graph = reduce_graph_state(records)
+        edge_types = {edge["type"] for edge in graph["edges"]}
+        self.assertIn("calls", edge_types)
+        self.assertIn("accesses", edge_types)
+        for edge in graph["edges"]:
+            self.assertIn(result["trace_id"], edge["provenance"]["trace_ids"])
+
+        timeline = build_timeline(records, [], [])
+        timeline_types = {
+            item.get("event_type")
+            for item in timeline["timeline"]
+            if item.get("event_type")
+        }
+        self.assertIn("tool.called", timeline_types)
+        self.assertIn("tool.completed", timeline_types)
+
+        async def fake_list_events(*args, **kwargs):
+            return records
+
+        with patch(
+            "src.services.mcp_tool_observability.list_openmesh_events",
+            fake_list_events,
+        ):
+            metrics = await get_mcp_observability_metrics(db)  # type: ignore[arg-type]
+
+        self.assertEqual(metrics["tool_calls"], 1)
+        self.assertEqual(metrics["failed_tool_calls"], 0)
+        self.assertEqual(metrics["resource_activity"], 1)
+        self.assertEqual(metrics["most_used_tools"][0]["tool"], "read_file")
 
     def test_mcp_config_providers_parse_json_and_toml_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -4663,6 +4807,48 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Codex CLI", printed)
         self.assertIn("OpenMesh Runtime Observation", printed)
         self.assertIn("command.executed", printed)
+
+    def test_cli_mcp_tool_resource_printers_display_registries(self):
+        discovery = {
+            "servers": [
+                {
+                    "server": "filesystem-server",
+                    "transport": "stdio",
+                    "endpoint": "npx",
+                }
+            ],
+            "tools": [
+                {
+                    "server": "filesystem-server",
+                    "tool": "read_file",
+                    "category": "filesystem",
+                }
+            ],
+            "resources": [
+                {
+                    "server": "filesystem-server",
+                    "resource": "workspace",
+                    "resource_type": "file",
+                    "locator": "/tmp/openmesh",
+                }
+            ],
+            "issues": [],
+        }
+
+        with patch("builtins.print") as printer:
+            _print_mcp_discovery(discovery)
+            _print_tools(discovery["tools"])
+            _print_resources(discovery["resources"])
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("MCP Discovery", printed)
+        self.assertIn("filesystem-server", printed)
+        self.assertIn("OpenMesh Tools", printed)
+        self.assertIn("read_file", printed)
+        self.assertIn("OpenMesh Resources", printed)
+        self.assertIn("workspace", printed)
 
     def test_cli_ecosystem_printer_displays_grouped_inventory(self):
         with patch("builtins.print") as printer:

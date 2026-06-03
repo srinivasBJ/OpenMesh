@@ -46,6 +46,11 @@ from ..services.mcp_config_discovery import (
 )
 from ..services.mcp_capabilities import get_capability_registry
 from ..services.mcp_discovery import get_mcp_registry
+from ..services.mcp_tool_observability import (
+    get_resource_registry,
+    get_tool_registry,
+    register_discovered_mcp_ecosystem,
+)
 from ..services.openmesh_doctor import run_doctor
 from ..services.openmesh_queries import (
     get_events,
@@ -693,6 +698,7 @@ def _print_discovery(discovery: dict[str, list[dict[str, Any]]]) -> None:
         ("Agents", "agents"),
         ("Tools", "tools"),
         ("Capabilities", "capabilities"),
+        ("Resources", "resources"),
         ("Workflows", "workflows"),
         ("Processes", "processes"),
         ("Services", "services"),
@@ -723,6 +729,72 @@ def _print_mcp(servers: list[dict[str, Any]]) -> None:
             f"{_short(server.get('version') or '-', 12):<12} "
             f"{_short(server.get('transport') or '-', 12):<12} "
             f"{server.get('last_seen') or '-'}"
+        )
+
+
+def _print_mcp_discovery(result: dict[str, Any]) -> None:
+    print("MCP Discovery")
+    print()
+    servers = result.get("servers", [])
+    if not servers:
+        print("No MCP servers discovered.")
+    for server in servers:
+        print(str(server.get("server") or server.get("name")))
+    tools = result.get("tools", [])
+    if tools:
+        print()
+        print("Tools")
+        for tool in tools:
+            print(f"- {tool.get('server')} / {tool.get('tool')}")
+    resources = result.get("resources", [])
+    if resources:
+        print()
+        print("Resources")
+        for resource in resources:
+            print(
+                f"- {resource.get('server')} / {resource.get('resource')} "
+                f"({resource.get('resource_type')})"
+            )
+    issues = result.get("issues", [])
+    if issues:
+        print()
+        print("Issues")
+        for issue in issues:
+            print(
+                f"- {issue.get('source')} {issue.get('config_path')}: "
+                f"{issue.get('code')} ({issue.get('message')})"
+            )
+
+
+def _print_tools(tools: list[dict[str, Any]]) -> None:
+    print("OpenMesh Tools")
+    print()
+    if not tools:
+        print("No tools discovered.")
+        return
+    print(f"{'server':<24} {'tool':<28} {'category':<14} calls")
+    for tool in tools:
+        print(
+            f"{_short(tool.get('server') or '-', 24):<24} "
+            f"{_short(tool.get('tool') or tool.get('name'), 28):<28} "
+            f"{_short(tool.get('category') or '-', 14):<14} "
+            f"{tool.get('relationship_count', 0)}"
+        )
+
+
+def _print_resources(resources: list[dict[str, Any]]) -> None:
+    print("OpenMesh Resources")
+    print()
+    if not resources:
+        print("No resources discovered.")
+        return
+    print(f"{'type':<18} {'resource':<28} {'server':<24} locator")
+    for resource in resources:
+        print(
+            f"{_short(resource.get('resource_type') or '-', 18):<18} "
+            f"{_short(resource.get('resource') or resource.get('name'), 28):<28} "
+            f"{_short(resource.get('server') or '-', 24):<24} "
+            f"{resource.get('locator') or '-'}"
         )
 
 
@@ -847,6 +919,7 @@ def _print_ecosystem(ecosystem: dict[str, Any]) -> None:
         ("Agents", "agents"),
         ("Tools", "tools"),
         ("Processes", "processes"),
+        ("Resources", "resources"),
         ("Workflows", "workflows"),
         ("MCP Servers", "mcp_servers"),
         ("MCP Configs", "mcp_configs"),
@@ -2122,6 +2195,19 @@ async def _mcp(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _mcp_discover(args: argparse.Namespace) -> int:
+    async def run(db):
+        result = await register_discovered_mcp_ecosystem(
+            db,
+            paths_by_source=_paths_by_source(args.path),
+            broadcast=False,
+        )
+        _print_mcp_discovery(result)
+        return 1 if result.get("issues") else 0
+
+    return await _with_db(run)
+
+
 async def _mcp_config(args: argparse.Namespace) -> int:
     async def run(db):
         if args.scan:
@@ -2142,6 +2228,22 @@ async def _capabilities(args: argparse.Namespace) -> int:
     async def run(db):
         capabilities = await get_capability_registry(db, limit=args.limit)
         _print_capabilities(capabilities)
+
+    return await _with_db(run)
+
+
+async def _tools(args: argparse.Namespace) -> int:
+    async def run(db):
+        tools = await get_tool_registry(db, limit=args.limit)
+        _print_tools(tools)
+
+    return await _with_db(run)
+
+
+async def _resources(args: argparse.Namespace) -> int:
+    async def run(db):
+        resources = await get_resource_registry(db, limit=args.limit)
+        _print_resources(resources)
 
     return await _with_db(run)
 
@@ -2791,6 +2893,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum events to derive MCP registry from.",
     )
     mcp.set_defaults(func=_mcp)
+    mcp_subparsers = mcp.add_subparsers(dest="mcp_command")
+    mcp_discover = mcp_subparsers.add_parser(
+        "discover", help="Discover and register MCP servers, tools, and resources."
+    )
+    mcp_discover.add_argument(
+        "--path",
+        action="append",
+        help="Override scan path as SOURCE=/path/to/config. May be repeated.",
+    )
+    mcp_discover.set_defaults(func=_mcp_discover)
 
     mcp_config = subparsers.add_parser(
         "mcp-config", help="Show discovered MCP configuration metadata."
@@ -2823,6 +2935,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum events to derive capability registry from.",
     )
     capabilities.set_defaults(func=_capabilities)
+
+    tools = subparsers.add_parser(
+        "tools", help="Show discovered OpenMesh tool metadata."
+    )
+    tools.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive tool registry from.",
+    )
+    tools.set_defaults(func=_tools)
+
+    resources = subparsers.add_parser(
+        "resources", help="Show discovered OpenMesh resource metadata."
+    )
+    resources.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive resource registry from.",
+    )
+    resources.set_defaults(func=_resources)
 
     workflows = subparsers.add_parser(
         "workflows", help="Show discovered workflow metadata."

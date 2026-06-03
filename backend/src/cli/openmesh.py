@@ -13,6 +13,7 @@ from ..db.session import AsyncSessionLocal, init_db
 from ..db.openmesh_events import list_openmesh_events
 from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_session
 from ..providers import discover_local_providers, list_local_models, verify_providers
+from ..runtimes import discover_runtimes
 from ..services.openmesh_collector import collector
 from ..services.discovery import get_discovery
 from ..services.ecosystem_registry import get_ecosystem_registry
@@ -64,6 +65,7 @@ from ..services.replay import (
     get_trace_replay,
     get_workflow_replay,
 )
+from ..services.runtime_observability import observe_runtime
 from ..services.simulation import run_local_simulation
 from ..services.timeline import (
     get_node_timeline,
@@ -1443,6 +1445,15 @@ def _print_models(models: list[Any]) -> None:
         print(f"{model.model:<32} {model.provider_name}  {model.endpoint or '-'}")
 
 
+def _print_runtime_discovery(statuses: list[Any]) -> None:
+    print("OpenMesh Agent Runtimes")
+    print()
+    for status in statuses:
+        marker = "✓" if status.available else "✗"
+        detail = status.executable or status.path or status.message
+        print(f"{status.name:<12} {marker} {detail}")
+
+
 def _print_research_demo_result(result: dict[str, Any]) -> None:
     print("OpenMesh Research Demo")
     print()
@@ -1461,6 +1472,24 @@ def _print_research_demo_result(result: dict[str, Any]) -> None:
     print()
     print("Response")
     print(_short(result.get("response", ""), 1000))
+
+
+def _print_runtime_observation(result: dict[str, Any]) -> None:
+    runtime = result["runtime"]
+    print("OpenMesh Runtime Observation")
+    print()
+    print(f"Runtime: {runtime['name']}")
+    print(f"Status: {runtime['status']}")
+    if runtime.get("executable"):
+        print(f"Executable: {runtime['executable']}")
+    if runtime.get("path"):
+        print(f"Path: {runtime['path']}")
+    print(f"Trace: {result['trace_id']}")
+    print(f"Session: {result['session_id']}")
+    print()
+    print("Events")
+    for event in result["events"]:
+        print(f"- {event['event_type']}")
 
 
 def _utc_now() -> datetime:
@@ -1888,9 +1917,9 @@ async def _providers_verify(args: argparse.Namespace) -> int:
         if status.configured and not status.connected and not status.local
     ]
     strict = getattr(args, "strict", False)
-    strict_failures = [
-        status for status in statuses if not status.connected
-    ] if strict else []
+    strict_failures = (
+        [status for status in statuses if not status.connected] if strict else []
+    )
     if configured_failures or (strict and strict_failures):
         return 1
     return 0
@@ -1909,6 +1938,15 @@ async def _models(args: argparse.Namespace) -> int:
 async def _models_list(args: argparse.Namespace) -> int:
     models = await list_local_models()
     _print_models(models)
+    return 0
+
+
+async def _runtimes(args: argparse.Namespace) -> int:
+    return await _runtimes_discover(args)
+
+
+async def _runtimes_discover(args: argparse.Namespace) -> int:
+    _print_runtime_discovery(discover_runtimes())
     return 0
 
 
@@ -2039,6 +2077,30 @@ async def _run_demo_research(args: argparse.Namespace) -> int:
             print(str(exc))
             return 1
         _print_research_demo_result(result)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _observe(args: argparse.Namespace) -> int:
+    async def run(db):
+        try:
+            result = await observe_runtime(
+                db,
+                args.runtime,
+                broadcast=False,
+            )
+        except ValueError as exc:
+            print("OpenMesh runtime is unknown")
+            print()
+            print(str(exc))
+            return 2
+        except RuntimeError as exc:
+            print("OpenMesh runtime is unavailable")
+            print()
+            print(str(exc))
+            return 1
+        _print_runtime_observation(result)
         return 0
 
     return await _with_db(run)
@@ -2552,6 +2614,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     models_list.set_defaults(func=_models_list)
 
+    runtimes = subparsers.add_parser(
+        "runtimes", help="Discover local coding agent runtimes."
+    )
+    runtimes.set_defaults(func=_runtimes)
+    runtime_subparsers = runtimes.add_subparsers(dest="runtime_command")
+    runtimes_discover = runtime_subparsers.add_parser(
+        "discover", help="Discover Claude Code, Codex CLI, OpenCode, Aider, and Cursor."
+    )
+    runtimes_discover.set_defaults(func=_runtimes_discover)
+
     plugins = subparsers.add_parser("plugins", help="Show OpenMesh plugin status.")
     plugins.set_defaults(func=_plugins)
     plugin_subparsers = plugins.add_subparsers(dest="plugin_command")
@@ -2664,9 +2736,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_demo = subparsers.add_parser(
         "run-demo", help="Run an OpenMesh real provider demo workflow."
     )
-    run_demo_subparsers = run_demo.add_subparsers(
-        dest="demo_command", required=True
-    )
+    run_demo_subparsers = run_demo.add_subparsers(dest="demo_command", required=True)
     research_demo = run_demo_subparsers.add_parser(
         "research", help="Run a real LLM research workflow through OpenMesh."
     )
@@ -2809,6 +2879,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--once", action="store_true", help="Render one terminal capture and exit."
     )
     tui.set_defaults(func=_tui)
+
+    observe = subparsers.add_parser(
+        "observe", help="Observe a detected local coding agent runtime."
+    )
+    observe.add_argument(
+        "runtime",
+        help="Runtime id or alias, for example codex, claude, opencode, aider, cursor.",
+    )
+    observe.set_defaults(func=_observe)
 
     run = subparsers.add_parser("run", help="Run and observe a command.")
     run.add_argument(

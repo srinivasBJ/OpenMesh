@@ -26,6 +26,7 @@ from ...db.models import (
 )
 from ...agents.brain import generate_agent_profile
 from ...core.security import protect_write
+from ...runtimes import discover_runtimes
 from ...shared.openmesh_events import agent_node, make_openmesh_event
 from ...services.openmesh_collector import collector
 from ...services.discovery import get_discovery
@@ -73,6 +74,7 @@ from ...services.timeline import (
 from ...services.node_types import node_type_registry, node_type_validation_metadata
 from ...services.registry_status import build_registry_status
 from ...services.relationship_types import relationship_registry
+from ...services.runtime_observability import get_runtime_metrics
 from ...sdk.integrations import list_integrations
 
 router = APIRouter()
@@ -960,6 +962,19 @@ async def get_openmesh_local_llm_metrics(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_local_llm_metrics(db, limit=limit)
+
+
+@router.get("/openmesh/runtimes")
+async def get_openmesh_runtimes():
+    return {"runtimes": [status.to_dict() for status in discover_runtimes()]}
+
+
+@router.get("/openmesh/runtime/metrics")
+async def get_openmesh_runtime_metrics(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_runtime_metrics(db, limit=limit)
 
 
 # ── STATS ─────────────────────────────────────────────────────────────────────

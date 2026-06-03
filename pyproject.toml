@@ -69,6 +69,7 @@ packages = [
   "src.db",
   "src.jobs",
   "src.providers",
+  "src.runtimes",
   "src.sdk",
   "src.sdk.integrations",
   "src.services",

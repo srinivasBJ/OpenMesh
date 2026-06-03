@@ -24,6 +24,15 @@ type LocalLlmMetrics = {
   average_tokens_per_second?: number | null;
   provider_uptime?: { connected?: number; total?: number; ratio?: number };
 };
+type RuntimeMetrics = {
+  active_runtimes?: number;
+  detected_runtimes?: number;
+  total_runtimes?: number;
+  commands_executed?: number;
+  files_modified?: number;
+  model_requests?: number;
+  runtime_uptime?: { available?: number; total?: number; ratio?: number };
+};
 
 export default function ObservatoryPage() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: statsApi.get, refetchInterval: 30000 });
@@ -41,6 +50,11 @@ export default function ObservatoryPage() {
   const { data: localLlm = {} } = useQuery<LocalLlmMetrics>({
     queryKey: ["openmesh-local-llm-metrics"],
     queryFn: () => openmeshApi.localLlmMetrics(),
+    refetchInterval: 15000,
+  });
+  const { data: runtimeMetrics = {} } = useQuery<RuntimeMetrics>({
+    queryKey: ["openmesh-runtime-metrics"],
+    queryFn: () => openmeshApi.runtimeMetrics(),
     refetchInterval: 15000,
   });
   const { events } = useWSStore();
@@ -103,6 +117,15 @@ export default function ObservatoryPage() {
                 <MetricCell
                   label="Provider Up"
                   value={`${localLlm.provider_uptime?.connected || 0}/${localLlm.provider_uptime?.total || 0}`}
+                />
+                <MetricCell label="Runtimes" value={`${runtimeMetrics.detected_runtimes || 0}/${runtimeMetrics.total_runtimes || 0}`} />
+                <MetricCell label="Active Run" value={runtimeMetrics.active_runtimes || 0} />
+                <MetricCell label="Commands" value={runtimeMetrics.commands_executed || 0} />
+                <MetricCell label="Files Mod" value={runtimeMetrics.files_modified || 0} />
+                <MetricCell label="Model Req" value={runtimeMetrics.model_requests || 0} />
+                <MetricCell
+                  label="Run Uptime"
+                  value={`${runtimeMetrics.runtime_uptime?.available || 0}/${runtimeMetrics.runtime_uptime?.total || 0}`}
                 />
               </div>
             </div>

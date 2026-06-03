@@ -32,7 +32,10 @@ async def get_local_llm_metrics(
         for node in (record.source_json, record.target_json):
             if node and node.get("node_type") == "model":
                 metadata = node.get("metadata") or {}
-                if metadata.get("local") or metadata.get("provider") in LOCAL_PROVIDER_IDS:
+                if (
+                    metadata.get("local")
+                    or metadata.get("provider") in LOCAL_PROVIDER_IDS
+                ):
                     observed_models[node["node_id"]] = {
                         "id": node["node_id"],
                         "name": node.get("name") or node["node_id"],
@@ -92,7 +95,9 @@ async def get_local_llm_metrics(
 
 def _stable_id(value: str) -> str:
     return (
-        "".join(character.lower() if character.isalnum() else "-" for character in value)
+        "".join(
+            character.lower() if character.isalnum() else "-" for character in value
+        )
         .strip("-")
         .replace("--", "-")
         or "model"

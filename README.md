@@ -88,6 +88,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Federation metadata registry for multiple OpenMesh instances, peers, snapshots, timelines, and replay summaries
 - Phase 1 LLM provider observation for OpenAI, Anthropic, and OpenRouter; see [docs/LLM_INTEGRATION.md](docs/LLM_INTEGRATION.md)
 - Phase 2 local model discovery and tracing for Ollama, LM Studio, and vLLM; see [docs/LOCAL_LLM_INTEGRATION.md](docs/LOCAL_LLM_INTEGRATION.md)
+- Phase 3 coding-agent runtime discovery and observation for Claude Code, Codex CLI, OpenCode, Aider, and Cursor; see [docs/RUNTIME_OBSERVABILITY.md](docs/RUNTIME_OBSERVABILITY.md)
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
@@ -324,6 +325,9 @@ openmesh doctor
 openmesh providers verify
 openmesh providers discover
 openmesh models list
+openmesh runtimes discover
+openmesh observe codex
+openmesh observe claude
 openmesh simulate --agents 20 --events 500
 openmesh run-demo research --provider openai
 openmesh run-demo research --provider ollama --model hermes3
@@ -450,6 +454,8 @@ This repository includes public-project workflow scaffolding:
 - `GET /api/openmesh/sessions`
 - `GET /api/openmesh/discovery`
 - `GET /api/openmesh/ecosystem`
+- `GET /api/openmesh/runtimes`
+- `GET /api/openmesh/runtime/metrics`
 - `GET /api/openmesh/integrations`
 - `GET /api/openmesh/federation`
 - `GET /api/openmesh/federation/peers`

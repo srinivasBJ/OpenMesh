@@ -142,7 +142,7 @@ NODE_TYPES: dict[str, NodeType] = {
         "Runtime",
         "An execution runtime hosting agents or workflows.",
         "services",
-        COMMON_METADATA,
+        COMMON_METADATA + ("executable", "path", "status", "detected"),
     ),
     "guild": NodeType(
         "guild",

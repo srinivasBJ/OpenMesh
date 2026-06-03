@@ -40,7 +40,11 @@ def list_providers() -> list[LLMProvider]:
 def get_provider(provider_id: str) -> LLMProvider | None:
     provider_id = provider_id.lower().strip()
     return next(
-        (provider for provider in list_providers() if provider.provider_id == provider_id),
+        (
+            provider
+            for provider in list_providers()
+            if provider.provider_id == provider_id
+        ),
         None,
     )
 
@@ -58,11 +62,15 @@ def configured_provider(preferred: str | None = None) -> LLMProvider | None:
         ),
         None,
     )
-    return cloud or next((provider for provider in providers if provider.configured), None)
+    return cloud or next(
+        (provider for provider in providers if provider.configured), None
+    )
 
 
 async def verify_providers() -> list[ProviderStatus]:
-    return list(await asyncio.gather(*(provider.verify() for provider in list_providers())))
+    return list(
+        await asyncio.gather(*(provider.verify() for provider in list_providers()))
+    )
 
 
 def list_local_providers() -> list[LLMProvider]:
@@ -71,7 +79,9 @@ def list_local_providers() -> list[LLMProvider]:
 
 async def discover_local_providers() -> list[ProviderStatus]:
     return list(
-        await asyncio.gather(*(provider.verify() for provider in list_local_providers()))
+        await asyncio.gather(
+            *(provider.verify() for provider in list_local_providers())
+        )
     )
 
 

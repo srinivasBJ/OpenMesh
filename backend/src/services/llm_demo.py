@@ -269,7 +269,9 @@ async def run_research_demo(
         "response": answer,
         "usage": usage,
         "latency_ms": latency_ms,
-        "tokens_per_second": response.tokens_per_second if "response" in locals() else None,
+        "tokens_per_second": response.tokens_per_second
+        if "response" in locals()
+        else None,
         "events": events,
         "started_at": started_at.isoformat() + "Z",
         "ended_at": ended_at.isoformat() + "Z",
@@ -365,7 +367,9 @@ def _build_research_brief(query: str, answer: str) -> dict[str, Any]:
 
 def _stable_id(value: str) -> str:
     return (
-        "".join(character.lower() if character.isalnum() else "-" for character in value)
+        "".join(
+            character.lower() if character.isalnum() else "-" for character in value
+        )
         .strip("-")
         .replace("--", "-")
         or "model"

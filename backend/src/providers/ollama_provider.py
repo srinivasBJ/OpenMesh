@@ -42,7 +42,9 @@ class OllamaProvider(LLMProvider):
                         provider_name=self.display_name,
                         model=str(model_name),
                         endpoint=self.endpoint,
-                        metadata={key: value for key, value in item.items() if key != "name"},
+                        metadata={
+                            key: value for key, value in item.items() if key != "name"
+                        },
                     )
                 )
         return models

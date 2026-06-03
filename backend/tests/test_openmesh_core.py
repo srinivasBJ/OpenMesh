@@ -109,7 +109,9 @@ from src.services.openmesh_queries import (
 )
 from src.providers.base import LLMResponse, ProviderModel, ProviderStatus
 from src.providers.settings import load_provider_settings
+from src.runtimes.registry import RuntimeDefinition, RuntimeStatus, discover_runtimes
 from src.services.local_llm_metrics import get_local_llm_metrics
+from src.services.runtime_observability import get_runtime_metrics, observe_runtime
 from src.services.ecosystem_snapshot import build_ecosystem_snapshot
 from src.services.ecosystem_snapshot import compare_snapshot_payloads
 from src.services.evaluation import generate_synthetic_ecosystem, run_evaluation_suite
@@ -162,6 +164,8 @@ from src.cli.openmesh import (
     _print_snapshots,
     _print_query_result,
     _print_replay,
+    _print_runtime_discovery,
+    _print_runtime_observation,
     _print_timeline,
     _print_workflow_inspection,
     _print_workflows,
@@ -504,7 +508,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("model.loaded", event_types)
         self.assertEqual(result["tokens_per_second"], 200.0)
         graph = reduce_graph_state(records)
-        served_by_edges = [edge for edge in graph["edges"] if edge["type"] == "served_by"]
+        served_by_edges = [
+            edge for edge in graph["edges"] if edge["type"] == "served_by"
+        ]
         self.assertEqual(len(served_by_edges), 1)
         self.assertEqual(served_by_edges[0]["validation_status"], "valid")
         self.assertIn(result["trace_id"], served_by_edges[0]["provenance"]["trace_ids"])
@@ -576,8 +582,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             return records
 
         with (
-            patch("src.services.local_llm_metrics.list_openmesh_events", fake_list_events),
-            patch("src.services.local_llm_metrics.discover_local_providers", fake_discover),
+            patch(
+                "src.services.local_llm_metrics.list_openmesh_events", fake_list_events
+            ),
+            patch(
+                "src.services.local_llm_metrics.discover_local_providers", fake_discover
+            ),
             patch("src.services.local_llm_metrics.list_local_models", fake_models),
         ):
             metrics = await get_local_llm_metrics(db)  # type: ignore[arg-type]
@@ -587,6 +597,181 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(metrics["average_tokens_per_second"], 200)
         self.assertEqual(metrics["provider_uptime"]["connected"], 1)
         self.assertEqual(metrics["provider_uptime"]["total"], 2)
+
+    def test_runtime_discovery_detects_installed_cli(self):
+        definition = RuntimeDefinition(
+            runtime_id="codex_cli",
+            name="Codex CLI",
+            command_names=("codex",),
+            aliases=("codex",),
+        )
+
+        with patch(
+            "src.runtimes.registry.shutil.which",
+            lambda command: "/usr/local/bin/codex" if command == "codex" else None,
+        ):
+            statuses = discover_runtimes([definition])
+
+        self.assertEqual(len(statuses), 1)
+        self.assertTrue(statuses[0].available)
+        self.assertEqual(statuses[0].status, "installed")
+        self.assertEqual(statuses[0].executable, "/usr/local/bin/codex")
+
+    async def test_runtime_observation_emits_trace_and_graph_relationships(self):
+        status = RuntimeStatus(
+            runtime_id="codex_cli",
+            name="Codex CLI",
+            available=True,
+            status="installed",
+            message="installed",
+            executable="/usr/local/bin/codex",
+            detection_method="path",
+        )
+
+        async def fake_complete_session(*args, **kwargs):
+            return None
+
+        db = FakeSessionStore()
+        with patch(
+            "src.services.runtime_observability.complete_openmesh_session",
+            fake_complete_session,
+        ):
+            result = await observe_runtime(
+                db,
+                "codex",
+                runtime_status=status,
+                workspace=Path("/tmp/openmesh-project"),
+            )
+
+        records = [record for record in db.added if hasattr(record, "event_type")]
+        event_types = [record.event_type for record in records]
+        self.assertEqual(
+            event_types,
+            [
+                "runtime.started",
+                "file.read",
+                "file.write",
+                "command.executed",
+                "tool.called",
+                "model.request",
+                "model.response",
+                "runtime.stopped",
+            ],
+        )
+        self.assertEqual({record.trace_id for record in records}, {result["trace_id"]})
+
+        graph = reduce_graph_state(records)
+        edge_types = {edge["type"] for edge in graph["edges"]}
+        self.assertIn("reads", edge_types)
+        self.assertIn("writes", edge_types)
+        self.assertIn("executes", edge_types)
+        self.assertIn("uses", edge_types)
+        self.assertTrue(
+            all(edge["validation_status"] == "valid" for edge in graph["edges"])
+        )
+        for edge in graph["edges"]:
+            self.assertIn(result["trace_id"], edge["provenance"]["trace_ids"])
+
+        timeline = build_timeline(records, [], [])
+        timeline_types = {
+            item.get("event_type")
+            for item in timeline["timeline"]
+            if item.get("event_type")
+        }
+        self.assertIn("runtime.started", timeline_types)
+        self.assertIn("file.write", timeline_types)
+        self.assertIn("command.executed", timeline_types)
+
+    async def test_runtime_metrics_derives_activity_from_events(self):
+        status = RuntimeStatus(
+            runtime_id="codex_cli",
+            name="Codex CLI",
+            available=True,
+            status="installed",
+            message="installed",
+            executable="/usr/local/bin/codex",
+        )
+        source = {
+            "node_id": "agent:runtime:codex_cli",
+            "node_type": "agent",
+            "name": "Codex CLI Agent",
+            "runtime": "codex_cli",
+        }
+        records = [
+            record_from_event(
+                make_openmesh_event(
+                    "runtime.started",
+                    source,
+                    {"runtime_id": "codex_cli"},
+                    target={
+                        "node_id": "runtime:codex_cli",
+                        "node_type": "runtime",
+                        "name": "Codex CLI",
+                        "runtime": "openmesh.runtime-discovery",
+                    },
+                )
+            ),
+            record_from_event(
+                make_openmesh_event(
+                    "command.executed",
+                    source,
+                    {"command": "codex"},
+                    target={
+                        "node_id": "command:runtime:codex_cli",
+                        "node_type": "command",
+                        "name": "codex",
+                        "runtime": "shell",
+                    },
+                )
+            ),
+            record_from_event(
+                make_openmesh_event(
+                    "file.write",
+                    source,
+                    {"path": "/tmp/openmesh-project"},
+                    target={
+                        "node_id": "file:runtime:codex_cli:workspace",
+                        "node_type": "file",
+                        "name": "openmesh-project",
+                        "runtime": "filesystem",
+                        "metadata": {"path": "/tmp/openmesh-project"},
+                    },
+                )
+            ),
+            record_from_event(
+                make_openmesh_event(
+                    "model.request",
+                    source,
+                    {"model": "Codex CLI model"},
+                    target={
+                        "node_id": "model:runtime:codex_cli:default",
+                        "node_type": "model",
+                        "name": "Codex CLI model",
+                        "runtime": "codex_cli",
+                    },
+                )
+            ),
+        ]
+
+        async def fake_list_events(*args, **kwargs):
+            return records
+
+        with (
+            patch(
+                "src.services.runtime_observability.list_openmesh_events",
+                fake_list_events,
+            ),
+            patch(
+                "src.services.runtime_observability.discover_runtimes", lambda: [status]
+            ),
+        ):
+            metrics = await get_runtime_metrics(FakeAsyncSession())  # type: ignore[arg-type]
+
+        self.assertEqual(metrics["active_runtimes"], 1)
+        self.assertEqual(metrics["commands_executed"], 1)
+        self.assertEqual(metrics["files_modified"], 1)
+        self.assertEqual(metrics["model_requests"], 1)
+        self.assertEqual(metrics["runtime_uptime"]["available"], 1)
 
     def make_exploration_graph(self):
         pairs = [
@@ -1155,6 +1340,8 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("spawns", relationship_types)
         self.assertIn("federates_with", relationship_types)
         self.assertIn("collaborates_with", relationship_types)
+        self.assertIn("reads", relationship_types)
+        self.assertIn("writes", relationship_types)
         self.assertEqual(
             node_type_definition("federation_node")["display_name"],
             "Federation Node",
@@ -1183,6 +1370,20 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "collaboration.created", source_type="agent", target_type="agent"
             ),
             "collaborates_with",
+        )
+        self.assertEqual(
+            relationship_type_for("file.read", source_type="agent", target_type="file"),
+            "reads",
+        )
+        self.assertEqual(
+            relationship_type_for(
+                "file.write", source_type="agent", target_type="file"
+            ),
+            "writes",
+        )
+        self.assertEqual(
+            validate_relationship("executes", "agent", "command")["status"],
+            "valid",
         )
 
     async def test_local_simulation_persists_protocol_and_legacy_data(self):
@@ -4431,6 +4632,37 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("OpenMesh Query", printed)
         self.assertIn("agents using web_search", printed)
         self.assertIn("Research Agent --uses--> web_search", printed)
+
+    def test_cli_runtime_printers_display_discovery_and_observation(self):
+        status = RuntimeStatus(
+            runtime_id="codex_cli",
+            name="Codex CLI",
+            available=True,
+            status="installed",
+            message="installed",
+            executable="/usr/local/bin/codex",
+        )
+        result = {
+            "runtime": status.to_dict(),
+            "trace_id": "trace_runtime_test",
+            "session_id": "sess_runtime_test",
+            "events": [
+                {"event_type": "runtime.started"},
+                {"event_type": "command.executed"},
+            ],
+        }
+
+        with patch("builtins.print") as printer:
+            _print_runtime_discovery([status])
+            _print_runtime_observation(result)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Agent Runtimes", printed)
+        self.assertIn("Codex CLI", printed)
+        self.assertIn("OpenMesh Runtime Observation", printed)
+        self.assertIn("command.executed", printed)
 
     def test_cli_ecosystem_printer_displays_grouped_inventory(self):
         with patch("builtins.print") as printer:

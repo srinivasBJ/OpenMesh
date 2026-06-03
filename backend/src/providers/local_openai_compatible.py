@@ -48,7 +48,9 @@ class LocalOpenAICompatibleProvider(LLMProvider):
                         provider_name=self.display_name,
                         model=str(model_id),
                         endpoint=self.endpoint,
-                        metadata={key: value for key, value in item.items() if key != "id"},
+                        metadata={
+                            key: value for key, value in item.items() if key != "id"
+                        },
                     )
                 )
         return models

@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with: { python-version: "3.11" }
       - run: pip install -r requirements.txt
         working-directory: backend
@@ -37,7 +37,7 @@ jobs:
       OPENMESH_SQLITE_PATH: /tmp/openmesh-release-validation.db
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with: { python-version: "3.11" }
       - name: Install package editable
         run: python -m pip install -e .

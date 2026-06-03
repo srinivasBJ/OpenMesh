@@ -37,6 +37,7 @@ can make the path explicit:
 export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH=./openmesh.db
 export LLM_MODE=offline
+export OPENMESH_SCHEDULER_ENABLED=0
 ```
 
 Database-backed CLI commands now bootstrap the local schema automatically. A
@@ -54,7 +55,13 @@ Overall: OK
 
 ## First Workflow
 
-Observe a real process:
+Generate a local demo ecosystem with no API keys or cloud services:
+
+```bash
+openmesh simulate --agents 20 --events 500
+```
+
+You can also observe a real process:
 
 ```bash
 openmesh run -- python -c "print('hello openmesh')"
@@ -105,6 +112,11 @@ The backend is optional for CLI-only use. Start it when you want REST APIs,
 WebSocket streaming, or the browser dashboard:
 
 ```bash
+export OPENMESH_DB_MODE=sqlite
+export OPENMESH_SQLITE_PATH=./openmesh.db
+export LLM_MODE=offline
+export WARMUP_TICKS=0
+export OPENMESH_SCHEDULER_ENABLED=0
 uvicorn src.main:app --reload --port 8000
 ```
 
@@ -126,6 +138,9 @@ npm run dev
 ```
 
 Open `http://localhost:5173`.
+
+Set `OPENMESH_SCHEDULER_ENABLED=1` only when you intentionally want the legacy
+scheduled simulator to run in the background.
 
 ## Postgres Mode
 

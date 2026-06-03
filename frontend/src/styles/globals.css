@@ -37,10 +37,12 @@
   --om-red-500: #c94831;
   --om-green-500: #78a66a;
 
-  --om-bg: var(--om-iron-980);
-  --om-surface: rgba(18, 16, 13, 0.94);
-  --om-surface-raised: rgba(25, 22, 18, 0.96);
-  --om-surface-inset: rgba(8, 8, 7, 0.92);
+  --om-rust-plate: #160a05;
+  --om-rust-plate-hot: #2a1107;
+  --om-bg: var(--om-rust-plate);
+  --om-surface: rgba(13, 9, 6, 0.76);
+  --om-surface-raised: rgba(19, 12, 8, 0.82);
+  --om-surface-inset: rgba(7, 5, 4, 0.72);
   --om-border: rgba(125, 101, 80, 0.32);
   --om-border-strong: rgba(190, 92, 36, 0.56);
   --om-text: #efe7db;
@@ -68,6 +70,22 @@
   --om-glow-hot: 0 0 0 1px rgba(210, 122, 61, 0.38), 0 0 38px rgba(190, 92, 36, 0.24);
 }
 
+:root[data-theme="light"] {
+  color-scheme: dark;
+
+  --om-rust-plate: #17100c;
+  --om-rust-plate-hot: #2a1b12;
+  --om-bg: #17120f;
+  --om-surface: rgba(30, 25, 20, 0.93);
+  --om-surface-raised: rgba(38, 31, 25, 0.95);
+  --om-surface-inset: rgba(18, 14, 11, 0.9);
+  --om-border: rgba(125, 101, 80, 0.32);
+  --om-border-strong: rgba(223, 116, 45, 0.52);
+  --om-rust-500: #df742d;
+  --om-rust-400: #f09a55;
+  --om-rust-300: #ffc08a;
+}
+
 @layer base {
   html {
     min-height: 100%;
@@ -76,17 +94,27 @@
 
   body {
     min-height: 100%;
+    background-color: var(--om-rust-plate);
     background:
-      radial-gradient(circle at 18% 0%, rgba(145, 64, 24, 0.12), transparent 34rem),
-      radial-gradient(circle at 86% 18%, rgba(49, 86, 75, 0.13), transparent 28rem),
-      repeating-radial-gradient(circle at 20% 35%, rgba(190, 92, 36, 0.035) 0 1px, transparent 1px 9px),
-      linear-gradient(135deg, rgba(255, 255, 255, 0.018) 25%, transparent 25%),
-      var(--om-bg);
-    background-size: auto, auto, 58px 58px, 12px 12px, auto;
+      radial-gradient(circle at 24% 18%, rgba(122, 45, 15, 0.28), transparent 22rem),
+      radial-gradient(circle at 76% 46%, rgba(66, 24, 10, 0.32), transparent 28rem),
+      linear-gradient(180deg, rgba(18, 8, 4, 0.12), rgba(0, 0, 0, 0.22)),
+      var(--om-rust-plate);
+    background-attachment: fixed;
+    background-size: auto, auto, auto, auto;
     color: var(--om-text);
     font-family: var(--om-font-ui);
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+  }
+
+  :root[data-theme="light"] body {
+    background:
+      radial-gradient(circle at 18% 0%, rgba(223, 116, 45, 0.18), transparent 34rem),
+      radial-gradient(circle at 86% 18%, rgba(125, 101, 80, 0.16), transparent 28rem),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.032) 25%, transparent 25%),
+      var(--om-bg);
+    background-size: auto, auto, 12px 12px, auto;
   }
 
   * {
@@ -102,18 +130,21 @@
 @layer components {
   .om-app-shell {
     min-height: 100vh;
+    background-color: transparent;
+    background: transparent;
+  }
+
+  :root[data-theme="light"] .om-app-shell {
     background:
-      radial-gradient(circle at 15% 12%, rgba(190, 92, 36, 0.1), transparent 22rem),
-      radial-gradient(circle at 92% 18%, rgba(49, 86, 75, 0.09), transparent 24rem),
       linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
-    background-size: auto, auto, 64px 64px, 64px 64px;
+    background-size: 64px 64px, 64px 64px;
   }
 
   .om-page {
     width: 100%;
     min-height: 100vh;
-    padding: clamp(1rem, 2vw, 1.5rem);
+    padding: clamp(1.5rem, 3vw, 2.5rem);
   }
 
   .om-page-narrow {
@@ -128,11 +159,10 @@
 
   .om-sidebar {
     background:
-      linear-gradient(180deg, rgba(223, 116, 45, 0.08), transparent 22rem),
-      linear-gradient(145deg, rgba(255, 255, 255, 0.035), transparent 28%),
-      var(--om-iron-950);
+      linear-gradient(180deg, rgba(91, 33, 11, 0.34), transparent 22rem),
+      rgba(8, 6, 5, 0.9);
     border-color: var(--om-border);
-    box-shadow: inset -1px 0 rgba(255, 214, 170, 0.04);
+    box-shadow: inset -1px 0 rgba(190, 92, 36, 0.12);
     transition: width 180ms ease;
   }
 
@@ -168,9 +198,26 @@
     border: 1px solid var(--om-border);
     border-radius: var(--om-radius-xl);
     background:
+      linear-gradient(180deg, rgba(80, 32, 13, 0.22), rgba(6, 4, 3, 0.16)),
+      var(--om-surface);
+    backdrop-filter: blur(2px);
+    box-shadow: var(--om-shadow-panel);
+  }
+
+  :root[data-theme="light"] .om-panel,
+  :root[data-theme="light"] .card {
+    background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01)),
       var(--om-surface);
-    box-shadow: var(--om-shadow-panel);
+    backdrop-filter: none;
+  }
+
+  :root[data-theme="light"] .om-panel::before,
+  :root[data-theme="light"] .card::before {
+    background:
+      linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.025), transparent),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px);
+    mix-blend-mode: screen;
   }
 
   .om-panel::before,
@@ -181,10 +228,10 @@
     inset: 0;
     border-radius: inherit;
     background:
-      linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.025), transparent),
-      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px);
-    opacity: 0.45;
-    mix-blend-mode: screen;
+      linear-gradient(90deg, transparent, rgba(190, 92, 36, 0.035), transparent),
+      repeating-linear-gradient(0deg, rgba(214, 99, 35, 0.018) 0 1px, transparent 1px 7px);
+    opacity: 0.55;
+    mix-blend-mode: normal;
   }
 
   .om-panel > *,
@@ -250,11 +297,11 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    border: 1px solid rgba(210, 122, 61, 0.55);
+    border: 1px solid rgba(210, 122, 61, 0.62);
     border-radius: var(--om-radius-md);
     background:
-      linear-gradient(180deg, rgba(210, 122, 61, 0.24), rgba(145, 64, 24, 0.2)),
-      rgba(58, 22, 11, 0.96);
+      linear-gradient(180deg, rgba(190, 92, 36, 0.5), rgba(72, 25, 9, 0.86)),
+      rgba(34, 13, 6, 0.96);
     color: #ffe1c5;
     font-size: 0.8125rem;
     font-weight: 700;
@@ -409,50 +456,74 @@
   }
 
   .om-alert-stack {
-    top: 0.75rem !important;
+    top: 0.5rem !important;
     left: 50% !important;
-    width: min(92vw, 42rem);
+    width: min(96vw, 58rem);
     transform: translateX(-50%);
   }
 
   .om-alert-panel {
     display: flex;
-    width: min(92vw, 42rem);
+    width: min(96vw, 58rem);
     align-items: center;
-    gap: 0.75rem;
-    border: 2px solid rgba(185, 133, 53, 0.72);
-    border-radius: var(--om-radius-md);
+    gap: 0.55rem;
+    border: 2px outset rgba(210, 122, 61, 0.9);
+    border-radius: 2px;
     background:
-      linear-gradient(90deg, rgba(185, 133, 53, 0.26), rgba(18, 16, 13, 0.98) 24%),
-      var(--om-iron-900);
-    box-shadow: 0 12px 38px rgba(0, 0, 0, 0.42), inset 0 0 0 1px rgba(255, 218, 135, 0.08);
-    color: var(--om-amber-500);
-    padding: 0.75rem 0.9rem;
+      linear-gradient(90deg, rgba(63, 22, 8, 0.96), rgba(151, 62, 19, 0.98) 52%, rgba(204, 109, 43, 0.94)),
+      var(--om-rust-plate);
+    box-shadow: 3px 3px 0 rgba(44, 17, 6, 0.9), 0 12px 34px rgba(0, 0, 0, 0.58), inset 0 1px rgba(255, 224, 185, 0.18);
+    color: #fff2e4;
+    font-family: var(--om-font-ui);
+    padding: 0.45rem 0.55rem 0.45rem 0.7rem;
     transition: opacity 180ms ease, transform 180ms ease;
   }
 
   .om-alert-error {
-    border-color: rgba(201, 72, 49, 0.78);
-    color: var(--om-red-500);
+    border-color: rgba(236, 124, 55, 0.96);
   }
 
   .om-alert-success {
-    border-color: rgba(120, 166, 106, 0.72);
-    color: var(--om-green-500);
+    border-color: rgba(120, 166, 106, 0.86);
   }
 
   .om-alert-warning {
-    border-color: rgba(185, 133, 53, 0.78);
-    color: var(--om-amber-500);
+    border-color: rgba(185, 133, 53, 0.9);
   }
 
   .om-alert-label {
-    color: currentColor;
+    color: #ffd0a4;
     font-family: var(--om-font-mono);
-    font-size: 0.66rem;
+    font-size: 0.7rem;
     font-weight: 800;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
+  }
+
+  .om-alert-message {
+    color: #fff7ed;
+    font-size: 0.95rem;
+    line-height: 1.2rem;
+  }
+
+  .om-alert-close {
+    margin-left: auto;
+    border: 1px outset rgba(255, 210, 160, 0.58);
+    border-radius: 2px;
+    background: rgba(20, 8, 4, 0.42);
+    color: #ffe1c5;
+    font-size: 0.78rem;
+    line-height: 1rem;
+    padding: 0.18rem 0.45rem;
+    text-decoration: none;
+    text-transform: lowercase;
+    transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+  }
+
+  .om-alert-close:hover {
+    border-color: rgba(255, 222, 180, 0.86);
+    background: rgba(255, 196, 128, 0.16);
+    color: #fff8ed;
   }
 
   .om-alert-recovery {
@@ -470,9 +541,15 @@
 
   .om-rust-texture {
     background:
+      radial-gradient(circle at 24% 18%, rgba(162, 62, 18, 0.24), transparent 18rem),
+      radial-gradient(circle at 74% 42%, rgba(82, 27, 9, 0.35), transparent 22rem),
+      rgba(16, 8, 5, 0.76);
+  }
+
+  :root[data-theme="light"] .om-rust-texture {
+    background:
       radial-gradient(circle at 25% 20%, rgba(190, 92, 36, 0.18), transparent 20rem),
       radial-gradient(circle at 75% 45%, rgba(110, 45, 18, 0.24), transparent 24rem),
-      repeating-radial-gradient(circle at 42% 35%, rgba(228, 160, 109, 0.035) 0 1px, transparent 1px 8px),
       linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 42%),
       #120c08;
   }

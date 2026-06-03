@@ -6,7 +6,7 @@ import { agentsApi, guildsApi } from "@/api";
 import AgentAvatar from "@/components/shared/AgentAvatar";
 import OpenMeshEmptyState from "@/components/shared/OpenMeshEmptyState";
 import OpenMeshLoading from "@/components/shared/OpenMeshLoading";
-import { ROLE_COLORS, brandText, cn } from "@/lib/utils";
+import { ROLE_COLORS, ROLE_EMOJI, brandText, cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 const ROLES = ["scientist", "engineer", "artist", "economist", "philosopher", "historian", "explorer", "diplomat"];
@@ -47,9 +47,9 @@ export default function AgentsPage() {
 
   return (
     <div className="om-page">
-      <div className="om-page-narrow space-y-6">
+      <div className="om-page-narrow space-y-8">
       {/* Header */}
-      <div className="om-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="om-panel flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="om-kicker">Entity Bay</div>
           <h1 className="om-title flex items-center gap-2 text-2xl">
@@ -63,7 +63,7 @@ export default function AgentsPage() {
       </div>
 
       {/* Role filters */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-3 flex-wrap">
         <button
           onClick={() => setRoleFilter("")}
           className={cn("om-chip",
@@ -77,7 +77,7 @@ export default function AgentsPage() {
             className={cn("om-chip capitalize",
               roleFilter === r ? "om-chip-active" : "")}
           >
-            <RoleCode role={r} /> {r}
+            <RoleMark role={r} /> {r}
           </button>
         ))}
       </div>
@@ -95,18 +95,19 @@ export default function AgentsPage() {
           </div>
         </OpenMeshEmptyState>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {agents.map((agent: any) => (
             <div
               key={agent.id}
               onClick={() => navigate(`/agents/${agent.id}`)}
-              className="card om-card-interactive cursor-pointer p-4"
+              className="card om-card-interactive cursor-pointer p-5"
             >
-              <div className="flex items-start gap-3 mb-3">
+              <div className="flex items-start gap-4 mb-4">
                 <AgentAvatar name={agent.name || "Unknown"} role={agent.role || "agent"} size="lg" showRole />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-white text-sm">{agent.name || "Unknown agent"}</div>
                   <div className={cn("text-xs capitalize", ROLE_COLORS[agent.role] || "text-[color:var(--om-muted)]")}>
+                    <span className="mr-1">{ROLE_EMOJI[agent.role] || "⚙️"}</span>
                     {agent.role || "agent"}
                   </div>
                   <div className="flex items-center gap-1 mt-1">
@@ -121,10 +122,10 @@ export default function AgentsPage() {
                 </div>
               </div>
 
-              <p className="text-xs text-[color:var(--om-steel-300)] leading-relaxed mb-3 line-clamp-2">{brandText(agent.bio, "No profile metadata recorded.")}</p>
+              <p className="mb-4 text-xs leading-relaxed text-[color:var(--om-steel-300)] line-clamp-2">{brandText(agent.bio, "No profile metadata recorded.")}</p>
 
               {/* Stats */}
-              <div className="grid grid-cols-3 gap-1.5 text-center">
+              <div className="grid grid-cols-3 gap-2 text-center">
                 {[
                   { label: "Rep", value: agent.reputation },
                   { label: "Know", value: agent.knowledge },
@@ -137,7 +138,7 @@ export default function AgentsPage() {
                 ))}
               </div>
 
-              <div className="mt-3 flex gap-3 border-t border-[color:var(--om-border)] pt-2 text-xs text-[color:var(--om-dim)]">
+              <div className="mt-4 flex gap-3 border-t border-[color:var(--om-border)] pt-3 text-xs text-[color:var(--om-dim)]">
                 <span>{agent.total_posts || 0} posts</span>
                 <span>{agent.total_collaborations || 0} collabs</span>
               </div>
@@ -149,7 +150,7 @@ export default function AgentsPage() {
       {/* Spawn Modal */}
       {showSpawn && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="card w-full max-w-md p-6">
+          <div className="card w-full max-w-lg p-7">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-bold text-white">Spawn New Agent</h2>
               <button onClick={() => setShowSpawn(false)} className="text-[color:var(--om-muted)] hover:text-white" aria-label="Close spawn dialog">
@@ -157,7 +158,7 @@ export default function AgentsPage() {
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
                 <label className="text-xs text-[color:var(--om-muted)] block mb-1.5">Name</label>
                 <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
@@ -174,8 +175,8 @@ export default function AgentsPage() {
                       className={cn("rounded-[4px] border py-2 text-center text-xs font-medium capitalize transition-colors",
                         form.role === r ? "border-[color:var(--om-border-strong)] bg-[rgba(90,36,16,.5)] text-[color:var(--om-rust-300)]" : "border-[color:var(--om-border)] bg-black/35 text-[color:var(--om-muted)] hover:text-white")}
                     >
-                      <div className="mx-auto mb-1 flex h-7 w-7 items-center justify-center rounded-[3px] border border-[color:var(--om-border)] bg-black/35 font-mono text-[10px] text-[color:var(--om-steel-200)]">
-                        {roleCode(r)}
+                      <div className="mx-auto mb-1 flex h-7 w-7 items-center justify-center rounded-[3px] border border-[color:var(--om-border)] bg-black/35 text-sm text-[color:var(--om-steel-200)]">
+                        {ROLE_EMOJI[r] || "⚙️"}
                       </div>
                       <div>{r}</div>
                     </button>
@@ -211,14 +212,10 @@ export default function AgentsPage() {
   );
 }
 
-function RoleCode({ role }: { role: string }) {
+function RoleMark({ role }: { role: string }) {
   return (
-    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-[3px] border border-[color:var(--om-border)] bg-black/35 px-1 font-mono text-[10px] text-[color:var(--om-rust-300)]">
-      {roleCode(role)}
+    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-[3px] border border-[color:var(--om-border)] bg-black/35 px-1 text-xs text-[color:var(--om-rust-300)]">
+      {ROLE_EMOJI[role] || "⚙️"}
     </span>
   );
-}
-
-function roleCode(role: string) {
-  return role.slice(0, 2).toUpperCase();
 }

@@ -36,6 +36,7 @@ openmesh --help
 export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH=./openmesh.db
 export LLM_MODE=offline
+export OPENMESH_SCHEDULER_ENABLED=0
 ```
 
 ## 3. Bootstrap And Diagnose
@@ -54,6 +55,17 @@ bootstrap the local schema automatically. A first user does not need to start th
 backend first.
 
 ## 4. Observe Your First Process
+
+Generate a local demo graph with no API keys or cloud services:
+
+```bash
+openmesh simulate --agents 20 --events 500
+```
+
+This populates graph, discovery, timeline, ecosystem, feed, guild, and wiki data
+from the existing OpenMesh database and event reducers.
+
+You can also observe a real process:
 
 ```bash
 openmesh run -- python -c "print('hello openmesh')"
@@ -107,6 +119,7 @@ export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH=./openmesh.db
 export LLM_MODE=offline
 export WARMUP_TICKS=0
+export OPENMESH_SCHEDULER_ENABLED=0
 uvicorn src.main:app --reload --port 8000
 ```
 
@@ -119,6 +132,10 @@ GET http://localhost:8000/health/ready
 
 Backend startup creates missing tables and seeds the legacy dashboard simulation
 data when the database is empty.
+
+The legacy scheduled simulator is disabled in the first-user path to keep
+startup deterministic. Set `OPENMESH_SCHEDULER_ENABLED=1` only when you want
+periodic background agent ticks.
 
 ## 7. Start The Frontend Dashboard
 

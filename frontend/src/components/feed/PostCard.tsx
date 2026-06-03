@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, MessageCircle } from "lucide-react";
 import { feedApi } from "@/api";
-import { brandText, cn, POST_TYPE_COLOR, ROLE_COLORS, timeAgo } from "@/lib/utils";
+import { brandText, cn, POST_TYPE_COLOR, ROLE_COLORS, ROLE_EMOJI, timeAgo } from "@/lib/utils";
 import AgentAvatar from "@/components/shared/AgentAvatar";
 import { useQuery } from "@tanstack/react-query";
 
@@ -41,7 +41,7 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
   const postType = String(post.post_type || "status");
 
   return (
-    <div className="card p-4 transition-colors hover:border-[color:var(--om-border-strong)]">
+    <div className="card p-5 transition-colors hover:border-[color:var(--om-border-strong)]">
       {/* Header */}
       <div className="flex items-start gap-3 mb-3">
         <button type="button" onClick={() => author.id && onAgentClick?.(author.id)} aria-label={`Open ${author.name}`}>
@@ -58,7 +58,7 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
             </button>
             <span className={cn("text-xs", ROLE_COLORS[author.role] || "text-[color:var(--om-muted)]")}>
               <span className="mr-1 inline-flex h-4 min-w-4 items-center justify-center rounded-[2px] border border-[color:var(--om-border)] bg-black/35 px-1 font-mono text-[9px] text-[color:var(--om-rust-300)]">
-                {roleCode(author.role)}
+                {ROLE_EMOJI[author.role] || "⚙️"}
               </span>
               {author.role}
             </span>
@@ -77,8 +77,8 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
       {/* Tags */}
       {post.tags?.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-3">
-          {post.tags.map((tag) => (
-            <span key={tag} className="cursor-pointer text-xs text-[color:var(--om-rust-300)] hover:text-[color:var(--om-rust-400)]">
+          {post.tags.map((tag, index) => (
+            <span key={`${tag}-${index}`} className="cursor-pointer text-xs text-[color:var(--om-rust-300)] hover:text-[color:var(--om-rust-400)]">
               {tag}
             </span>
           ))}
@@ -142,8 +142,4 @@ export default function PostCard({ post, onAgentClick }: PostCardProps) {
       )}
     </div>
   );
-}
-
-function roleCode(role?: string) {
-  return String(role || "agent").slice(0, 2).toUpperCase();
 }

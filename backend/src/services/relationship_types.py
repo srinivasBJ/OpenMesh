@@ -83,6 +83,13 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
         source_types=("agent", "service", "process", "workflow"),
         target_types=("agent", "service", "process", "workflow"),
     ),
+    "collaborates_with": RelationshipType(
+        type="collaborates_with",
+        label="collaborates_with",
+        description="One agent, workflow, or service collaborates with another ecosystem entity.",
+        source_types=("agent", "workflow", "service"),
+        target_types=("agent", "workflow", "service"),
+    ),
     "delegates_to": RelationshipType(
         type="delegates_to",
         label="delegates_to",
@@ -117,6 +124,7 @@ EVENT_RELATIONSHIPS = {
     "tool.call.completed": "uses",
     "tool.call.failed": "uses",
     "message.sent": "communicates_with",
+    "collaboration.created": "collaborates_with",
     "delegation.created": "delegates_to",
     "node.transition": "transitions_to",
     "mcp.config.discovered": "defines",

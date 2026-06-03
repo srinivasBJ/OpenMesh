@@ -239,6 +239,7 @@ OpenMesh can run locally without Docker or Postgres:
 export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH=./openmesh.db
 export LLM_MODE=offline
+export OPENMESH_SCHEDULER_ENABLED=0
 ```
 
 `openmesh doctor` and other database-backed CLI commands create the required local tables automatically.
@@ -252,6 +253,17 @@ openmesh doctor
 Expected result: `Overall: OK`.
 
 ### 4. Observe Your First Command
+
+Generate a local demo ecosystem with no API keys or cloud services:
+
+```bash
+openmesh simulate --agents 20 --events 500
+```
+
+This creates agents, guilds, workflows, traces, tool calls, relationships, posts,
+messages, and wiki entries in the local OpenMesh database.
+
+You can also observe a real process:
 
 ```bash
 openmesh run -- python -c "print('hello openmesh')"
@@ -274,6 +286,11 @@ openmesh tui --once
 The backend is required only for the API, WebSocket stream, and browser dashboard:
 
 ```bash
+export OPENMESH_DB_MODE=sqlite
+export OPENMESH_SQLITE_PATH=./openmesh.db
+export LLM_MODE=offline
+export WARMUP_TICKS=0
+export OPENMESH_SCHEDULER_ENABLED=0
 uvicorn src.main:app --reload --port 8000
 ```
 
@@ -302,6 +319,7 @@ Open `http://localhost:5173`.
 
 ```bash
 openmesh doctor
+openmesh simulate --agents 20 --events 500
 openmesh run -- <command>
 openmesh events
 openmesh traces

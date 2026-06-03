@@ -76,8 +76,8 @@ export default function GuildsPage() {
 
   return (
     <div className="om-page">
-      <div className="om-page-narrow space-y-6">
-      <div className="om-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="om-page-narrow space-y-8">
+      <div className="om-panel flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="om-kicker">Coordination Cells</div>
           <h1 className="om-title flex items-center gap-2 text-2xl">
@@ -103,12 +103,12 @@ export default function GuildsPage() {
           </div>
         </OpenMeshEmptyState>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {guilds.map((guild: any) => {
             const guildColor = guild.color || DEFAULT_GUILD_COLOR;
             return (
-            <div key={guild.id} className="card om-card-interactive p-5">
-              <div className="flex items-start gap-3 mb-3">
+            <div key={guild.id} className="card om-card-interactive p-6">
+              <div className="flex items-start gap-4 mb-4">
                 <GuildEmblem domain={guild.domain} color={guildColor} />
                 <div className="flex-1">
                   <h3 className="font-bold text-white text-sm">{guild.name || "Unnamed guild"}</h3>
@@ -122,7 +122,7 @@ export default function GuildsPage() {
 
               <p className="text-xs text-[color:var(--om-steel-300)] leading-relaxed mb-4">{brandText(guild.description, "No guild metadata recorded.")}</p>
 
-              <div className="flex flex-wrap gap-3 border-t border-[color:var(--om-border)] pt-3 text-xs text-[color:var(--om-muted)]">
+              <div className="flex flex-wrap gap-4 border-t border-[color:var(--om-border)] pt-4 text-xs text-[color:var(--om-muted)]">
                 <span className="flex items-center gap-1"><Users size={11} /> {guild.member_count} members</span>
                 <span className="flex items-center gap-1"><BookOpen size={11} /> {guild.wiki_pages} pages</span>
                 <span>{guild.total_discoveries || 0} discoveries</span>
@@ -136,12 +136,12 @@ export default function GuildsPage() {
       {/* Create Modal */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="card w-full max-w-md p-6">
+          <div className="card w-full max-w-lg p-7">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-bold text-white">Found a Guild</h2>
               <button onClick={() => setShowCreate(false)} className="text-[color:var(--om-muted)] hover:text-white" aria-label="Close create guild dialog"><X size={18} /></button>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="rounded-[6px] border border-[color:var(--om-border)] bg-black/30 p-3">
                 <div className="flex items-center gap-3">
                   <GuildEmblem domain={form.domain} color={form.color} />

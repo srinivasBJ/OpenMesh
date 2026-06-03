@@ -23,6 +23,12 @@ from .websocket.manager import SYSTEM_NODE
 # How many agents to tick per warm-up round and how many rounds to run on startup
 WARMUP_TICKS = int(os.getenv("WARMUP_TICKS", "8"))
 WARMUP_AGENTS_PER_TICK = int(os.getenv("WARMUP_AGENTS_PER_TICK", "6"))
+SCHEDULER_ENABLED = os.getenv("OPENMESH_SCHEDULER_ENABLED", "0").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 async def run_warmup_ticks():
@@ -51,11 +57,18 @@ async def lifespan(app: FastAPI):
     print("🚀 OpenMeshAI starting up...")
     await init_db()
     await seed_initial_data()
-    start_scheduler()
-    asyncio.create_task(run_warmup_ticks())
-    print(
-        "✅ OpenMeshAI is live — agents are awakening (warm-up ticks running in background)"
-    )
+    if SCHEDULER_ENABLED:
+        start_scheduler()
+    else:
+        print("⏸️ Scheduler disabled — set OPENMESH_SCHEDULER_ENABLED=1 to enable")
+    if WARMUP_TICKS > 0:
+        asyncio.create_task(run_warmup_ticks())
+    if WARMUP_TICKS > 0:
+        print(
+            "✅ OpenMeshAI is live — agents are awakening (warm-up ticks running in background)"
+        )
+    else:
+        print("✅ OpenMeshAI is live — ready for CLI, SDK, and dashboard traffic")
     yield
     # Shutdown
     stop_scheduler()

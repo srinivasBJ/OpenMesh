@@ -48,9 +48,9 @@ export default function ObservatoryPage() {
 
   return (
     <div className="om-page">
-      <div className="space-y-4">
+      <div className="space-y-6">
         <header className="om-panel overflow-hidden p-0">
-          <div className="om-rust-texture flex flex-col gap-5 border-b border-[color:var(--om-border)] p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="om-rust-texture flex flex-col gap-6 border-b border-[color:var(--om-border)] p-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="om-kicker">OpenMesh Control Room</div>
               <h1 className="mt-2 flex items-center gap-2 text-3xl font-black text-[color:var(--om-text)]">
@@ -60,13 +60,15 @@ export default function ObservatoryPage() {
                 Monitor agent activity, traces, workflows, relationships, and services as one living ecosystem.
               </p>
             </div>
-            <img src="/brand/openmesh-banner-v02.png" alt="OpenMesh" className="h-16 max-w-sm object-contain object-right" />
+            <div className="flex justify-start lg:justify-end">
+              <img src="/brand/openmesh-logo.png" alt="OpenMesh" className="h-16 max-w-sm object-contain object-right mix-blend-screen opacity-95 drop-shadow-[0_0_18px_rgba(190,92,36,.24)]" />
+            </div>
           </div>
         </header>
 
-        <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
+        <section className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
           <ControlPanel title="Network Health" icon={<ShieldCheck size={16} />} className="min-h-64">
-            <div className="grid gap-4 lg:grid-cols-[.8fr_1.2fr]">
+            <div className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]">
               <div className="rounded-[6px] border border-[color:var(--om-border)] bg-black/35 p-5">
                 <StatusPill status={healthState === "operational" ? "active" : "idle"} label={healthState === "operational" ? "Operational" : "Awaiting Activity"} />
                 <div className="mt-5 font-mono text-5xl font-black text-[color:var(--om-text)]">{graphNodes.length}</div>
@@ -77,7 +79,7 @@ export default function ObservatoryPage() {
                     : "Run an example or observe a process to populate this station."}
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <MetricCell label="Edges" value={graphEdges.length} />
                 <MetricCell label="Events" value={events.length || stats?.messages || 0} />
                 <MetricCell label="Traces" value={traceList.length} />
@@ -109,7 +111,7 @@ export default function ObservatoryPage() {
           </ControlPanel>
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-3">
+        <section className="grid gap-5 xl:grid-cols-3">
           <ControlPanel title="Active Agents" icon={<Zap size={16} />}>
             <EntityList
               empty="No agent nodes observed yet."
@@ -150,7 +152,7 @@ export default function ObservatoryPage() {
           </ControlPanel>
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-3">
+        <section className="grid gap-5 xl:grid-cols-3">
           <ControlPanel title="Workflows" icon={<Layers size={16} />}>
             <EntityList
               empty="No workflow nodes are visible yet."
@@ -196,8 +198,8 @@ export default function ObservatoryPage() {
 
 function ControlPanel({ title, icon, className, children }: { title: string; icon: ReactNode; className?: string; children: ReactNode }) {
   return (
-    <section className={cn("card p-4", className)}>
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <section className={cn("card p-5", className)}>
+      <div className="mb-5 flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-sm font-bold text-[color:var(--om-text)]">
           <span className="text-[color:var(--om-rust-400)]">{icon}</span>
           {title}
@@ -236,9 +238,9 @@ function EntityList({
 }) {
   if (items.length === 0) return <EmptyOperationalMessage text={empty} />;
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {items.map((item) => (
-        <div key={item.id} className="flex items-center gap-3 rounded-[4px] border border-[color:var(--om-border)] bg-black/25 px-3 py-2">
+        <div key={item.id} className="flex items-center gap-3 rounded-[4px] border border-[color:var(--om-border)] bg-black/25 px-4 py-3">
           <span className={cn("om-status-dot shrink-0", item.status === "active" && "om-status-active", item.status === "idle" && "om-status-idle", item.status === "failed" && "om-status-failed")} />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold text-[color:var(--om-text)]">{item.title}</div>
@@ -253,7 +255,7 @@ function EntityList({
 
 function EmptyOperationalMessage({ text }: { text: string }) {
   return (
-    <div className="rounded-[4px] border border-dashed border-[color:var(--om-border)] bg-black/25 p-4 text-sm leading-6 text-[color:var(--om-dim)]">
+    <div className="rounded-[4px] border border-dashed border-[color:var(--om-border)] bg-black/25 p-5 text-sm leading-6 text-[color:var(--om-dim)]">
       {text}
     </div>
   );

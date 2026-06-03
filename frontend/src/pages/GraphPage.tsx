@@ -9,7 +9,10 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
+  Check,
+  Clipboard,
   Crosshair,
+  Download,
   Filter,
   GitBranch,
   Info,
@@ -18,6 +21,7 @@ import {
   PanelRightOpen,
   Search,
   SlidersHorizontal,
+  Terminal,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -59,6 +63,39 @@ const NODE_STYLES: Record<string, { fill: string; stroke: string; text: string }
 };
 
 const DEFAULT_NODE_STYLE = { fill: "#2f3437", stroke: "#858b91", text: "#d5d7da" };
+
+const ONBOARDING_COMMANDS = [
+  {
+    label: "Generate a local demo ecosystem",
+    command: "openmesh simulate --agents 20 --events 500",
+  },
+  {
+    label: "Run the basic Python SDK agent",
+    command: "python examples/python_basic_agent.py",
+  },
+  {
+    label: "Run the async Python SDK agent",
+    command: "python examples/python_async_agent.py",
+  },
+  {
+    label: "Run the LangGraph reference workflow",
+    command: "python examples/langgraph_basic.py",
+  },
+];
+
+const ONBOARDING_SCRIPT = `#!/usr/bin/env bash
+set -euo pipefail
+
+export OPENMESH_DB_MODE=sqlite
+export OPENMESH_SQLITE_PATH="\${OPENMESH_SQLITE_PATH:-./openmesh.db}"
+export LLM_MODE=offline
+
+openmesh doctor
+openmesh simulate --agents 20 --events 500
+openmesh discover
+openmesh graph --details
+openmesh timeline
+`;
 
 export default function GraphPage() {
   const [search, setSearch] = useState("");
@@ -199,13 +236,14 @@ export default function GraphPage() {
   };
 
   return (
-    <div className="om-page px-4 py-3 text-stone-200">
-      <div className="space-y-3">
-        <header className="om-panel flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="om-page text-stone-200">
+      <div className="space-y-6">
+        <header className="om-panel flex flex-col gap-4 p-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="flex items-center gap-3 text-[color:var(--om-rust-400)]">
-              <img src="/brand/openmesh-wheel.png" alt="" className="h-10 w-10 rounded-[6px] border border-[color:var(--om-border-strong)] object-cover" />
-              <Network size={22} />
+              <span className="flex h-10 w-10 items-center justify-center rounded-[4px] border border-[color:var(--om-border)] bg-black/30 shadow-[var(--om-glow-rust)]">
+                <Network size={22} />
+              </span>
               <span className="om-kicker">OpenMesh Graph Explorer</span>
             </div>
             <h1 className="om-title mt-2 text-3xl">Agent Network Map</h1>
@@ -222,7 +260,7 @@ export default function GraphPage() {
         </header>
 
         <section
-          className="grid gap-3"
+          className="grid gap-5"
           style={{
             gridTemplateColumns: `${controlsCollapsed ? 52 : 280}px minmax(0, 1fr) ${inspectorOpen ? `${inspectorWidth}px` : "52px"}`,
           }}
@@ -838,20 +876,67 @@ function TimelineRows({ timeline }: { timeline?: OpenMeshTimeline }) {
 }
 
 function EmptyGraphOnboarding() {
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+
+  const copyCommand = async (command: string) => {
+    await copyText(command);
+    setCopiedCommand(command);
+    window.setTimeout(() => setCopiedCommand((current) => (current === command ? null : current)), 1800);
+  };
+
+  const downloadSnippet = () => {
+    const blob = new Blob([ONBOARDING_SCRIPT], { type: "text/x-shellscript" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "openmesh-graph-demo.sh";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color:var(--om-iron-980)]/95 p-6">
       <div className="om-empty w-full max-w-3xl">
-        <img src="/brand/openmesh-wheel.png" alt="OpenMesh wheel" className="mx-auto h-16 w-16 object-contain" />
+        <img src="/brand/openmesh-wheel-clean.png" alt="OpenMesh wheel" className="mx-auto h-20 w-20 object-contain drop-shadow-[0_0_16px_rgba(190,92,36,.32)]" />
         <div className="om-kicker mt-6">No graph data yet</div>
         <h2 className="mt-2 text-2xl font-bold text-stone-50">Start observing an agent or process</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[color:var(--om-muted)]">
           OpenMesh becomes useful when events create relationships. Run one command and the graph will populate with nodes, traces, and provenance.
         </p>
-        <div className="mt-5 grid gap-3 text-left font-mono text-xs text-[color:var(--om-steel-300)] md:grid-cols-2">
-          <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-3">openmesh run -- python -c "print('hello openmesh')"</code>
-          <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-3">python examples/python_basic_agent.py</code>
-          <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-3">python examples/python_async_agent.py</code>
-          <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-3">python examples/langgraph_basic.py</code>
+        <div className="mt-5 grid gap-3 text-left md:grid-cols-2">
+          {ONBOARDING_COMMANDS.map((item) => (
+            <div key={item.command} className="rounded-[6px] border border-[color:var(--om-border)] bg-black/45 p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="text-[11px] font-semibold uppercase tracking-[.14em] text-[color:var(--om-rust-300)]">{item.label}</span>
+                <button type="button" className="om-button-ghost h-8 px-2 text-[11px]" onClick={() => void copyCommand(item.command)}>
+                  {copiedCommand === item.command ? <Check size={13} /> : <Clipboard size={13} />}
+                  {copiedCommand === item.command ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <code className="block overflow-x-auto whitespace-nowrap font-mono text-xs text-[color:var(--om-steel-200)]">{item.command}</code>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 rounded-[6px] border border-[color:var(--om-border)] bg-black/35 p-4 text-left">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--om-text)]">
+                <Terminal size={15} className="text-[color:var(--om-rust-400)]" /> Run in Terminal
+              </div>
+              <p className="mt-1 text-xs leading-5 text-[color:var(--om-muted)]">
+                Browsers cannot safely execute local shell commands. Copy a command, or download the snippet and run it from the repository root.
+              </p>
+            </div>
+            <button type="button" className="om-button shrink-0" onClick={downloadSnippet}>
+              <Download size={14} /> Download Snippet
+            </button>
+          </div>
+          <div className="mt-3 grid gap-2 text-xs text-[color:var(--om-steel-300)] md:grid-cols-2">
+            <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-2">macOS/Linux: source .venv/bin/activate</code>
+            <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-2">Windows: .venv\Scripts\activate</code>
+          </div>
         </div>
         <div className="mt-4 text-sm text-[color:var(--om-muted)]">
           Example entities will appear as agents, tools, workflows, processes, services, MCP servers, and capabilities.
@@ -859,6 +944,22 @@ function EmptyGraphOnboarding() {
       </div>
     </div>
   );
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  }
 }
 
 function Metric({ label, value }: { label: string; value: string | number }) {

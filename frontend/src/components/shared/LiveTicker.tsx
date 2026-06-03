@@ -1,5 +1,5 @@
 import { useWSStore } from "@/store/wsStore";
-import { timeAgo } from "@/lib/utils";
+import { ROLE_EMOJI, timeAgo } from "@/lib/utils";
 import { Activity, Wifi, WifiOff } from "lucide-react";
 import type { OpenMeshEvent } from "@/types/openmesh";
 
@@ -24,7 +24,7 @@ const EVENT_LABELS: Record<string, (evt: OpenMeshEvent) => string> = {
   },
   "agent.started": (evt) => {
     const role = evt.source.metadata?.role as string | undefined;
-    return `[${roleCode(role || "agent")}] ${evt.source.name} joined OpenMesh`;
+    return `${ROLE_EMOJI[role || ""] || "⚙️"} ${evt.source.name} joined OpenMesh`;
   },
 };
 
@@ -32,8 +32,8 @@ export default function LiveTicker() {
   const { connected, events } = useWSStore();
 
   return (
-    <div className="card p-4">
-      <div className="flex items-center justify-between mb-3">
+    <div className="card p-5">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Activity size={15} className="text-[color:var(--om-rust-400)]" />
           <span className="text-sm font-medium text-white">Live Signals</span>
@@ -44,16 +44,16 @@ export default function LiveTicker() {
         </div>
       </div>
 
-      <div className="space-y-2 max-h-64 overflow-y-auto">
+      <div className="max-h-72 space-y-3 overflow-y-auto">
         {events.length === 0 ? (
-          <p className="rounded-[4px] border border-dashed border-[color:var(--om-border)] bg-black/25 py-4 text-center text-xs text-[color:var(--om-dim)]">
+          <p className="rounded-[4px] border border-dashed border-[color:var(--om-border)] bg-black/25 px-4 py-5 text-center text-xs text-[color:var(--om-dim)]">
             Waiting for OpenMesh signals...
           </p>
         ) : (
           events.slice(0, 15).map((evt) => {
             const label = EVENT_LABELS[evt.type]?.(evt.data) || `${evt.data.source?.name || "OpenMesh"} emitted ${evt.type}`;
             return (
-              <div key={evt.id} className="flex items-start gap-2 border-b border-[color:var(--om-border)]/50 py-1 last:border-0">
+              <div key={evt.id} className="flex items-start gap-3 border-b border-[color:var(--om-border)]/50 py-2 last:border-0">
                 <span className="om-status-dot om-status-active mt-1.5 shrink-0 animate-pulse" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs leading-relaxed text-[color:var(--om-steel-300)]">{label}</p>
@@ -66,8 +66,4 @@ export default function LiveTicker() {
       </div>
     </div>
   );
-}
-
-function roleCode(role: string) {
-  return role.slice(0, 2).toUpperCase();
 }

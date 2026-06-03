@@ -124,6 +124,7 @@ from src.services.relationship_types import (
     RelationshipType,
     validate_relationship,
 )
+from src.services.simulation import run_local_simulation
 from src.services.trace_semantics import (
     build_event_hierarchy,
     build_span_summary,
@@ -928,6 +929,7 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("uses", relationship_types)
         self.assertIn("spawns", relationship_types)
         self.assertIn("federates_with", relationship_types)
+        self.assertIn("collaborates_with", relationship_types)
         self.assertEqual(
             node_type_definition("federation_node")["display_name"],
             "Federation Node",
@@ -951,6 +953,50 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             ),
             "spawns",
         )
+        self.assertEqual(
+            relationship_type_for(
+                "collaboration.created", source_type="agent", target_type="agent"
+            ),
+            "collaborates_with",
+        )
+
+    async def test_local_simulation_persists_protocol_and_legacy_data(self):
+        db = FakeAsyncSession()
+
+        summary = await run_local_simulation(
+            db, agent_count=10, event_count=120, seed=7, broadcast=False
+        )
+
+        records = [record for record in db.added if getattr(record, "event_id", None)]
+        legacy_types = {record.__class__.__name__ for record in db.added}
+        graph = reduce_graph_state(records)
+        discovery = build_discovery(records)
+        relationship_types = {edge["relationship_type"] for edge in graph["edges"]}
+
+        self.assertEqual(summary["agents"], 10)
+        self.assertEqual(summary["events"], 120)
+        self.assertGreaterEqual(summary["tool_calls"], 20)
+        self.assertGreaterEqual(summary["traces"], 3)
+        self.assertEqual(len(records), 120)
+        self.assertIn("Guild", legacy_types)
+        self.assertIn("Agent", legacy_types)
+        self.assertIn("Post", legacy_types)
+        self.assertIn("Message", legacy_types)
+        self.assertIn("WikiPage", legacy_types)
+        self.assertIn("OpenMeshSessionRecord", legacy_types)
+        for expected in (
+            "uses",
+            "runs",
+            "communicates_with",
+            "collaborates_with",
+            "delegates_to",
+            "transitions_to",
+            "modifies",
+        ):
+            self.assertIn(expected, relationship_types)
+        self.assertGreaterEqual(len(discovery["agents"]), 10)
+        self.assertGreaterEqual(len(discovery["tools"]), 4)
+        self.assertGreaterEqual(len(discovery["workflows"]), 3)
 
     def test_federation_registry_builds_metadata_only_views(self):
         event = self.make_event("message.sent")

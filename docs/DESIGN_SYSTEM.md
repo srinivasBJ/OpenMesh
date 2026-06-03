@@ -4,13 +4,14 @@ OpenMesh uses an industrial control-room identity: dark iron surfaces, rusted me
 
 ## Brand Assets
 
-- Header banner: `frontend/public/brand/openmesh-banner-v02.png`
-- Primary symbol: `frontend/public/brand/openmesh-wheel.png`
+- Header banner: `frontend/public/brand/openmesh-logo.png`
+- Primary symbol source: `frontend/public/brand/openmesh-wheel.png`
+- UI wheel symbol: `frontend/public/brand/openmesh-wheel-clean.png`
 - Small symbol: `frontend/public/brand/openmesh-wheel-96.png`
 - Favicon: `frontend/public/favicon.png`
 - Scoped mascot: `frontend/public/brand/agentpedia-mascot.svg`
 
-Use the wheel as the primary identity symbol in navigation, empty states, graph onboarding, favicon, and compact surfaces. Use the banner logo only in header-level brand moments where the wordmark belongs. Do not repeat banner logos throughout a page. Use the mascot only in Agentpedia, Guilds, and knowledge-oriented empty/loading/help states.
+Use the clean wheel symbol in navigation, empty states, graph onboarding, loading states, favicon-scale moments, and compact surfaces. It must sit directly on the rust/iron surface without a black square tile or decorative red underline. Use the black-backed banner logo only in header-level brand moments where the wordmark belongs. Do not use checkerboard-background exports in the product UI. Do not repeat banner logos throughout a page. Use the mascot only in Agentpedia, Guilds, and knowledge-oriented empty/loading/help states.
 
 ## Colors
 
@@ -31,6 +32,10 @@ Core tokens live in `frontend/src/styles/globals.css`.
 | `--om-green-500` | active status |
 | `--om-amber-500` | idle/warning status |
 | `--om-red-500` | failed/destructive status |
+
+The global page background should stay close to the supplied rust plate reference: dark oxidized brown with burnt-orange corrosion. Avoid blue, violet, green wash, and bright white panels.
+
+The dark theme is the rust plate theme. The light theme keeps the earlier cleaner control-room surface so users can switch out of the heavier rust texture without leaving the OpenMesh identity.
 
 Avoid generic violet, purple, cyan-neon, and bright SaaS gradients. Rust should be the only dominant accent.
 
@@ -63,6 +68,7 @@ Rules:
 - Sidebar supports expanded and collapsed states.
 - Expanded width is draggable with a right-edge resize handle and persisted in local storage.
 - Collapsed state shows icons only, with accessible labels and titles.
+- The theme toggle persists the selected `dark` or `light` control-room surface in local storage.
 
 ### Panels And Cards
 
@@ -109,9 +115,9 @@ Use `IndustrialToaster` for app notifications.
 
 Rules:
 
-- Alerts mount at the top center like a control-room warning panel.
-- Error, success, info, and working states all use the OpenMesh palette.
-- Always include a dismiss control.
+- Alerts mount at the top center like a retro warning strip.
+- The default visual language is copper/rust warning-panel chrome inspired by the supplied `Oh no!` reference, tuned down so it belongs inside the dark control room.
+- Always include a text `close` control on the right.
 - Alerts should feel like machine-status panels, not modern floating social toasts.
 
 ## Graph Styling

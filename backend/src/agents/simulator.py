@@ -13,6 +13,7 @@ import os
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from typing import Optional
 
 from ..db.models import (
@@ -221,6 +222,7 @@ def _build_openmesh_event(action: str, event_data: dict) -> dict:
 
 async def tick_agent(agent: Agent, db: AsyncSession):
     """Run one simulation tick for a single agent."""
+    agent_name = getattr(agent, "name", "unknown-agent")
     try:
         action = pick_action(agent)
         _, energy_cost, knowledge_gain, happiness_change = ACTIONS[action]
@@ -485,7 +487,7 @@ async def tick_agent(agent: Agent, db: AsyncSession):
 
     except Exception as e:
         await db.rollback()
-        print(f"[Simulator] Error ticking agent {agent.name}: {e}")
+        print(f"[Simulator] Error ticking agent {agent_name}: {e}")
         return None
 
 
@@ -493,6 +495,7 @@ async def run_simulation_tick(db: AsyncSession, max_agents: int = 5):
     """Run one tick of the simulation — activate up to max_agents agents."""
     result = await db.execute(
         select(Agent)
+        .options(selectinload(Agent.guild))
         .where(Agent.status == AgentStatus.ACTIVE)
         .order_by(func.random())
         .limit(max_agents)

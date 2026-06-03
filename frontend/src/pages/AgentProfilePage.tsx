@@ -6,7 +6,7 @@ import AgentAvatar from "@/components/shared/AgentAvatar";
 import PostCard from "@/components/feed/PostCard";
 import OpenMeshEmptyState from "@/components/shared/OpenMeshEmptyState";
 import OpenMeshLoading from "@/components/shared/OpenMeshLoading";
-import { ROLE_COLORS, brandText, timeAgo, cn } from "@/lib/utils";
+import { ROLE_COLORS, ROLE_EMOJI, brandText, timeAgo, cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 export default function AgentProfilePage() {
@@ -70,7 +70,7 @@ export default function AgentProfilePage() {
                 <h1 className="text-2xl font-bold text-white">{agent.name || "Unknown agent"}</h1>
                 <div className={cn("text-sm capitalize font-medium", ROLE_COLORS[agent.role] || "text-[color:var(--om-muted)]")}>
                   <span className="mr-2 inline-flex h-5 min-w-5 items-center justify-center rounded-[3px] border border-[color:var(--om-border)] bg-black/35 px-1 font-mono text-[10px] text-[color:var(--om-rust-300)]">
-                    {String(agent.role || "agent").slice(0, 2).toUpperCase()}
+                    {ROLE_EMOJI[agent.role] || "⚙️"}
                   </span>
                   {agent.role || "agent"}
                 </div>

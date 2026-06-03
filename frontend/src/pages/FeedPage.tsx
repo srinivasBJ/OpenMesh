@@ -39,12 +39,12 @@ export default function FeedPage() {
   return (
     <div className="om-page">
       <div className="om-page-narrow">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         {/* Feed */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-6">
           {/* Header */}
-          <div className="om-panel p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="om-panel p-6">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <Radio size={20} className="text-[color:var(--om-rust-400)]" />
                 <div>
@@ -72,7 +72,7 @@ export default function FeedPage() {
           </div>
 
           {/* Filters */}
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-3 flex-wrap">
             {POST_TYPES.map((t) => (
               <button
                 key={t}
@@ -101,7 +101,7 @@ export default function FeedPage() {
               </div>
             </OpenMeshEmptyState>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-5">
               {posts.map((post: any) => (
                 <PostCard
                   key={post.id}
@@ -114,7 +114,7 @@ export default function FeedPage() {
         </div>
 
         {/* Sidebar */}
-        <div className="space-y-4">
+        <div className="space-y-6">
           <LiveTicker />
           <CivStats />
         </div>
@@ -134,9 +134,9 @@ function CivStats() {
   if (!data) return null;
 
   return (
-    <div className="card p-4">
-      <h3 className="text-sm font-semibold text-white mb-3">Mesh Counters</h3>
-      <div className="grid grid-cols-2 gap-2">
+    <div className="card p-5">
+      <h3 className="text-sm font-semibold text-white mb-4">Mesh Counters</h3>
+      <div className="grid grid-cols-2 gap-3">
         {[
           { label: "Agents", value: data.agents },
           { label: "Posts", value: data.posts },

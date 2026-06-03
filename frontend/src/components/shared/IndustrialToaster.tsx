@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
 import { toast, Toaster, resolveValue, type Toast } from "react-hot-toast";
 import { cn } from "@/lib/utils";
 
@@ -14,7 +14,7 @@ const LABELS = {
   blank: "Info",
   custom: "Info",
   success: "Success",
-  error: "Error",
+  error: "Oh no!",
   loading: "Working",
 } as const;
 
@@ -48,15 +48,15 @@ function IndustrialToast({ toastItem }: { toastItem: Toast }) {
       <Icon size={17} className="shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="om-alert-label">{LABELS[type as keyof typeof LABELS]}</div>
-        <div className="truncate text-sm text-[color:var(--om-text)]">{resolveValue(toastItem.message, toastItem)}</div>
+        <div className="om-alert-message truncate">{resolveValue(toastItem.message, toastItem)}</div>
       </div>
       <button
         type="button"
         aria-label="Dismiss notification"
-        className="rounded-[2px] border border-black/50 bg-black/25 p-1 text-current hover:bg-black/50"
+        className="om-alert-close"
         onClick={() => toast.dismiss(toastItem.id)}
       >
-        <X size={14} />
+        close
       </button>
     </div>
   );

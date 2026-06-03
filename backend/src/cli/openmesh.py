@@ -62,6 +62,7 @@ from ..services.replay import (
     get_trace_replay,
     get_workflow_replay,
 )
+from ..services.simulation import run_local_simulation
 from ..services.timeline import (
     get_node_timeline,
     get_timeline,
@@ -1313,6 +1314,35 @@ def _print_evaluation(report: dict[str, Any]) -> None:
             print(f"  - {note}")
 
 
+def _print_simulation_summary(summary: dict[str, Any]) -> None:
+    print("OpenMesh Simulation Created")
+    print()
+    print(f"run_id: {summary['run_id']}")
+    print(f"session_id: {summary['session_id']}")
+    print(f"started_at: {summary['started_at']}")
+    print(f"ended_at: {summary['ended_at']}")
+    print()
+    print("Generated")
+    for key in (
+        "agents",
+        "guilds",
+        "events",
+        "tool_calls",
+        "workflows",
+        "messages",
+        "posts",
+        "wiki_articles",
+        "traces",
+    ):
+        print(f"  {key}: {summary.get(key, 0)}")
+    print()
+    print("Try next")
+    print("  openmesh discover")
+    print("  openmesh graph --details")
+    print("  openmesh ecosystem")
+    print("  openmesh timeline")
+
+
 def _print_saved_queries() -> None:
     print("OpenMesh Saved Queries")
     print()
@@ -1870,6 +1900,28 @@ async def _evaluate(args: argparse.Namespace) -> int:
     else:
         _print_evaluation(report)
     return 0
+
+
+async def _simulate(args: argparse.Namespace) -> int:
+    if args.agents < 2:
+        print("openmesh simulate requires at least 2 agents.")
+        return 2
+    if args.events < args.agents:
+        print("openmesh simulate requires --events to be >= --agents.")
+        return 2
+
+    async def run(db):
+        summary = await run_local_simulation(
+            db,
+            agent_count=args.agents,
+            event_count=args.events,
+            seed=args.seed,
+            broadcast=False,
+        )
+        _print_simulation_summary(summary)
+        return 0
+
+    return await _with_db(run)
 
 
 async def _discover(args: argparse.Namespace) -> int:
@@ -2438,6 +2490,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit the benchmark report as JSON.",
     )
     evaluate.set_defaults(func=_evaluate)
+
+    simulate = subparsers.add_parser(
+        "simulate", help="Generate local OpenMesh demo ecosystem data."
+    )
+    simulate.add_argument(
+        "--agents",
+        type=int,
+        default=14,
+        help="Number of agents to generate.",
+    )
+    simulate.add_argument(
+        "--events",
+        type=int,
+        default=300,
+        help="Number of OpenMesh events to persist.",
+    )
+    simulate.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional deterministic random seed.",
+    )
+    simulate.set_defaults(func=_simulate)
 
     discover = subparsers.add_parser(
         "discover", help="Show observed OpenMesh ecosystem registry."

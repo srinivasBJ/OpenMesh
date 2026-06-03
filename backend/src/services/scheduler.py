@@ -3,8 +3,10 @@ Scheduler — Runs agent simulation ticks on a timer.
 Every AGENT_TICK_INTERVAL seconds, a batch of agents "wakes up" and acts.
 """
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import asyncio
 import os
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from ..db.session import AsyncSessionLocal
 from ..agents.simulator import run_simulation_tick
@@ -16,13 +18,15 @@ MAX_AGENTS = int(os.getenv("MAX_ACTIVE_AGENTS", "6"))
 
 async def tick_job():
     """Called by scheduler every N seconds."""
-    async with AsyncSessionLocal() as db:
-        try:
+    try:
+        async with AsyncSessionLocal() as db:
             count = await run_simulation_tick(db, MAX_AGENTS)
             if count > 0:
                 print(f"[Scheduler] Ticked {count} agents")
-        except Exception as e:
-            print(f"[Scheduler] Tick error: {e}")
+    except asyncio.CancelledError:
+        return
+    except Exception as e:
+        print(f"[Scheduler] Tick error: {e}")
 
 
 def start_scheduler():

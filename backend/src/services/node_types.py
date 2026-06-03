@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
 
+from .registry_compatibility import NODE_REGISTRY_VERSION
+
 
 COMMON_METADATA = ("framework", "provider", "version")
 REQUIRED_IDENTIFIERS = ("node_id", "node_type", "name")
@@ -15,6 +17,10 @@ class NodeType:
     description: str
     category: str
     allowed_metadata: tuple[str, ...]
+    introduced_in: str = NODE_REGISTRY_VERSION
+    deprecated_in: Optional[str] = None
+    removed_in: Optional[str] = None
+    replaced_by: Optional[str] = None
 
 
 NODE_TYPES: dict[str, NodeType] = {
@@ -56,8 +62,15 @@ def node_type_registry() -> list[dict[str, object]]:
 
 def node_type_validation_metadata() -> dict[str, object]:
     return {
+        "version": NODE_REGISTRY_VERSION,
         "required_identifiers": REQUIRED_IDENTIFIERS,
         "metadata_policy": "Unsupported metadata keys are reported as warnings; non-object metadata is invalid.",
+        "compatibility": {
+            "additive_changes": "Backward compatible within the supported major version.",
+            "deprecated_types": "Accepted with warnings.",
+            "removed_types": "Rejected as invalid.",
+            "renamed_types": "Rejected under the old name with replacement guidance.",
+        },
     }
 
 
@@ -92,6 +105,20 @@ def validate_node(node: Any) -> dict[str, Any]:
     if not isinstance(metadata, dict):
         errors.append({"code": "invalid_node_metadata", "message": "Node metadata must be an object"})
     elif definition:
+        if definition.get("removed_in"):
+            errors.append(
+                {
+                    "code": "removed_node_type",
+                    "message": f"Node type {node_type} was removed in {definition['removed_in']}",
+                }
+            )
+        elif definition.get("deprecated_in"):
+            warnings.append(
+                {
+                    "code": "deprecated_node_type",
+                    "message": f"Node type {node_type} is deprecated as of {definition['deprecated_in']}",
+                }
+            )
         allowed_metadata = set(definition["allowed_metadata"])
         unsupported = sorted(str(key) for key in metadata if key not in allowed_metadata)
         if unsupported:

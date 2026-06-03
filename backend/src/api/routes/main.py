@@ -11,6 +11,7 @@ from datetime import datetime
 import random
 
 from ...db.session import get_db
+from ...db.openmesh_events import list_openmesh_events
 from ...db.models import (
     Agent, Guild, Post, Comment, Message, WikiPage,
     WikiContribution, AgentEvent, Collaboration, AgentStatus, AgentRole
@@ -23,6 +24,7 @@ from ...services.discovery import get_discovery
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
 from ...services.openmesh_queries import get_graph, get_session, get_sessions, get_trace, get_traces
 from ...services.node_types import node_type_registry, node_type_validation_metadata
+from ...services.registry_status import build_registry_status
 from ...services.relationship_types import relationship_registry
 from ...sdk.integrations import list_integrations
 
@@ -485,6 +487,15 @@ async def get_openmesh_node_types():
         "node_types": node_type_registry(),
         "validation": node_type_validation_metadata(),
     }
+
+
+@router.get("/openmesh/registry")
+async def get_openmesh_registry(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    records = await list_openmesh_events(db, limit=limit)
+    return build_registry_status(records)
 
 
 @router.get("/openmesh/sessions")

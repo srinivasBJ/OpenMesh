@@ -10,9 +10,11 @@ from textual.containers import Horizontal, Vertical
 from textual.widget import Widget
 from textual.widgets import DataTable, Footer, Static
 
+from ..db.openmesh_events import list_openmesh_events
 from ..db.session import AsyncSessionLocal
 from ..services.discovery import get_discovery
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_sessions, get_traces
+from ..services.registry_status import build_registry_status
 from ..services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace
 from ..sdk.integrations import list_integrations
 
@@ -36,11 +38,13 @@ class TuiSnapshot:
     sessions: list[dict[str, Any]]
     integrations: list[dict[str, Any]]
     discovery: dict[str, list[dict[str, Any]]]
+    registry_status: dict[str, Any]
     loaded_at: datetime
 
 
 async def load_snapshot() -> TuiSnapshot:
     async with AsyncSessionLocal() as db:
+        registry_records = await list_openmesh_events(db, limit=5000)
         return TuiSnapshot(
             health=await get_health(db),
             graph=await get_graph(db, limit=1000),
@@ -49,6 +53,7 @@ async def load_snapshot() -> TuiSnapshot:
             sessions=await get_sessions(db, limit=1000),
             integrations=list_integrations(),
             discovery=await get_discovery(db, limit=5000),
+            registry_status=build_registry_status(registry_records),
             loaded_at=datetime.utcnow(),
         )
 
@@ -252,6 +257,32 @@ def discovery_rows(snapshot: TuiSnapshot) -> list[str]:
                 f"e:{entry['event_count']} r:{entry['relationship_count']}"
             )
         rows.append("")
+    return rows
+
+
+def registry_rows(snapshot: TuiSnapshot) -> list[str]:
+    registry = snapshot.registry_status
+    compatibility = registry["compatibility"]
+    rows = ["Versions"]
+    for name, version in registry["versions"].items():
+        rows.append(f"  {_short(name, 20):<20} {version}")
+    rows.extend(["", f"Compatibility: {compatibility['severity']}"])
+    issues = compatibility.get("errors", []) + compatibility.get("warnings", [])
+    if not issues:
+        rows.append("  no compatibility issues")
+    for issue in issues[:6]:
+        rows.append(f"  {_short(issue.get('code'), 24)}")
+        rows.append(f"    {_short(issue.get('message'), 34)}")
+    rows.extend(["", "Deprecated Definitions"])
+    deprecated = [
+        item
+        for item in registry["node_definitions"] + registry["relationship_definitions"]
+        if item.get("deprecated_in")
+    ]
+    if not deprecated:
+        rows.append("  none")
+    for item in deprecated[:6]:
+        rows.append(f"  {_short(item['type'], 18)} since {item['deprecated_in']}")
     return rows
 
 
@@ -475,6 +506,7 @@ class OpenMeshTui(App):
         ("4", "focus_panel('events')", "Events"),
         ("5", "show_integrations", "Integrations"),
         ("6", "show_discovery", "Discovery"),
+        ("7", "show_registry", "Registry"),
         ("enter", "inspect_selected", "Inspect"),
         ("q", "quit", "Quit"),
     ]
@@ -531,7 +563,7 @@ class OpenMeshTui(App):
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -597,6 +629,10 @@ class OpenMeshTui(App):
             self.query_one("#event-title", Static).update("DISCOVERY")
             self.query_one("#event-body", Static).update("\n".join(discovery_rows(self.snapshot)))
             return
+        if self.lower_right_mode == "registry":
+            self.query_one("#event-title", Static).update("REGISTRY")
+            self.query_one("#event-body", Static).update("\n".join(registry_rows(self.snapshot)))
+            return
         if self.lower_right_mode == "trace" and self.selected_trace_id:
             self.query_one("#event-title", Static).update("TRACE DETAIL")
             self.query_one("#event-body", Static).update("\n".join(trace_detail_rows(self.snapshot, self.selected_trace_id)))
@@ -631,6 +667,11 @@ class OpenMeshTui(App):
 
     def action_show_discovery(self) -> None:
         self.lower_right_mode = "discovery"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_show_registry(self) -> None:
+        self.lower_right_mode = "registry"
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
 

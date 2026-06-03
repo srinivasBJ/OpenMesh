@@ -9,11 +9,13 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from ..db.session import AsyncSessionLocal
+from ..db.openmesh_events import list_openmesh_events
 from ..db.openmesh_sessions import complete_openmesh_session, create_openmesh_session
 from ..services.openmesh_collector import collector
 from ..services.discovery import get_discovery
 from ..services.openmesh_doctor import run_doctor
 from ..services.openmesh_queries import get_events, get_graph, get_health, get_trace, get_traces
+from ..services.registry_status import build_registry_status
 from ..shared.openmesh_events import make_openmesh_event
 from ..sdk.integrations import list_integrations
 from .tui import run_tui
@@ -205,6 +207,41 @@ def _print_nodes(graph: dict[str, Any]) -> None:
             f"{node.get('event_count', 0):>6} "
             f"{node.get('last_seen') or '-'}"
         )
+
+
+def _print_registry(registry: dict[str, Any]) -> None:
+    compatibility = registry["compatibility"]
+    print("OpenMesh Registry")
+    print()
+    print("Versions")
+    for name, version in registry["versions"].items():
+        print(f"- {name}: {version}")
+    print()
+    print(f"Compatibility: {compatibility['severity']}")
+    for warning in compatibility.get("warnings", []):
+        print(f"WARNING: {warning['message']}")
+    for error in compatibility.get("errors", []):
+        print(f"ERROR: {error['message']}")
+    if not compatibility.get("warnings") and not compatibility.get("errors"):
+        print("No compatibility issues detected.")
+    print()
+    print("Node Definitions")
+    for definition in registry["node_definitions"]:
+        marker = _definition_marker(definition)
+        print(f"{marker} {definition['type']:<16} {definition['display_name']} ({definition['category']})")
+    print()
+    print("Relationship Definitions")
+    for definition in registry["relationship_definitions"]:
+        marker = _definition_marker(definition)
+        print(f"{marker} {definition['type']:<20} {definition['description']}")
+
+
+def _definition_marker(definition: dict[str, Any]) -> str:
+    if definition.get("removed_in"):
+        return "✖"
+    if definition.get("deprecated_in"):
+        return "!"
+    return "✓"
 
 
 def _print_doctor(report: dict[str, Any]) -> None:
@@ -428,6 +465,16 @@ async def _nodes(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _registry(args: argparse.Namespace) -> int:
+    async def run(db):
+        records = await list_openmesh_events(db, limit=args.limit)
+        registry = build_registry_status(records)
+        _print_registry(registry)
+        return 1 if registry["compatibility"]["severity"] == "ERROR" else 0
+
+    return await _with_db(run)
+
+
 async def _doctor(args: argparse.Namespace) -> int:
     async def run(db):
         report = await run_doctor(db)
@@ -620,6 +667,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     nodes = subparsers.add_parser("nodes", help="Show governed OpenMesh graph nodes.")
     nodes.set_defaults(func=_nodes)
+
+    registry = subparsers.add_parser("registry", help="Show OpenMesh registry versions and compatibility.")
+    registry.add_argument("--limit", type=int, default=5000, help="Maximum events to validate compatibility from.")
+    registry.set_defaults(func=_registry)
 
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
     doctor.set_defaults(func=_doctor)

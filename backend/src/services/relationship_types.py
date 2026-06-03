@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
 
+from .registry_compatibility import RELATIONSHIP_REGISTRY_VERSION
+
 
 @dataclass(frozen=True)
 class RelationshipType:
@@ -11,6 +13,10 @@ class RelationshipType:
     description: str
     source_types: tuple[str, ...]
     target_types: tuple[str, ...]
+    introduced_in: str = RELATIONSHIP_REGISTRY_VERSION
+    deprecated_in: Optional[str] = None
+    removed_in: Optional[str] = None
+    replaced_by: Optional[str] = None
 
 
 RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
@@ -142,6 +148,7 @@ def validate_relationship(relationship_type: str, source_type: str, target_type:
     spec = RELATIONSHIP_TYPES.get(relationship_type)
     definition = relationship_definition(relationship_type)
     errors: list[dict[str, str]] = []
+    warnings: list[dict[str, str]] = []
 
     if not spec:
         errors.append(
@@ -151,6 +158,20 @@ def validate_relationship(relationship_type: str, source_type: str, target_type:
             }
         )
     else:
+        if spec.removed_in:
+            errors.append(
+                {
+                    "code": "removed_relationship_type",
+                    "message": f"Relationship type {relationship_type} was removed in {spec.removed_in}",
+                }
+            )
+        elif spec.deprecated_in:
+            warnings.append(
+                {
+                    "code": "deprecated_relationship_type",
+                    "message": f"Relationship type {relationship_type} is deprecated as of {spec.deprecated_in}",
+                }
+            )
         if source_type not in spec.source_types:
             errors.append(
                 {
@@ -167,11 +188,24 @@ def validate_relationship(relationship_type: str, source_type: str, target_type:
             )
 
     return {
-        "status": "valid" if not errors else "invalid",
+        "status": "invalid" if errors else "warning" if warnings else "valid",
         "valid": not errors,
         "relationship_type": relationship_type,
         "source_type": source_type,
         "target_type": target_type,
         "definition": definition,
         "errors": errors,
+        "warnings": warnings,
+    }
+
+
+def relationship_registry_metadata() -> dict[str, object]:
+    return {
+        "version": RELATIONSHIP_REGISTRY_VERSION,
+        "compatibility": {
+            "additive_changes": "Backward compatible within the supported major version.",
+            "deprecated_types": "Accepted with warnings.",
+            "removed_types": "Rejected as invalid.",
+            "renamed_types": "Rejected under the old name with replacement guidance.",
+        },
     }

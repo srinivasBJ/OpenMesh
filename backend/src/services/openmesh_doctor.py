@@ -13,6 +13,7 @@ from ..db.session import ASYNC_URL, DATABASE_URL
 from ..sdk.integrations import list_integrations
 from .graph_state import reduce_graph_state
 from .openmesh_collector import collector
+from .registry_status import build_registry_status
 from .trace_semantics import build_span_summary, validate_trace_semantics
 
 
@@ -87,6 +88,7 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
         checks.append(build_graph_diagnostics(records))
         checks.append(build_node_diagnostics(records))
         checks.append(build_relationship_diagnostics(records))
+        checks.append(build_registry_compatibility_diagnostics(records))
     except Exception as exc:
         checks.append({"name": "OpenMesh Diagnostics", "status": "ERROR", "severity": "ERROR", "detail": str(exc)})
 
@@ -269,18 +271,22 @@ def build_relationship_diagnostics(records: list[Any]) -> dict[str, Any]:
         "edges_checked": len(graph.get("edges", [])),
         "valid_relationships": len(graph.get("edges", [])) - len(invalid_relationships),
         "invalid_relationship_types": validation.get("invalid_relationship_types", []),
+        "deprecated_relationship_types": validation.get("deprecated_relationship_types", []),
+        "removed_relationship_types": validation.get("removed_relationship_types", []),
         "invalid_source_types": validation.get("invalid_source_types", []),
         "invalid_target_types": validation.get("invalid_target_types", []),
     }
     errors = (
         detail["invalid_relationship_types"]
+        or detail["removed_relationship_types"]
         or detail["invalid_source_types"]
         or detail["invalid_target_types"]
     )
+    warnings = detail["deprecated_relationship_types"]
     return {
         "name": "Relationship Integrity",
-        "status": "ERROR" if errors else "OK",
-        "severity": "ERROR" if errors else "INFO",
+        "status": "ERROR" if errors else "WARNING" if warnings else "OK",
+        "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
         "detail": detail,
     }
 
@@ -291,6 +297,8 @@ def build_node_diagnostics(records: list[Any]) -> dict[str, Any]:
     detail = {
         "nodes_checked": len(graph.get("nodes", [])),
         "unknown_node_types": validation.get("unknown_node_types", []),
+        "deprecated_node_types": validation.get("deprecated_node_types", []),
+        "removed_node_types": validation.get("removed_node_types", []),
         "invalid_node_metadata": validation.get("invalid_node_metadata", []),
         "missing_required_identifiers": validation.get("missing_required_identifiers", []),
         "invalid_node_categories": validation.get("invalid_node_categories", []),
@@ -298,16 +306,44 @@ def build_node_diagnostics(records: list[Any]) -> dict[str, Any]:
     }
     errors = (
         detail["unknown_node_types"]
+        or detail["removed_node_types"]
         or detail["missing_required_identifiers"]
         or detail["invalid_node_categories"]
         or detail["invalid_relationship_endpoints"]
     )
     warnings = detail["invalid_node_metadata"]
+    warnings = warnings or detail["deprecated_node_types"]
     return {
         "name": "Node Integrity",
         "status": "ERROR" if errors else "WARNING" if warnings else "OK",
         "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
         "detail": detail,
+    }
+
+
+def build_registry_compatibility_diagnostics(
+    records: list[Any],
+    *,
+    node_registry_version: str | None = None,
+    relationship_registry_version: str | None = None,
+) -> dict[str, Any]:
+    status = build_registry_status(
+        records,
+        node_registry_version=node_registry_version,
+        relationship_registry_version=relationship_registry_version,
+    )
+    compatibility = status["compatibility"]
+    return {
+        "name": "Registry Compatibility",
+        "status": compatibility["status"],
+        "severity": compatibility["severity"],
+        "detail": {
+            "versions": status["versions"],
+            "checked_versions": status["checked_versions"],
+            "rules": status["rules"],
+            "warnings": compatibility["warnings"],
+            "errors": compatibility["errors"],
+        },
     }
 
 

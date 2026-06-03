@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, Optional
 
 from ..db.models import OpenMeshEventRecord
 from .node_types import node_type_registry, validate_node
+from .registry_compatibility import registry_versions
 from .relationship_types import relationship_registry, relationship_type_for, validate_relationship
 
 
@@ -82,6 +83,7 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
                     "relationship_definition": relationship_validation["definition"],
                     "validation_status": relationship_validation["status"],
                     "validation_errors": relationship_validation["errors"],
+                    "validation_warnings": relationship_validation["warnings"],
                     "event_count": 0,
                     "observation_count": 0,
                     "first_seen": timestamp_text,
@@ -128,6 +130,7 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
         "edges": list(edges.values()),
         "metadata": {
             "generated_at": now.isoformat() + "Z",
+            "registry_versions": registry_versions(),
             "node_types": node_type_registry(),
             "relationship_types": relationship_registry(),
             "lifecycle": {
@@ -151,6 +154,10 @@ def validate_graph_state(nodes: Dict[str, Dict[str, Any]], edges: Dict[str, Dict
     missing_required_identifiers = []
     invalid_node_categories = []
     invalid_relationship_endpoints = []
+    deprecated_node_types = []
+    removed_node_types = []
+    deprecated_relationship_types = []
+    removed_relationship_types = []
     missing_provenance = []
     node_validation_statuses: dict[str, str] = {}
 
@@ -177,6 +184,10 @@ def validate_graph_state(nodes: Dict[str, Dict[str, Any]], edges: Dict[str, Dict
         }
         if "unknown_node_type" in error_codes:
             unknown_node_types.append(detail)
+        if "removed_node_type" in error_codes:
+            removed_node_types.append(detail)
+        if "deprecated_node_type" in warning_codes:
+            deprecated_node_types.append(detail)
         if "invalid_node_metadata" in error_codes or "unsupported_node_metadata" in warning_codes:
             invalid_node_metadata.append(detail)
         if "missing_required_identifiers" in error_codes:
@@ -222,30 +233,47 @@ def validate_graph_state(nodes: Dict[str, Dict[str, Any]], edges: Dict[str, Dict
                 invalid_source_types.append(invalid_relationship)
             if "invalid_target_type" in error_codes:
                 invalid_target_types.append(invalid_relationship)
+            if "removed_relationship_type" in error_codes:
+                removed_relationship_types.append(invalid_relationship)
+        warning_codes = {warning["code"] for warning in relationship_validation.get("warnings", [])}
+        if "deprecated_relationship_type" in warning_codes:
+            deprecated_relationship_types.append(
+                {
+                    "edge_id": edge["id"],
+                    "type": edge["type"],
+                    "source_type": source["type"],
+                    "target_type": target["type"],
+                    "warnings": relationship_validation["warnings"],
+                }
+            )
         if not edge.get("trace_id") or not edge.get("event_id") or not edge.get("first_seen") or not edge.get("last_seen"):
             missing_provenance.append(edge["id"])
 
     orphan_nodes = sorted(node_id for node_id in nodes if node_id not in incident_nodes)
-    node_issues = unknown_node_types or invalid_node_metadata or missing_required_identifiers or invalid_node_categories
-    status = (
-        "OK"
-        if not broken_references
-        and not invalid_relationships
-        and not invalid_relationship_endpoints
-        and not missing_provenance
-        and not node_issues
-        else "WARNING"
+    node_issues = (
+        unknown_node_types
+        or invalid_node_metadata
+        or missing_required_identifiers
+        or invalid_node_categories
+        or removed_node_types
     )
+    errors = broken_references or invalid_relationships or invalid_relationship_endpoints or missing_provenance or node_issues
+    warnings = deprecated_node_types or deprecated_relationship_types
+    status = "OK" if not errors and not warnings else "WARNING"
     return {
         "status": status,
         "orphan_nodes": orphan_nodes,
         "unknown_node_types": unknown_node_types,
+        "deprecated_node_types": deprecated_node_types,
+        "removed_node_types": removed_node_types,
         "invalid_node_metadata": invalid_node_metadata,
         "missing_required_identifiers": missing_required_identifiers,
         "invalid_node_categories": invalid_node_categories,
         "invalid_relationship_endpoints": invalid_relationship_endpoints,
         "invalid_relationships": invalid_relationships,
         "invalid_relationship_types": invalid_relationship_types,
+        "deprecated_relationship_types": deprecated_relationship_types,
+        "removed_relationship_types": removed_relationship_types,
         "invalid_source_types": invalid_source_types,
         "invalid_target_types": invalid_target_types,
         "missing_provenance": missing_provenance,

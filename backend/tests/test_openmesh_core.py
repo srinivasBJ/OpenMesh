@@ -10,19 +10,42 @@ from src.db.openmesh_events import create_openmesh_event, record_to_event
 from src.db.openmesh_sessions import complete_openmesh_session, create_openmesh_session, session_to_dict
 from src.services.discovery import build_discovery
 from src.services.graph_state import reduce_graph_state, validate_graph_state
-from src.services.node_types import node_type_definition, node_type_registry, node_type_validation_metadata, validate_node
-from src.services.openmesh_doctor import build_graph_diagnostics, build_node_diagnostics, build_relationship_diagnostics, build_trace_diagnostics
+from src.services.node_types import (
+    NODE_TYPES,
+    NodeType,
+    node_type_definition,
+    node_type_registry,
+    node_type_validation_metadata,
+    validate_node,
+)
+from src.services.openmesh_doctor import (
+    build_graph_diagnostics,
+    build_node_diagnostics,
+    build_registry_compatibility_diagnostics,
+    build_relationship_diagnostics,
+    build_trace_diagnostics,
+)
+from src.services.registry_compatibility import (
+    NODE_REGISTRY_VERSION,
+    RELATIONSHIP_REGISTRY_VERSION,
+    compatibility_status,
+    registry_versions,
+    validate_registry_versions,
+)
+from src.services.registry_status import build_registry_status
 from src.services.openmesh_collector import OpenMeshCollector
 from src.services.openmesh_queries import trace_summary
 from src.services.relationship_types import (
     relationship_definition,
     relationship_registry,
     relationship_type_for,
+    RELATIONSHIP_TYPES,
+    RelationshipType,
     validate_relationship,
 )
 from src.services.trace_semantics import build_event_hierarchy, build_span_summary, build_span_tree, graph_edges_for_trace, validate_trace_semantics
 from src.shared.openmesh_events import agent_node, make_openmesh_event
-from src.cli.tui import TuiSnapshot, edge_detail_rows, node_detail_rows, render_plain
+from src.cli.tui import TuiSnapshot, edge_detail_rows, node_detail_rows, registry_rows, render_plain
 
 
 CLI_NODE = {
@@ -290,6 +313,67 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(unknown["errors"][0]["code"], "unknown_node_type")
         self.assertEqual(missing["errors"][0]["code"], "missing_required_identifiers")
         self.assertEqual(invalid_metadata["errors"][0]["code"], "invalid_node_metadata")
+
+    def test_registry_versions_and_compatibility_rules(self):
+        versions = registry_versions()
+        supported = validate_registry_versions()
+        unsupported = validate_registry_versions(node_registry_version="9.0.0")
+        deprecated = compatibility_status(deprecated_nodes=[{"type": "legacy_agent", "deprecation_message": "Use agent"}])
+
+        self.assertEqual(versions["node_registry"], NODE_REGISTRY_VERSION)
+        self.assertEqual(versions["relationship_registry"], RELATIONSHIP_REGISTRY_VERSION)
+        self.assertEqual(supported["status"], "ok")
+        self.assertEqual(unsupported["errors"][0]["code"], "unsupported_registry_version")
+        self.assertEqual(deprecated["severity"], "WARNING")
+
+    def test_registry_validation_reports_deprecated_definitions(self):
+        with patch.dict(
+            NODE_TYPES,
+            {
+                "legacy_agent": NodeType(
+                    "legacy_agent",
+                    "Legacy Agent",
+                    "Deprecated test node.",
+                    "agents",
+                    (),
+                    deprecated_in="0.1.0",
+                )
+            },
+        ), patch.dict(
+            RELATIONSHIP_TYPES,
+            {
+                "legacy_uses": RelationshipType(
+                    "legacy_uses",
+                    "legacy uses",
+                    "Deprecated test relationship.",
+                    ("legacy_agent",),
+                    ("tool",),
+                    deprecated_in="0.1.0",
+                )
+            },
+        ):
+            node_validation = validate_node({"node_id": "legacy:a", "node_type": "legacy_agent", "name": "Legacy A"})
+            relationship_validation = validate_relationship("legacy_uses", "legacy_agent", "tool")
+
+        self.assertEqual(node_validation["status"], "warning")
+        self.assertEqual(node_validation["warnings"][0]["code"], "deprecated_node_type")
+        self.assertEqual(relationship_validation["status"], "warning")
+        self.assertEqual(relationship_validation["warnings"][0]["code"], "deprecated_relationship_type")
+
+    def test_registry_compatibility_diagnostics_report_unsupported_versions(self):
+        diagnostics = build_registry_compatibility_diagnostics([], node_registry_version="9.0.0")
+
+        self.assertEqual(diagnostics["severity"], "ERROR")
+        self.assertEqual(diagnostics["detail"]["errors"][0]["code"], "unsupported_registry_version")
+
+    def test_registry_status_exposes_versions_definitions_and_rules(self):
+        status = build_registry_status([])
+
+        self.assertEqual(status["compatibility"]["severity"], "INFO")
+        self.assertIn("node_registry", status["versions"])
+        self.assertGreater(len(status["node_definitions"]), 0)
+        self.assertGreater(len(status["relationship_definitions"]), 0)
+        self.assertIn("additive_changes", status["rules"])
 
     def test_graph_validation_distinguishes_relationship_integrity_errors(self):
         nodes = {
@@ -700,6 +784,7 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             sessions=[],
             integrations=[],
             discovery={"frameworks": [], "agents": [], "tools": [], "processes": [], "services": []},
+            registry_status=build_registry_status([]),
             loaded_at=datetime.utcnow(),
         )
 
@@ -714,6 +799,9 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         node_detail = "\n".join(node_detail_rows(snapshot, "agent-a"))
         self.assertIn("type: agent", node_detail)
         self.assertIn("Relationships", node_detail)
+        registry_detail = "\n".join(registry_rows(snapshot))
+        self.assertIn("Compatibility: INFO", registry_detail)
+        self.assertIn("node_registry", registry_detail)
 
 
 if __name__ == "__main__":

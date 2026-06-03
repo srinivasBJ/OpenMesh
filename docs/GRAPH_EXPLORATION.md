@@ -10,6 +10,8 @@ The exploration layer supports:
 - neighborhood expansion
 - graph filtering
 - graph search
+- graph statistics
+- provenance-preserving inspection
 
 ## API
 
@@ -40,6 +42,11 @@ The network panel remains visible.
 - Arrow keys select graph rows.
 - `Enter` inspects the selected node or relationship.
 - `g` cycles network filters.
+- `f` focuses the graph on the selected node.
+- `p` expands the focused neighborhood depth.
+- `c` collapses the focused neighborhood depth.
+- `o` clears focus and returns to the full graph.
+- `k` searches from the selected entity.
 
 Node inspection shows:
 
@@ -57,6 +64,36 @@ Relationship inspection shows:
 - relationship type
 - provenance
 - traversal path
+
+## CLI
+
+The default command still renders the whole graph:
+
+```bash
+openmesh graph
+openmesh graph --details
+```
+
+Graph Explorer options add terminal-first navigation without creating a second
+graph model:
+
+```bash
+openmesh graph --focus research-agent --depth 2 --details
+openmesh graph --focus web_search --direction incoming
+openmesh graph --search filesystem
+openmesh graph --node-type agent --relationship-type uses --stats
+openmesh graph --lifecycle-state active
+```
+
+Focused output includes:
+
+- selected node metadata
+- first and last seen timestamps
+- event and relationship counts
+- traces and sessions from provenance
+- traversal targets
+- neighborhood graph output
+- relationship provenance when `--details` is enabled
 
 ## Navigation Model
 

@@ -239,6 +239,8 @@ def filter_graph(
         "statistics": {
             "node_count": len(filtered_nodes),
             "edge_count": len(selected_edges),
+            "node_types": _count_by(filtered_nodes, "type"),
+            "relationship_types": _count_by(selected_edges, "type"),
         },
     }
 
@@ -333,6 +335,19 @@ def explore_graph_node(
             "query": query,
             "limit": limit,
         },
+    }
+
+
+def graph_statistics(graph: dict[str, Any]) -> dict[str, Any]:
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+    return {
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "node_types": _count_by(nodes, "type"),
+        "relationship_types": _count_by(edges, "type"),
+        "lifecycle_states": _count_by(edges, "lifecycle_state"),
+        "validation_statuses": _count_by(edges, "validation_status"),
     }
 
 
@@ -465,7 +480,10 @@ def _edge_allowed_for_direction(
     edge: dict[str, Any], node_id: str, direction: str
 ) -> bool:
     return (
-        direction == "both"
+        (
+            direction == "both"
+            and (edge.get("source") == node_id or edge.get("target") == node_id)
+        )
         or (direction == "outgoing" and edge.get("source") == node_id)
         or (direction == "incoming" and edge.get("target") == node_id)
     )
@@ -515,3 +533,11 @@ def _normalize_ref(value: str) -> str:
 
 def _normalize_text(value: str | None) -> str:
     return str(value or "").strip().lower()
+
+
+def _count_by(items: list[dict[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        value = str(item.get(key) or "unknown")
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))

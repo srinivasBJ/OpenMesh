@@ -31,6 +31,12 @@ from ..services.federation import (
     get_federation_registry,
     inspect_federation_node,
 )
+from ..services.graph_exploration import (
+    explore_graph_node,
+    filter_graph,
+    graph_statistics,
+    search_graph,
+)
 from ..services.mcp_config_discovery import (
     get_mcp_config_registry,
     register_discovered_mcp_configs,
@@ -274,6 +280,154 @@ def _print_graph(graph: dict[str, Any], *, details: bool = False) -> None:
             print(f"invalid_source_types: {len(invalid_sources)}")
             print(f"invalid_target_types: {len(invalid_targets)}")
             print(f"broken_references: {len(broken)}")
+
+
+def _print_graph_statistics(graph: dict[str, Any]) -> None:
+    statistics = graph_statistics(graph)
+    print("Graph Statistics")
+    print(
+        f"nodes: {statistics['node_count']}  relationships: {statistics['edge_count']}"
+    )
+    print(f"node_types: {_format_counts(statistics['node_types'])}")
+    print(f"relationship_types: {_format_counts(statistics['relationship_types'])}")
+    if statistics.get("lifecycle_states"):
+        print(f"lifecycle: {_format_counts(statistics['lifecycle_states'])}")
+    if statistics.get("validation_statuses"):
+        print(f"validation: {_format_counts(statistics['validation_statuses'])}")
+    print()
+
+
+def _print_graph_search(result: dict[str, Any]) -> None:
+    print(f"OpenMesh Graph Search: {result['query']}")
+    print(f"matches: {result['count']}")
+    print()
+    print("Nodes")
+    if not result.get("nodes"):
+        print("  none")
+    for node in result.get("nodes", []):
+        print(
+            f"  {node.get('name')} "
+            f"({node.get('node_type')}) id:{node.get('node_id')} "
+            f"events:{node.get('event_count', 0)}"
+        )
+    print()
+    print("Relationships")
+    if not result.get("relationships"):
+        print("  none")
+    for relationship in result.get("relationships", []):
+        provenance = relationship.get("provenance") or {}
+        print(
+            f"  {relationship.get('source_name')} "
+            f"--{relationship.get('relationship_type')}--> "
+            f"{relationship.get('target_name')} "
+            f"obs:{relationship.get('observation_count', 0)}"
+        )
+        print(f"    traces: {_join_short(provenance.get('trace_ids', []), limit=3)}")
+        print(f"    events: {_join_short(provenance.get('event_ids', []), limit=3)}")
+
+
+def _print_graph_exploration(
+    exploration: dict[str, Any], *, details: bool = False
+) -> None:
+    selection = exploration["selection"]
+    node = selection["node"]
+    filters = exploration.get("filters", {})
+    neighborhood = exploration.get("neighborhood") or {}
+    traversal = exploration.get("traversal") or {}
+    statistics = neighborhood.get("statistics", {})
+
+    print("OpenMesh Graph Explorer")
+    print()
+    print(f"Focus: {node.get('name')} ({node.get('type')})")
+    print(f"node_id: {node.get('id')}")
+    print(
+        "depth: "
+        f"{filters.get('depth')}  direction: {filters.get('direction')}  "
+        f"node_type: {filters.get('node_type') or '-'}  "
+        f"relationship: {filters.get('relationship_type') or '-'}"
+    )
+    print(
+        "neighborhood: "
+        f"{statistics.get('node_count', 0)} nodes / "
+        f"{statistics.get('edge_count', 0)} relationships / "
+        f"{statistics.get('frontier_count', 0)} frontier"
+    )
+    print()
+    relationship_count = len(selection.get("incoming_relationships", [])) + len(
+        selection.get("outgoing_relationships", [])
+    )
+    _print_graph_node_summary(node, relationship_count=relationship_count)
+    print()
+    print("Relationships")
+    relationships = traversal.get("relationships", [])
+    if not relationships:
+        print("  none")
+    for relationship in relationships[:20]:
+        arrow = "->" if relationship.get("direction") == "outgoing" else "<-"
+        print(
+            f"  {arrow} {relationship.get('relationship_type')} "
+            f"{relationship.get('node_name')} ({relationship.get('node_type')}) "
+            f"obs:{relationship.get('observation_count', 0)}"
+        )
+        if details:
+            provenance = relationship.get("provenance") or {}
+            print(
+                "     "
+                f"traces:{_join_short(provenance.get('trace_ids', []), limit=3)} "
+                f"events:{_join_short(provenance.get('event_ids', []), limit=3)} "
+                f"last:{provenance.get('last_seen') or '-'}"
+            )
+    print()
+    print("Neighborhood")
+    neighborhood_graph = {
+        "nodes": neighborhood.get("nodes", []),
+        "edges": neighborhood.get("edges", []),
+        "validation": {},
+    }
+    _print_graph(neighborhood_graph, details=details)
+
+
+def _print_graph_node_summary(
+    node: dict[str, Any], *, relationship_count: int | None = None
+) -> None:
+    provenance = node.get("provenance") or {}
+    print("Inspector")
+    print(f"  type: {node.get('type')}")
+    print(f"  status: {node.get('lifecycle_state', 'unknown')}")
+    print(f"  validation: {node.get('validation_status', 'unknown')}")
+    print(f"  first_seen: {node.get('first_seen') or '-'}")
+    print(f"  last_seen: {node.get('last_seen') or '-'}")
+    print(f"  event_count: {node.get('event_count', 0)}")
+    print(
+        "  relationship_count: "
+        f"{relationship_count if relationship_count is not None else node.get('relationship_count', 0)}"
+    )
+    print(f"  traces: {_join_short(provenance.get('trace_ids', []), limit=5)}")
+    print(f"  sessions: {_join_short(provenance.get('session_ids', []), limit=5)}")
+
+
+def _format_counts(counts: dict[str, int]) -> str:
+    if not counts:
+        return "-"
+    return ", ".join(f"{name}:{count}" for name, count in counts.items())
+
+
+def _option_set(values: list[str] | None) -> set[str] | None:
+    if not values:
+        return None
+    parsed = {
+        item.strip()
+        for value in values
+        for item in str(value).split(",")
+        if item.strip()
+    }
+    return parsed or None
+
+
+def _single_option(values: set[str] | None) -> str | None:
+    if not values or len(values) != 1:
+        return None
+    return next(iter(values))
 
 
 def _join_short(values: list[str], limit: int = 3) -> str:
@@ -1367,8 +1521,52 @@ async def _trace(args: argparse.Namespace) -> int:
 
 async def _graph(args: argparse.Namespace) -> int:
     async def run(db):
-        graph = await get_graph(db)
+        graph = await get_graph(db, limit=args.limit)
+        node_types = _option_set(args.node_type)
+        relationship_types = _option_set(args.relationship_type)
+        node_type = _single_option(node_types)
+        relationship_type = _single_option(relationship_types)
+
+        if args.focus:
+            exploration = explore_graph_node(
+                graph,
+                args.focus,
+                depth=args.depth,
+                direction=args.direction,
+                relationship_type=relationship_type,
+                node_type=node_type,
+                query=args.search,
+                limit=args.limit,
+            )
+            if not exploration:
+                print(f"OpenMesh graph node not found: {args.focus}")
+                return 1
+            _print_graph_exploration(exploration, details=args.details)
+            return 0
+
+        if args.search:
+            result = search_graph(
+                graph,
+                args.search,
+                node_type=node_type,
+                relationship_type=relationship_type,
+                limit=args.limit,
+            )
+            _print_graph_search(result)
+            return 0
+
+        if node_types or relationship_types or args.lifecycle_state:
+            graph = filter_graph(
+                graph,
+                node_types=node_types,
+                relationship_types=relationship_types,
+                lifecycle_state=args.lifecycle_state,
+                limit=args.limit,
+            )
+        if args.stats:
+            _print_graph_statistics(graph)
         _print_graph(graph, details=args.details)
+        return 0
 
     return await _with_db(run)
 
@@ -1937,6 +2135,51 @@ def build_parser() -> argparse.ArgumentParser:
         "--details",
         action="store_true",
         help="Show edge provenance and lifecycle metadata.",
+    )
+    graph.add_argument(
+        "--focus",
+        help="Center graph exploration on a node id, name, or alias.",
+    )
+    graph.add_argument(
+        "--depth",
+        type=int,
+        default=1,
+        help="Neighborhood depth for --focus exploration.",
+    )
+    graph.add_argument(
+        "--direction",
+        choices=["incoming", "outgoing", "both"],
+        default="both",
+        help="Relationship direction for focused exploration.",
+    )
+    graph.add_argument(
+        "--node-type",
+        action="append",
+        help="Filter by node type. Repeat or use comma-separated values.",
+    )
+    graph.add_argument(
+        "--relationship-type",
+        action="append",
+        help="Filter by relationship type. Repeat or use comma-separated values.",
+    )
+    graph.add_argument(
+        "--search",
+        help="Search nodes and relationships by id, name, type, trace, or event.",
+    )
+    graph.add_argument(
+        "--lifecycle-state",
+        help="Filter relationships by lifecycle state.",
+    )
+    graph.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show graph statistics before graph output.",
+    )
+    graph.add_argument(
+        "--limit",
+        type=int,
+        default=1000,
+        help="Maximum graph records to load.",
     )
     graph.set_defaults(func=_graph)
 

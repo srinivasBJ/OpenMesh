@@ -37,6 +37,7 @@ from src.services.graph_state import reduce_graph_state, validate_graph_state
 from src.services.graph_exploration import (
     expand_graph_neighborhood,
     filter_graph,
+    graph_statistics,
     search_graph,
     select_graph_node,
     traverse_graph_relationships,
@@ -164,8 +165,10 @@ from src.cli.tui import (
     TuiSnapshot,
     capability_rows,
     edge_detail_rows,
+    graph_explorer_rows,
     mcp_config_rows,
     mcp_rows,
+    network_edges,
     node_detail_rows,
     query_rows,
     registry_rows,
@@ -858,6 +861,21 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(traversal["relationships"][0]["node_id"], "tool:web_search")
         self.assertEqual(traversal["relationships"][0]["relationship_type"], "uses")
 
+    def test_graph_exploration_both_direction_only_returns_adjacent_edges(self):
+        graph = self.make_exploration_graph()
+
+        traversal = traverse_graph_relationships(graph, "agent-a", direction="both")
+
+        self.assertIsNotNone(traversal)
+        assert traversal is not None
+        node_ids = {
+            relationship["node_id"] for relationship in traversal["relationships"]
+        }
+        self.assertIn("workflow:research", node_ids)
+        self.assertIn("tool:web_search", node_ids)
+        self.assertNotIn("mcp:filesystem", node_ids)
+        self.assertEqual(traversal["relationship_count"], len(node_ids))
+
     def test_graph_exploration_expands_neighborhood_and_filters_graph(self):
         graph = self.make_exploration_graph()
 
@@ -892,6 +910,17 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             "connects_to",
             {edge["relationship_type"] for edge in result["relationships"]},
         )
+
+    def test_graph_statistics_summarizes_exploration_graph(self):
+        graph = self.make_exploration_graph()
+
+        statistics = graph_statistics(graph)
+
+        self.assertGreaterEqual(statistics["node_count"], 6)
+        self.assertGreaterEqual(statistics["edge_count"], 6)
+        self.assertEqual(statistics["node_types"]["agent"], 1)
+        self.assertEqual(statistics["relationship_types"]["uses"], 2)
+        self.assertGreaterEqual(statistics["validation_statuses"]["valid"], 6)
 
     def test_relationship_registry_maps_protocol_events_to_canonical_types(self):
         relationship_types = {item["type"] for item in relationship_registry()}
@@ -3212,6 +3241,19 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Relationships", node_detail)
         self.assertIn("Explore", node_detail)
         self.assertIn("Traversal targets", node_detail)
+        focused_edges = network_edges(snapshot, focus_node_id="agent-a", depth=1)
+        self.assertEqual([edge["id"] for edge in focused_edges], ["edge-1"])
+        explorer_detail = "\n".join(
+            graph_explorer_rows(
+                snapshot,
+                focus_node_id="agent-a",
+                depth=1,
+                query="Coding",
+            )
+        )
+        self.assertIn("Graph Explorer", explorer_detail)
+        self.assertIn("Focus: Research Agent", explorer_detail)
+        self.assertIn("Search: Coding", explorer_detail)
         registry_detail = "\n".join(registry_rows(snapshot))
         self.assertIn("Compatibility: INFO", registry_detail)
         self.assertIn("node_registry", registry_detail)

@@ -22,6 +22,7 @@ from ..services.ecosystem_snapshot import (
 from ..services.graph_exploration import (
     explore_graph_node,
     filter_graph,
+    graph_statistics,
     search_graph,
 )
 from ..services.mcp_capabilities import get_capability_registry
@@ -219,21 +220,40 @@ def network_lines(snapshot: TuiSnapshot, limit: int = 80) -> list[str]:
 def network_edges(
     snapshot: TuiSnapshot,
     *,
+    focus_node_id: str | None = None,
+    depth: int = 1,
+    direction: str = "both",
     node_types: set[str] | None = None,
     relationship_types: set[str] | None = None,
     query: str | None = None,
 ) -> list[dict[str, Any]]:
     nodes, _ = _node_maps(snapshot)
-    graph = (
-        filter_graph(
+    node_type = _single_filter(node_types)
+    relationship_type = _single_filter(relationship_types)
+    if focus_node_id:
+        exploration = explore_graph_node(
+            snapshot.graph,
+            focus_node_id,
+            depth=depth,
+            direction=direction,
+            node_type=node_type,
+            relationship_type=relationship_type,
+            query=query,
+        )
+        neighborhood = (exploration or {}).get("neighborhood") or {}
+        graph = {
+            "nodes": neighborhood.get("nodes", []),
+            "edges": neighborhood.get("edges", []),
+        }
+    elif node_types or relationship_types or query:
+        graph = filter_graph(
             snapshot.graph,
             node_types=node_types,
             relationship_types=relationship_types,
             query=query,
         )
-        if node_types or relationship_types or query
-        else snapshot.graph
-    )
+    else:
+        graph = snapshot.graph
     return sorted(
         graph["edges"],
         key=lambda edge: (
@@ -242,6 +262,86 @@ def network_edges(
             nodes.get(edge["target"], {}).get("name", edge["target"]),
         ),
     )
+
+
+def _single_filter(values: set[str] | None) -> str | None:
+    if not values or len(values) != 1:
+        return None
+    return next(iter(values))
+
+
+def graph_explorer_rows(
+    snapshot: TuiSnapshot,
+    *,
+    focus_node_id: str | None,
+    depth: int,
+    query: str | None,
+) -> list[str]:
+    statistics = graph_statistics(snapshot.graph)
+    rows = [
+        "Graph Explorer",
+        f"nodes {statistics['node_count']} relationships {statistics['edge_count']}",
+        f"node types {_format_count_map(statistics['node_types'])}",
+        f"relationship types {_format_count_map(statistics['relationship_types'])}",
+        "p expand  c collapse  o all graph  k search selected",
+    ]
+    if query:
+        search = search_graph(snapshot.graph, query, limit=6)
+        rows.extend(["", f"Search: {_short(query, 42)}"])
+        if not search.get("nodes") and not search.get("relationships"):
+            rows.append("  no matches")
+        for node in search.get("nodes", [])[:4]:
+            rows.append(
+                f"  node {_short(node.get('node_type'), 10)}:"
+                f"{_short(node.get('name'), 26)}"
+            )
+        for relationship in search.get("relationships", [])[:4]:
+            rows.append(
+                f"  rel {_short(relationship.get('source_name'), 14)} "
+                f"{relationship.get('relationship_type')} "
+                f"{_short(relationship.get('target_name'), 14)}"
+            )
+    if not focus_node_id:
+        rows.extend(["", "Focus", "  select a node and press Enter or f"])
+        return rows
+    exploration = explore_graph_node(snapshot.graph, focus_node_id, depth=depth)
+    if not exploration:
+        rows.extend(["", f"Focus node not found: {focus_node_id}"])
+        return rows
+    selection = exploration["selection"]
+    neighborhood = exploration.get("neighborhood") or {}
+    neighborhood_stats = neighborhood.get("statistics", {})
+    rows.extend(
+        [
+            "",
+            f"Focus: {_short(selection.get('name'), 34)}",
+            f"type: {selection.get('node_type')}  depth:{depth}",
+            (
+                "neighborhood "
+                f"{neighborhood_stats.get('node_count', 0)} nodes / "
+                f"{neighborhood_stats.get('edge_count', 0)} relationships"
+            ),
+            "",
+            "Traversal targets",
+        ]
+    )
+    targets = selection.get("navigation_targets", [])
+    if not targets:
+        rows.append("  none")
+    for target in targets[:8]:
+        arrow = "->" if target.get("direction") == "outgoing" else "<-"
+        rows.append(
+            f"  {arrow} {target.get('relationship_type')} "
+            f"{_short(target.get('node_type'), 10)}:"
+            f"{_short(target.get('node_name'), 22)}"
+        )
+    return rows
+
+
+def _format_count_map(counts: dict[str, int]) -> str:
+    if not counts:
+        return "-"
+    return _short(", ".join(f"{name}:{count}" for name, count in counts.items()), 54)
 
 
 def render_plain(snapshot: TuiSnapshot) -> str:
@@ -1122,6 +1222,11 @@ class OpenMeshTui(App):
         ("r", "show_replay", "Replay"),
         ("y", "show_query", "Query"),
         ("g", "cycle_graph_filter", "Graph Filter"),
+        ("f", "focus_graph_node", "Focus Node"),
+        ("p", "expand_graph", "Expand"),
+        ("c", "collapse_graph", "Collapse"),
+        ("o", "clear_graph_focus", "All Graph"),
+        ("k", "search_graph_selection", "Search"),
         ("u", "next_query", "Next Query"),
         ("space", "toggle_replay", "Play/Pause"),
         ("n", "step_replay", "Step"),
@@ -1146,6 +1251,9 @@ class OpenMeshTui(App):
         self.replay_position = 0
         self.query_index = 0
         self.network_filter_index = 0
+        self.graph_focus_node_id: str | None = None
+        self.graph_depth = 1
+        self.graph_search_query: str | None = None
         self.agent_node_rows: list[dict[str, Any]] = []
         self.network_edge_rows: list[dict[str, Any]] = []
 
@@ -1161,7 +1269,7 @@ class OpenMeshTui(App):
                     yield DataTable(id="traces-table")
             with Vertical(classes="column"):
                 with Panel("", id="network-panel", classes="panel"):
-                    yield Static("NETWORK", classes="panel-title")
+                    yield Static("NETWORK", id="network-title", classes="panel-title")
                     yield DataTable(id="network-table")
                 with Panel("", id="events-panel", classes="panel"):
                     yield Static(
@@ -1188,13 +1296,15 @@ class OpenMeshTui(App):
         self.snapshot = await load_snapshot()
         health = self.snapshot.health
         graph_filter = GRAPH_FILTERS[self.network_filter_index][0]
+        graph_focus = self._graph_focus_label()
+        graph_search = self.graph_search_query or "-"
         self.query_one("#topbar", Static).update(
             f"[#c56b2c]{OPENMESH_LOGO.strip()}[/]\n"
             f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
             f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)} "
-            f"graph_filter:{graph_filter}  "
+            f"graph:{graph_focus} depth:{self.graph_depth} filter:{graph_filter} search:{_short(graph_search, 18)}  "
             "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [5 integrations] [6 discovery] [7 registry] [8 mcp] [9 mcp config] [0 capabilities] [w workflows] [e ecosystem] [s snapshots] [d diff] [l timeline] [r replay] [y query] [g filter] [q quit][/]"
+            "[1 overview] [2 traces] [3 graph] [4 events] [g filter] [f focus] [p expand] [c collapse] [o all] [k search] [r replay] [q quit][/]"
         )
         self._refresh_agents()
         self._refresh_traces()
@@ -1241,11 +1351,24 @@ class OpenMeshTui(App):
         table = self.query_one("#network-table", DataTable)
         table.clear()
         nodes, _ = _node_maps(self.snapshot)
-        _, node_types, relationship_types = GRAPH_FILTERS[self.network_filter_index]
+        filter_name, node_types, relationship_types = GRAPH_FILTERS[
+            self.network_filter_index
+        ]
+        title = "NETWORK"
+        if self.graph_focus_node_id:
+            title = f"NETWORK  focus:{_short(self._graph_focus_label(), 24)} depth:{self.graph_depth}"
+        elif self.graph_search_query:
+            title = f"NETWORK  search:{_short(self.graph_search_query, 28)}"
+        elif filter_name != "all":
+            title = f"NETWORK  filter:{filter_name}"
+        self.query_one("#network-title", Static).update(title)
         self.network_edge_rows = network_edges(
             self.snapshot,
+            focus_node_id=self.graph_focus_node_id,
+            depth=self.graph_depth,
             node_types=node_types,
             relationship_types=relationship_types,
+            query=self.graph_search_query,
         )
         for edge in self.network_edge_rows:
             source = nodes.get(edge["source"], {"name": edge["source"]})
@@ -1261,6 +1384,19 @@ class OpenMeshTui(App):
 
     def _refresh_events(self) -> None:
         assert self.snapshot is not None
+        if self.lower_right_mode == "graph":
+            self.query_one("#event-title", Static).update("GRAPH EXPLORER")
+            self.query_one("#event-body", Static).update(
+                "\n".join(
+                    graph_explorer_rows(
+                        self.snapshot,
+                        focus_node_id=self.graph_focus_node_id,
+                        depth=self.graph_depth,
+                        query=self.graph_search_query,
+                    )
+                )
+            )
+            return
         if self.lower_right_mode == "integrations":
             self.query_one("#event-title", Static).update("INTEGRATIONS")
             self.query_one("#event-body", Static).update(
@@ -1374,6 +1510,55 @@ class OpenMeshTui(App):
             "\n".join(event_rows(self.snapshot, limit=50))
         )
 
+    def _graph_focus_label(self) -> str:
+        if not self.snapshot or not self.graph_focus_node_id:
+            return "all"
+        nodes, _ = _node_maps(self.snapshot)
+        node = nodes.get(self.graph_focus_node_id)
+        if not node:
+            return self.graph_focus_node_id
+        return node.get("name") or self.graph_focus_node_id
+
+    def _selected_node_id_from_focus(self) -> str | None:
+        if not self.snapshot:
+            return self.selected_node_id
+        focused = self.focused
+        if isinstance(focused, DataTable) and focused.cursor_row >= 0:
+            if focused.id == "agents-table" and focused.cursor_row < len(
+                self.agent_node_rows
+            ):
+                return self.agent_node_rows[focused.cursor_row]["id"]
+            if focused.id == "network-table" and focused.cursor_row < len(
+                self.network_edge_rows
+            ):
+                return self.network_edge_rows[focused.cursor_row]["target"]
+        return self.selected_node_id
+
+    def _selected_graph_search_query(self) -> str | None:
+        if not self.snapshot:
+            return None
+        nodes, _ = _node_maps(self.snapshot)
+        focused = self.focused
+        if isinstance(focused, DataTable) and focused.cursor_row >= 0:
+            if focused.id == "agents-table" and focused.cursor_row < len(
+                self.agent_node_rows
+            ):
+                return str(self.agent_node_rows[focused.cursor_row].get("name") or "")
+            if focused.id == "network-table" and focused.cursor_row < len(
+                self.network_edge_rows
+            ):
+                edge = self.network_edge_rows[focused.cursor_row]
+                target = nodes.get(edge["target"], {})
+                return str(target.get("name") or edge.get("type") or "")
+            if focused.id == "traces-table" and focused.cursor_row < len(
+                self.snapshot.traces
+            ):
+                return str(self.snapshot.traces[focused.cursor_row].get("trace_id"))
+        if self.selected_node_id:
+            node = nodes.get(self.selected_node_id)
+            return str((node or {}).get("name") or self.selected_node_id)
+        return None
+
     def action_focus_panel(self, panel: str) -> None:
         target = {
             "agents": "#agents-table",
@@ -1383,6 +1568,9 @@ class OpenMeshTui(App):
         }[panel]
         if panel == "events":
             self.lower_right_mode = "events"
+            self._refresh_events()
+        if panel == "network":
+            self.lower_right_mode = "graph"
             self._refresh_events()
         self.query_one(target, Widget).focus()
 
@@ -1484,6 +1672,60 @@ class OpenMeshTui(App):
     def action_cycle_graph_filter(self) -> None:
         self.network_filter_index = (self.network_filter_index + 1) % len(GRAPH_FILTERS)
         self._refresh_network()
+        self.lower_right_mode = "graph"
+        self._refresh_events()
+        self.query_one("#network-table", Widget).focus()
+
+    def action_focus_graph_node(self) -> None:
+        node_id = self._selected_node_id_from_focus()
+        if not node_id:
+            self.notify("Select an agent/process row first.", timeout=3)
+            return
+        self.graph_focus_node_id = node_id
+        self.selected_node_id = node_id
+        self.graph_search_query = None
+        self.lower_right_mode = "node"
+        self._refresh_network()
+        self._refresh_events()
+        self.query_one("#network-table", Widget).focus()
+
+    def action_expand_graph(self) -> None:
+        if not self.graph_focus_node_id:
+            self.graph_focus_node_id = self._selected_node_id_from_focus()
+        if not self.graph_focus_node_id:
+            self.notify("Select or focus a graph node before expanding.", timeout=3)
+            return
+        self.graph_depth = min(self.graph_depth + 1, 4)
+        self.lower_right_mode = "graph"
+        self._refresh_network()
+        self._refresh_events()
+        self.query_one("#network-table", Widget).focus()
+
+    def action_collapse_graph(self) -> None:
+        self.graph_depth = max(self.graph_depth - 1, 1)
+        self.lower_right_mode = "graph"
+        self._refresh_network()
+        self._refresh_events()
+        self.query_one("#network-table", Widget).focus()
+
+    def action_clear_graph_focus(self) -> None:
+        self.graph_focus_node_id = None
+        self.graph_search_query = None
+        self.graph_depth = 1
+        self.lower_right_mode = "graph"
+        self._refresh_network()
+        self._refresh_events()
+        self.query_one("#network-table", Widget).focus()
+
+    def action_search_graph_selection(self) -> None:
+        query = self._selected_graph_search_query()
+        if not query:
+            self.notify("Select a node or relationship to search from.", timeout=3)
+            return
+        self.graph_focus_node_id = None
+        self.graph_search_query = query
+        self.lower_right_mode = "graph"
+        self._refresh_network()
         self._refresh_events()
         self.query_one("#network-table", Widget).focus()
 
@@ -1531,7 +1773,8 @@ class OpenMeshTui(App):
             if focused.id == "network-table" and focused.cursor_row < len(
                 self.network_edge_rows
             ):
-                self.selected_edge_id = self.network_edge_rows[focused.cursor_row]["id"]
+                edge = self.network_edge_rows[focused.cursor_row]
+                self.selected_edge_id = edge["id"]
                 self.lower_right_mode = "edge"
                 self._refresh_events()
                 self.query_one("#event-body", Widget).focus()
@@ -1540,7 +1783,10 @@ class OpenMeshTui(App):
                 self.agent_node_rows
             ):
                 self.selected_node_id = self.agent_node_rows[focused.cursor_row]["id"]
+                self.graph_focus_node_id = self.selected_node_id
+                self.graph_search_query = None
                 self.lower_right_mode = "node"
+                self._refresh_network()
                 self._refresh_events()
                 self.query_one("#event-body", Widget).focus()
                 return

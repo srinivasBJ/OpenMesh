@@ -152,6 +152,13 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
         source_types=("agent",),
         target_types=("agent",),
     ),
+    "resembles": RelationshipType(
+        type="resembles",
+        label="resembles",
+        description="One agent has a similar behavioral genome to another agent.",
+        source_types=("agent",),
+        target_types=("agent",),
+    ),
     "contains": RelationshipType(
         type="contains",
         label="contains",
@@ -235,6 +242,7 @@ EVENT_RELATIONSHIPS = {
     "agent.message.sent": "communicates_with",
     "agent.message.received": "communicates_with",
     "agent.reputation.trusts": "trusts",
+    "agent.genome.resembles": "resembles",
     "message.sent": "communicates_with",
     "collaboration.created": "collaborates_with",
     "delegation.created": "delegates_to",
@@ -308,6 +316,12 @@ def relationship_type_for(
         and event_type.startswith("agent.reputation.")
     ):
         return "trusts"
+    if (
+        source_type == "agent"
+        and target_type == "agent"
+        and event_type.startswith("agent.genome.")
+    ):
+        return "resembles"
     if target_type in {"agent", "service", "process"}:
         return "communicates_with"
     return None

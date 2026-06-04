@@ -9,6 +9,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..failures import build_failure_registry
+from ..genome import genome_diagnostics
 from ..reputation import reputation_diagnostics
 from ..db.openmesh_events import list_openmesh_events, records_to_events
 from ..db.session import ASYNC_URL, DATABASE_URL
@@ -145,6 +146,7 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
         checks.append(build_ecosystem_diagnostics(records))
         checks.append(build_failure_intelligence_diagnostics(records))
         checks.append(reputation_diagnostics(records))
+        checks.append(genome_diagnostics(records))
         checks.append(
             build_mcp_config_diagnostics(records, discovered=discover_mcp_configs())
         )

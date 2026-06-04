@@ -29,6 +29,7 @@ from ..services.evaluation import (
     run_evaluation_suite,
 )
 from ..failures import get_failure_registry, get_failure_report, inspect_failure
+from ..genome import get_agent_comparison, get_agent_genome
 from ..reputation import get_agent_reputation, get_agent_score
 from ..services.federation import (
     get_federation_peers,
@@ -662,6 +663,98 @@ def _print_trust_rows(rows: list[dict[str, Any]]) -> None:
             f"  {row.get('source_agent_name')} -> {row.get('target_agent_name')} "
             f"trust={row.get('trust_score')} evidence={len(row.get('evidence_event_ids', []))}"
         )
+
+
+def _print_agent_genome(detail: dict[str, Any]) -> None:
+    genome = detail["genome"]
+    print(f"OpenMesh Agent Genome: {genome['agent_name']}")
+    print()
+    print(f"agent_id: {genome['agent_id']}")
+    print(f"genome_signature: {genome.get('genome_signature')}")
+    print(f"genome_version: {genome.get('genome_version')}")
+    print(f"first_seen: {genome.get('first_seen') or '-'}")
+    print(f"last_seen: {genome.get('last_seen') or '-'}")
+    print(f"event_count: {genome.get('event_count', 0)}")
+    print(f"average_context_size: {genome.get('average_context_size') or '-'}")
+    print()
+    _print_genome_rows("Preferred Models", genome.get("preferred_models", []))
+    _print_genome_rows("Preferred Tools", genome.get("preferred_tools", []))
+    _print_genome_rows("Preferred MCP Servers", genome.get("preferred_mcp_servers", []))
+    _print_genome_rows("Failure Patterns", genome.get("failure_patterns", []))
+    print("Handoff Patterns")
+    handoffs = genome.get("handoff_patterns", {})
+    print(f"  started: {handoffs.get('started', 0)}")
+    print(f"  completed: {handoffs.get('completed', 0)}")
+    print(f"  failed: {handoffs.get('failed', 0)}")
+    print(f"  completion_rate: {handoffs.get('completion_rate', 0)}%")
+    _print_genome_rows("  top_outgoing", handoffs.get("top_outgoing", []))
+    _print_genome_rows("  top_incoming", handoffs.get("top_incoming", []))
+    print("Cost Profile")
+    cost = genome.get("cost_profile", {})
+    print(f"  total_cost_usd: {cost.get('total_cost_usd', 0)}")
+    print(f"  average_cost_usd: {cost.get('average_cost_usd', 0)}")
+    print(f"  total_tokens: {cost.get('total_tokens', 0)}")
+    print(f"  average_tokens: {cost.get('average_tokens', 0)}")
+    print("Latency Profile")
+    latency = genome.get("latency_profile", {})
+    print(f"  average_latency_ms: {latency.get('average_latency_ms') or '-'}")
+    print(f"  p95_latency_ms: {latency.get('p95_latency_ms') or '-'}")
+    print(f"  samples: {latency.get('samples', 0)}")
+    print()
+    print("Similar Agents")
+    resembles = sorted(
+        detail.get("resembles", []),
+        key=lambda item: -item.get("similarity_score", 0),
+    )
+    if not resembles:
+        print("  none")
+    for row in resembles[:10]:
+        other = (
+            row.get("target_agent_name")
+            if row.get("source_agent_id") == genome["agent_id"]
+            else row.get("source_agent_name")
+        )
+        print(
+            f"  {other}: {row.get('similarity_score')} "
+            f"tools={_join_short(row.get('shared_tools', []), limit=3)}"
+        )
+
+
+def _print_genome_comparison(detail: dict[str, Any]) -> None:
+    first = detail["agent_a"]
+    second = detail["agent_b"]
+    comparison = detail["comparison"]
+    print("OpenMesh Agent Genome Compare")
+    print()
+    print(f"{first['agent_name']} ({first['agent_id']})")
+    print(f"{second['agent_name']} ({second['agent_id']})")
+    print()
+    print(f"similarity_score: {comparison.get('similarity_score')}")
+    print(f"relationship: {comparison.get('relationship_type')}")
+    print(f"shared_models: {_join_short(comparison.get('shared_models', []), limit=8)}")
+    print(f"shared_tools: {_join_short(comparison.get('shared_tools', []), limit=8)}")
+    print(
+        f"shared_mcp_servers: {_join_short(comparison.get('shared_mcp_servers', []), limit=8)}"
+    )
+    print(
+        f"shared_failures: {_join_short(comparison.get('shared_failure_patterns', []), limit=8)}"
+    )
+    print(
+        f"latency_similarity: {comparison.get('latency_similarity')}  "
+        f"cost_similarity: {comparison.get('cost_similarity')}"
+    )
+    print(
+        f"evidence_events: {_join_short(comparison.get('evidence_event_ids', []), limit=5)}"
+    )
+
+
+def _print_genome_rows(title: str, rows: list[dict[str, Any]]) -> None:
+    print(title)
+    if not rows:
+        print("  none")
+        return
+    for row in rows[:5]:
+        print(f"  - {row.get('name')}: {row.get('count')} ({row.get('share')}%)")
 
 
 def _print_node_inspection(inspection: dict[str, Any]) -> None:
@@ -2331,6 +2424,34 @@ async def _agent_score(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _genome(args: argparse.Namespace) -> int:
+    async def run(db):
+        detail = await get_agent_genome(db, args.agent, limit=args.limit, persist=True)
+        if not detail:
+            print(f"OpenMesh agent genome not found: {args.agent}")
+            return 1
+        _print_agent_genome(detail)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _compare(args: argparse.Namespace) -> int:
+    async def run(db):
+        detail = await get_agent_comparison(
+            db, args.agent_a, args.agent_b, limit=args.limit, persist=True
+        )
+        if not detail:
+            print(
+                f"OpenMesh agent genome comparison not found: {args.agent_a} {args.agent_b}"
+            )
+            return 1
+        _print_genome_comparison(detail)
+        return 0
+
+    return await _with_db(run)
+
+
 async def _integrations(args: argparse.Namespace) -> int:
     _print_integrations(list_integrations())
     return 0
@@ -3165,6 +3286,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum events to derive reputation from.",
     )
     agent_score.set_defaults(func=_agent_score)
+
+    genome = subparsers.add_parser(
+        "genome", help="Show an agent behavioral genome profile."
+    )
+    genome.add_argument("agent", help="Agent id or agent name.")
+    genome.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive genome from.",
+    )
+    genome.set_defaults(func=_genome)
+
+    compare = subparsers.add_parser(
+        "compare", help="Compare two agent behavioral genomes."
+    )
+    compare.add_argument("agent_a", help="First agent id or name.")
+    compare.add_argument("agent_b", help="Second agent id or name.")
+    compare.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive genomes from.",
+    )
+    compare.set_defaults(func=_compare)
 
     integrations = subparsers.add_parser(
         "integrations", help="Show OpenMesh framework integration status."

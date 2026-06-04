@@ -27,6 +27,12 @@ from src.failures import (
     detect_and_persist_failures,
     failure_report,
 )
+from src.genome import (
+    build_agent_genomes,
+    compare_agent_genomes,
+    detect_and_persist_genome,
+    genome_diagnostics,
+)
 from src.reputation import (
     build_agent_reputation,
     detect_and_persist_reputation,
@@ -187,7 +193,9 @@ from src.cli.openmesh import (
     _print_failure_detail,
     _print_failure_report,
     _print_failures,
+    _print_agent_genome,
     _print_agent_score,
+    _print_genome_comparison,
     _print_mcp,
     _print_mcp_config,
     _print_mcp_discovery,
@@ -1435,6 +1443,10 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             "valid",
         )
         self.assertEqual(
+            validate_relationship("resembles", "agent", "agent")["status"],
+            "valid",
+        )
+        self.assertEqual(
             relationship_type_for(
                 "tool.call.started", source_type="agent", target_type="tool"
             ),
@@ -1491,6 +1503,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "agent.reputation.trusts", source_type="agent", target_type="agent"
             ),
             "trusts",
+        )
+        self.assertEqual(
+            relationship_type_for(
+                "agent.genome.resembles", source_type="agent", target_type="agent"
+            ),
+            "resembles",
         )
         self.assertEqual(
             relationship_type_for(
@@ -1897,6 +1915,97 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("trusts", {edge["relationship_type"] for edge in graph["edges"]})
         self.assertEqual(graph["validation"]["status"], "OK")
         self.assertEqual(diagnostics["name"], "Agent Reputation")
+        self.assertEqual(diagnostics["severity"], "INFO")
+
+    async def test_agent_genome_profiles_and_persists_similarity_edges(self):
+        db = FakeAsyncSession()
+        planner = agent_node("agent:genome:planner", "Planner Agent", "planner")
+        coder = agent_node("agent:genome:coder", "Coder Agent", "coder")
+        tool = {
+            "node_id": "tool:python_executor",
+            "node_type": "tool",
+            "name": "python_executor",
+            "runtime": "openmesh.test",
+        }
+        model = {
+            "node_id": "model:qwen3",
+            "node_type": "model",
+            "name": "qwen3",
+            "runtime": "openmesh.test",
+        }
+        events = [
+            make_openmesh_event(
+                "llm.request",
+                planner,
+                {"model": "qwen3", "input_tokens": 1200},
+                target=model,
+                metrics={"latency_ms": 240, "input_tokens": 1200, "cost_usd": 0.01},
+                trace_id="trace_genome",
+                session_id="sess_genome",
+            ),
+            make_openmesh_event(
+                "llm.request",
+                coder,
+                {"model": "qwen3", "input_tokens": 1100},
+                target=model,
+                metrics={"latency_ms": 260, "input_tokens": 1100, "cost_usd": 0.01},
+                trace_id="trace_genome",
+                session_id="sess_genome",
+            ),
+            make_openmesh_event(
+                "tool.call.completed",
+                planner,
+                {"tool": "python_executor", "server": "filesystem-server"},
+                target=tool,
+                metrics={"latency_ms": 300},
+                trace_id="trace_genome",
+                session_id="sess_genome",
+            ),
+            make_openmesh_event(
+                "tool.call.completed",
+                coder,
+                {"tool": "python_executor", "server": "filesystem-server"},
+                target=tool,
+                metrics={"latency_ms": 320},
+                trace_id="trace_genome",
+                session_id="sess_genome",
+            ),
+            make_openmesh_event(
+                "agent.handoff.completed",
+                planner,
+                {"handoff_id": "handoff-genome"},
+                target=coder,
+                metrics={"latency_ms": 180},
+                trace_id="trace_genome",
+                session_id="sess_genome",
+            ),
+        ]
+        records = [
+            record_from_event(event, timestamp=datetime(2026, 6, 4, 10, index, 0))
+            for index, event in enumerate(events)
+        ]
+        report = build_agent_genomes(records)
+        comparison = compare_agent_genomes(report, "Planner", "Coder")
+        persisted = await detect_and_persist_genome(
+            db, records=records, report=report, broadcast=False
+        )
+        genome_records = [
+            record for record in db.added if getattr(record, "event_id", None)
+        ]
+        graph = reduce_graph_state([*records, *genome_records])
+        diagnostics = genome_diagnostics(records)
+
+        self.assertEqual(report["summary"]["agent_count"], 2)
+        self.assertEqual(
+            report["genomes"][0]["preferred_tools"][0]["name"], "python_executor"
+        )
+        self.assertGreater(comparison["comparison"]["similarity_score"], 50)
+        self.assertGreaterEqual(persisted["created"], 1)
+        self.assertIn(
+            "resembles", {edge["relationship_type"] for edge in graph["edges"]}
+        )
+        self.assertEqual(graph["validation"]["status"], "OK")
+        self.assertEqual(diagnostics["name"], "Agent Genome")
         self.assertEqual(diagnostics["severity"], "INFO")
 
     def test_federation_registry_builds_metadata_only_views(self):
@@ -5227,6 +5336,86 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Planner Agent", printed)
         self.assertIn("OpenMesh Agent Score", printed)
         self.assertIn("Outgoing Trust", printed)
+
+    def test_cli_genome_printers_display_profiles_and_comparison(self):
+        genome = {
+            "agent_id": "agent:planner",
+            "agent_name": "Planner Agent",
+            "genome_signature": "abc123",
+            "genome_version": "0.1",
+            "first_seen": "2026-06-04T10:00:00Z",
+            "last_seen": "2026-06-04T10:05:00Z",
+            "event_count": 7,
+            "preferred_models": [{"name": "qwen3", "count": 2, "share": 100}],
+            "preferred_tools": [{"name": "python_executor", "count": 2, "share": 100}],
+            "preferred_mcp_servers": [
+                {"name": "filesystem-server", "count": 1, "share": 100}
+            ],
+            "average_context_size": 1200,
+            "handoff_patterns": {
+                "started": 1,
+                "completed": 1,
+                "failed": 0,
+                "completion_rate": 100,
+                "top_outgoing": [{"name": "Coder Agent", "count": 1, "share": 100}],
+                "top_incoming": [],
+                "messages_sent": 1,
+                "messages_received": 0,
+            },
+            "failure_patterns": [{"name": "tool_failure", "count": 1, "share": 100}],
+            "cost_profile": {
+                "total_cost_usd": 0.01,
+                "average_cost_usd": 0.001,
+                "total_tokens": 1200,
+                "average_tokens": 171.4,
+            },
+            "latency_profile": {
+                "average_latency_ms": 250,
+                "p95_latency_ms": 300,
+                "samples": 2,
+            },
+        }
+        resembles = {
+            "source_agent_id": "agent:planner",
+            "source_agent_name": "Planner Agent",
+            "target_agent_id": "agent:coder",
+            "target_agent_name": "Coder Agent",
+            "relationship_type": "resembles",
+            "similarity_score": 84.5,
+            "shared_models": ["qwen3"],
+            "shared_tools": ["python_executor"],
+            "shared_mcp_servers": ["filesystem-server"],
+            "shared_failure_patterns": ["tool_failure"],
+            "evidence_event_ids": ["evt_1", "evt_2"],
+            "latency_similarity": 96,
+            "cost_similarity": 100,
+        }
+        detail = {
+            "genome": genome,
+            "resembles": [resembles],
+            "summary": {"agent_count": 2},
+        }
+        comparison = {
+            "agent_a": genome,
+            "agent_b": {
+                **genome,
+                "agent_id": "agent:coder",
+                "agent_name": "Coder Agent",
+            },
+            "comparison": resembles,
+        }
+
+        with patch("builtins.print") as printer:
+            _print_agent_genome(detail)
+            _print_genome_comparison(comparison)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Agent Genome", printed)
+        self.assertIn("Preferred Tools", printed)
+        self.assertIn("Similar Agents", printed)
+        self.assertIn("OpenMesh Agent Genome Compare", printed)
 
     def test_cli_evaluation_printer_displays_metrics(self):
         report = {

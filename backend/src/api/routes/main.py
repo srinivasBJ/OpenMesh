@@ -27,6 +27,7 @@ from ...db.models import (
 from ...agents.brain import generate_agent_profile
 from ...core.security import protect_write
 from ...failures import get_failure_registry, get_failure_report, inspect_failure
+from ...genome import get_agent_comparison, get_agent_genome, get_agent_genomes
 from ...reputation import get_agent_reputation, get_agent_score
 from ...runtimes import discover_runtimes
 from ...shared.openmesh_events import agent_node, make_openmesh_event
@@ -866,6 +867,44 @@ async def inspect_openmesh_agent_reputation(
     if not score:
         raise HTTPException(404, "OpenMesh agent reputation not found")
     return score
+
+
+@router.get("/openmesh/genome")
+async def get_openmesh_agent_genomes(
+    limit: int = Query(5000, le=10000),
+    persist: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_agent_genomes(db, limit=limit, persist=persist)
+
+
+@router.get("/openmesh/genome/compare")
+async def compare_openmesh_agent_genomes(
+    agent_a: str,
+    agent_b: str,
+    limit: int = Query(5000, le=10000),
+    persist: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    comparison = await get_agent_comparison(
+        db, agent_a, agent_b, limit=limit, persist=persist
+    )
+    if not comparison:
+        raise HTTPException(404, "OpenMesh agent genome comparison not found")
+    return comparison
+
+
+@router.get("/openmesh/genome/{agent_id:path}")
+async def inspect_openmesh_agent_genome(
+    agent_id: str,
+    limit: int = Query(5000, le=10000),
+    persist: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    genome = await get_agent_genome(db, agent_id, limit=limit, persist=persist)
+    if not genome:
+        raise HTTPException(404, "OpenMesh agent genome not found")
+    return genome
 
 
 @router.get("/openmesh/discovery")

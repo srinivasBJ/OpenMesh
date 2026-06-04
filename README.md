@@ -1,12 +1,6 @@
 # OpenMesh 
   ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ <img width="472" height="109" alt="a" src="https://github.com/user-attachments/assets/6acd38d6-bed6-48d1-8e2d-9065053be75f" />
 
-ㅤㅤ[![CI](https://github.com/srinivasBJ/OpenMeshAI/actions/workflows/ci.yml/badge.svg)](https://github.com/srinivasBJ/OpenMeshAI/actions/workflows/ci.yml)
-ㅤ![Python](https://img.shields.io/badge/Python-3.11-blue)
-ㅤ![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
-ㅤ![React](https://img.shields.io/badge/React-Frontend-61DAFB)
-ㅤ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1)
-ㅤ![License](https://img.shields.io/badge/License-MIT-green)
 
 <a href="https://github.com/srinivasBJ/OpenMesh/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/srinivasBJ/OpenMesh/actions/workflows/ci.yml/badge.svg"></a>
 <a href="pyproject.toml"><img alt="Python 3.11-3.13" src="https://img.shields.io/badge/Python-3.11--3.13-3776AB?logo=python&logoColor=white"></a>

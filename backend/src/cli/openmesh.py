@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,7 @@ from ..services.evaluation import (
     report_to_json,
     run_evaluation_suite,
 )
+from ..exporters import export_records
 from ..failures import get_failure_registry, get_failure_report, inspect_failure
 from ..genome import get_agent_comparison, get_agent_genome
 from ..reputation import get_agent_reputation, get_agent_score
@@ -853,6 +855,44 @@ def _definition_marker(definition: dict[str, Any]) -> str:
     if definition.get("deprecated_in"):
         return "!"
     return "✓"
+
+
+def _print_export_result(
+    result: dict[str, Any], *, output: Path | None, summary: bool
+) -> None:
+    payload = result["payload"]
+    if output:
+        if isinstance(payload, str):
+            output.write_text(payload)
+        else:
+            output.write_text(json.dumps(payload, indent=2, sort_keys=True))
+        print(f"OpenMesh export written: {output}")
+        _print_export_summary(result)
+        return
+    if result.get("sent"):
+        _print_export_summary(result)
+        return
+    if summary:
+        _print_export_summary(result)
+        return
+    if isinstance(payload, str):
+        print(payload, end="")
+    else:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def _print_export_summary(result: dict[str, Any]) -> None:
+    print("OpenMesh Export")
+    print()
+    print(f"target: {result.get('target')}")
+    print(f"format: {result.get('format')}")
+    print(f"summary: {result.get('summary')}")
+    if result.get("endpoint"):
+        print(f"endpoint: {result.get('endpoint')}")
+    if result.get("sent"):
+        print(f"sent: {result.get('sent')}")
+        print(f"status_code: {result.get('status_code')}")
+        print(f"ok: {result.get('ok')}")
 
 
 def _print_doctor(report: dict[str, Any]) -> None:
@@ -2452,6 +2492,26 @@ async def _compare(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _export(args: argparse.Namespace) -> int:
+    async def run(db):
+        records = await list_openmesh_events(db, limit=args.limit)
+        result = await export_records(
+            records,
+            args.export_target,
+            endpoint=args.endpoint,
+            api_key=args.api_key,
+            timeout=args.timeout,
+        )
+        _print_export_result(
+            result,
+            output=Path(args.output) if args.output else None,
+            summary=args.summary,
+        )
+        return 0 if not result.get("sent") or result.get("ok") else 1
+
+    return await _with_db(run)
+
+
 async def _integrations(args: argparse.Namespace) -> int:
     _print_integrations(list_integrations())
     return 0
@@ -3311,6 +3371,49 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum events to derive genomes from.",
     )
     compare.set_defaults(func=_compare)
+
+    export = subparsers.add_parser(
+        "export", help="Export OpenMesh events to external observability formats."
+    )
+    export_subparsers = export.add_subparsers(dest="export_target", required=True)
+    for target, help_text in (
+        ("otel", "Export OTLP HTTP JSON for OpenTelemetry Collector."),
+        ("tempo", "Export OTLP HTTP JSON for Grafana Tempo."),
+        ("jaeger", "Export Jaeger trace JSON."),
+        ("datadog", "Export Datadog trace JSON."),
+        ("prometheus", "Export Prometheus text metrics."),
+    ):
+        export_target = export_subparsers.add_parser(target, help=help_text)
+        export_target.add_argument(
+            "--limit",
+            type=int,
+            default=5000,
+            help="Maximum events to export.",
+        )
+        export_target.add_argument(
+            "--endpoint",
+            help="Optional endpoint to POST the export payload to.",
+        )
+        export_target.add_argument(
+            "--output",
+            help="Optional file path to write the export payload.",
+        )
+        export_target.add_argument(
+            "--summary",
+            action="store_true",
+            help="Print a compact export summary instead of the payload.",
+        )
+        export_target.add_argument(
+            "--timeout",
+            type=float,
+            default=10.0,
+            help="HTTP timeout in seconds when --endpoint is used.",
+        )
+        export_target.add_argument(
+            "--api-key",
+            help="Optional API key. Datadog uses this as DD-API-KEY.",
+        )
+        export_target.set_defaults(func=_export)
 
     integrations = subparsers.add_parser(
         "integrations", help="Show OpenMesh framework integration status."

@@ -27,6 +27,13 @@ from src.failures import (
     detect_and_persist_failures,
     failure_report,
 )
+from src.exporters import (
+    build_datadog_export,
+    build_exporter_diagnostics,
+    build_jaeger_export,
+    build_otlp_export,
+    build_prometheus_export,
+)
 from src.genome import (
     build_agent_genomes,
     compare_agent_genomes,
@@ -193,6 +200,7 @@ from src.cli.openmesh import (
     _print_failure_detail,
     _print_failure_report,
     _print_failures,
+    _print_export_result,
     _print_agent_genome,
     _print_agent_score,
     _print_genome_comparison,
@@ -2007,6 +2015,68 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(graph["validation"]["status"], "OK")
         self.assertEqual(diagnostics["name"], "Agent Genome")
         self.assertEqual(diagnostics["severity"], "INFO")
+
+    def test_otel_exporters_build_external_observability_payloads(self):
+        agent = agent_node("agent:export:research", "Research Agent", "research")
+        tool = {
+            "node_id": "tool:web_search",
+            "node_type": "tool",
+            "name": "web_search",
+            "runtime": "openmesh.test",
+        }
+        started = make_openmesh_event(
+            "tool.call.started",
+            agent,
+            {"tool": "web_search"},
+            target=tool,
+            trace_id="trace_export",
+            session_id="sess_export",
+            span_id="span_tool",
+        )
+        completed = make_openmesh_event(
+            "tool.call.completed",
+            agent,
+            {"tool": "web_search"},
+            target=tool,
+            trace_id="trace_export",
+            session_id="sess_export",
+            span_id="span_tool_done",
+            parent_span_id="span_tool",
+            metrics={"latency_ms": 120},
+        )
+        failed = make_openmesh_event(
+            "tool.call.failed",
+            agent,
+            {"tool": "web_search", "error": "timeout"},
+            target=tool,
+            severity="error",
+            trace_id="trace_export",
+            session_id="sess_export",
+            span_id="span_tool_failed",
+            parent_span_id="span_tool",
+        )
+        records = [
+            record_from_event(started, timestamp=datetime(2026, 6, 4, 11, 0, 0)),
+            record_from_event(completed, timestamp=datetime(2026, 6, 4, 11, 0, 1)),
+            record_from_event(failed, timestamp=datetime(2026, 6, 4, 11, 0, 2)),
+        ]
+
+        otlp = build_otlp_export(records)
+        jaeger = build_jaeger_export(records)
+        datadog = build_datadog_export(records)
+        prometheus = build_prometheus_export(records)
+        diagnostics = build_exporter_diagnostics(records)
+
+        spans = otlp["resourceSpans"][0]["scopeSpans"][0]["spans"]
+        self.assertEqual(len(spans), 3)
+        self.assertEqual(spans[-1]["status"]["code"], 2)
+        self.assertEqual(jaeger["data"][0]["traceID"], spans[0]["traceId"])
+        self.assertEqual(len(datadog["traces"][0]), 3)
+        self.assertIn(
+            'openmesh_events_total{event_type="tool.call.failed"} 1', prometheus
+        )
+        self.assertEqual(diagnostics["name"], "OpenTelemetry Export")
+        self.assertIn("datadog", diagnostics["detail"]["targets"])
 
     def test_federation_registry_builds_metadata_only_views(self):
         event = self.make_event("message.sent")
@@ -5416,6 +5486,27 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Preferred Tools", printed)
         self.assertIn("Similar Agents", printed)
         self.assertIn("OpenMesh Agent Genome Compare", printed)
+
+    def test_cli_export_printer_displays_summary_and_writes_payload(self):
+        result = {
+            "target": "otel",
+            "format": "otlp-http-json",
+            "summary": {"spans": 2, "resource_spans": 1},
+            "payload": {"resourceSpans": []},
+            "sent": False,
+            "endpoint": None,
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "otel.json"
+            with patch("builtins.print") as printer:
+                _print_export_result(result, output=output, summary=False)
+
+            printed = "\n".join(
+                str(call.args[0]) for call in printer.call_args_list if call.args
+            )
+            self.assertTrue(output.exists())
+            self.assertIn("OpenMesh export written", printed)
+            self.assertIn("OpenMesh Export", printed)
 
     def test_cli_evaluation_printer_displays_metrics(self):
         report = {

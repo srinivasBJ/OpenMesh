@@ -1,8 +1,14 @@
-# OpenMesh
-  ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ <img width="472" height="109" alt="a" src="https://github.com/user-attachments/assets/6acd38d6-bed6-48d1-8e2d-9065053be75f" />
+# OpenMesh 
+  ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ <img width="472" height="109" alt="a" src="https://github.com/user-attachments/assets/6acd38d6-bed6-48d1-8e2d-9065053be75f" />
+
+ㅤㅤㅤ[![CI](https://github.com/srinivasBJ/OpenMeshAI/actions/workflows/ci.yml/badge.svg)](https://github.com/srinivasBJ/OpenMeshAI/actions/workflows/ci.yml)
+ㅤㅤㅤ![Python](https://img.shields.io/badge/Python-3.11-blue)
+ㅤㅤㅤ![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
+ㅤㅤㅤ![React](https://img.shields.io/badge/React-Frontend-61DAFB)
+ㅤㅤㅤ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1)
+ㅤㅤㅤ![License](https://img.shields.io/badge/License-MIT-green)
 
 OpenMesh is a terminal-first observability layer for AI agent ecosystems.
-
 It observes agents, tools, models, runtimes, MCP servers, workflows, traces,
 relationships, failures, reputation, genome profiles, snapshots, replay, and
 OpenTelemetry export from one local event store.

@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..failures import build_failure_registry
 from ..db.openmesh_events import list_openmesh_events, records_to_events
 from ..db.session import ASYNC_URL, DATABASE_URL
 from ..sdk.integrations import list_integrations
@@ -141,6 +142,7 @@ async def run_doctor(db: AsyncSession) -> dict[str, Any]:
         checks.append(build_capability_diagnostics(records))
         checks.append(build_workflow_registry_diagnostics(records))
         checks.append(build_ecosystem_diagnostics(records))
+        checks.append(build_failure_intelligence_diagnostics(records))
         checks.append(
             build_mcp_config_diagnostics(records, discovered=discover_mcp_configs())
         )
@@ -543,6 +545,25 @@ def build_ecosystem_diagnostics(records: list[Any]) -> dict[str, Any]:
         "name": "Ecosystem Integrity",
         "status": "ERROR" if errors else "WARNING" if warnings else "OK",
         "severity": "ERROR" if errors else "WARNING" if warnings else "INFO",
+        "detail": detail,
+    }
+
+
+def build_failure_intelligence_diagnostics(records: list[Any]) -> dict[str, Any]:
+    registry = build_failure_registry(records)
+    summary = registry["summary"]
+    detail = {
+        "failures_checked": summary["failure_count"],
+        "active_failures": summary["active_failures"],
+        "resolved_failures": summary["resolved_failures"],
+        "failure_rate": summary["failure_rate"],
+        "most_common_failures": registry["report"]["most_common_failures"],
+    }
+    warnings = detail["active_failures"]
+    return {
+        "name": "Failure Intelligence",
+        "status": "WARNING" if warnings else "OK",
+        "severity": "WARNING" if warnings else "INFO",
         "detail": detail,
     }
 

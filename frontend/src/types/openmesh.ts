@@ -21,6 +21,7 @@ export type OpenMeshNodeType =
   | "mcp_config"
   | "federation_node"
   | "openmesh_node"
+  | "failure"
   | "guild"
   | "wiki"
   | "post";

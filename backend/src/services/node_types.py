@@ -113,6 +113,22 @@ NODE_TYPES: dict[str, NodeType] = {
             "last_seen",
         ),
     ),
+    "failure": NodeType(
+        "failure",
+        "Failure",
+        "A detected and classified failure in an observed agent ecosystem.",
+        "failures",
+        COMMON_METADATA
+        + (
+            "category",
+            "status",
+            "source_event_id",
+            "source_event_type",
+            "confidence",
+            "upstream_cause",
+            "downstream_impact",
+        ),
+    ),
     "mcp_server": NodeType(
         "mcp_server",
         "MCP Server",

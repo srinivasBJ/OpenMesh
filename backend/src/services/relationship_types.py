@@ -173,6 +173,31 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
         source_types=("openmesh_node",),
         target_types=("agent", "runtime", "mcp_server"),
     ),
+    "affects": RelationshipType(
+        type="affects",
+        label="affects",
+        description="A failure affects an agent or workflow.",
+        source_types=("failure",),
+        target_types=("agent", "workflow"),
+    ),
+    "caused_by": RelationshipType(
+        type="caused_by",
+        label="caused_by",
+        description="A failure was caused by a tool, resource, service, model, or MCP server.",
+        source_types=("failure",),
+        target_types=(
+            "tool",
+            "model",
+            "service",
+            "mcp_server",
+            "process",
+            "file",
+            "database",
+            "github_repository",
+            "api_endpoint",
+            "memory_store",
+        ),
+    ),
 }
 
 
@@ -210,6 +235,9 @@ EVENT_RELATIONSHIPS = {
     "mcp.capability.discovered": "exposes",
     "federation.peer.discovered": "federates_with",
     "node.heartbeat": "hosts",
+    "failure.detected": "affects",
+    "failure.resolved": "affects",
+    "failure.classified": "caused_by",
 }
 
 
@@ -251,6 +279,21 @@ def relationship_type_for(
         return "connects_to"
     if source_type in {"service", "mcp_server"} and target_type == "capability":
         return "exposes"
+    if source_type == "failure" and target_type in {"agent", "workflow"}:
+        return "affects"
+    if source_type == "failure" and target_type in {
+        "tool",
+        "model",
+        "service",
+        "mcp_server",
+        "process",
+        "file",
+        "database",
+        "github_repository",
+        "api_endpoint",
+        "memory_store",
+    }:
+        return "caused_by"
     if target_type in {"agent", "service", "process"}:
         return "communicates_with"
     return None

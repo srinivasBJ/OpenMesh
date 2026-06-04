@@ -28,6 +28,7 @@ from ..services.evaluation import (
     report_to_json,
     run_evaluation_suite,
 )
+from ..failures import get_failure_registry, get_failure_report, inspect_failure
 from ..services.federation import (
     get_federation_peers,
     get_federation_registry,
@@ -476,6 +477,113 @@ def _print_nodes(graph: dict[str, Any]) -> None:
             f"{node.get('event_count', 0):>6} "
             f"{node.get('last_seen') or '-'}"
         )
+
+
+def _print_failures(registry: dict[str, Any]) -> None:
+    failures = registry.get("failures", [])
+    summary = registry.get("summary", {})
+    print("OpenMesh Failures")
+    print()
+    print(
+        f"failures: {summary.get('failure_count', 0)}  "
+        f"active: {summary.get('active_failures', 0)}  "
+        f"resolved: {summary.get('resolved_failures', 0)}  "
+        f"rate: {summary.get('failure_rate', 0)}%"
+    )
+    print()
+    if not failures:
+        print("No failures detected.")
+        return
+    print(
+        f"{'failure_id':<48} {'category':<20} {'status':<10} {'source_event':<24} trace"
+    )
+    for failure in failures:
+        print(
+            f"{str(failure.get('failure_id') or '-'):<48} "
+            f"{_short(failure.get('category'), 20):<20} "
+            f"{_short(failure.get('status'), 10):<10} "
+            f"{_short(failure.get('source_event_type'), 24):<24} "
+            f"{failure.get('trace_id') or '-'}"
+        )
+
+
+def _print_failure_detail(detail: dict[str, Any]) -> None:
+    failure = detail["failure"]
+    taxonomy = detail.get("taxonomy", {})
+    print(f"OpenMesh Failure: {failure['failure_id']}")
+    print()
+    print(f"category: {failure.get('category')}")
+    print(f"description: {taxonomy.get('description') or '-'}")
+    print(f"status: {failure.get('status')}")
+    print(f"confidence: {failure.get('confidence')}")
+    print(
+        f"source_event: {failure.get('source_event_type')} {failure.get('source_event_id')}"
+    )
+    print(f"trace_id: {failure.get('trace_id') or '-'}")
+    print(f"session_id: {failure.get('session_id') or '-'}")
+    print(f"detected_at: {failure.get('timestamp')}")
+    print(f"resolved_at: {failure.get('resolved_at') or '-'}")
+    if failure.get("error"):
+        print(f"error: {failure.get('error')}")
+    if failure.get("error_type"):
+        print(f"error_type: {failure.get('error_type')}")
+    print()
+    print("Root Cause")
+    cause = failure.get("upstream_cause") or {}
+    cause_node = cause.get("node") or {}
+    print(f"  reason: {cause.get('reason') or '-'}")
+    print(f"  event: {cause.get('event_type') or '-'} {cause.get('event_id') or '-'}")
+    print(f"  node: {cause_node.get('name') or cause_node.get('node_id') or '-'}")
+    print()
+    print("Downstream Impact")
+    impact = failure.get("downstream_impact") or {}
+    print(f"  downstream_events: {impact.get('downstream_event_count', 0)}")
+    print(f"  downstream_failures: {impact.get('downstream_failure_count', 0)}")
+    impacted = impact.get("impacted_nodes", [])
+    print(
+        f"  impacted_nodes: {_join_short([node.get('name') or node.get('node_id') for node in impacted], limit=5)}"
+    )
+    print()
+    print("Affected Agents")
+    for agent in failure.get("affected_agents", [])[:10]:
+        print(f"  - {agent.get('name') or agent.get('node_id')}")
+    if not failure.get("affected_agents"):
+        print("  none")
+    print()
+    print("Affected Workflows")
+    for workflow in failure.get("affected_workflows", [])[:10]:
+        print(f"  - {workflow.get('name') or workflow.get('node_id')}")
+    if not failure.get("affected_workflows"):
+        print("  none")
+
+
+def _print_failure_report(report: dict[str, Any]) -> None:
+    summary = report.get("summary", {})
+    print("OpenMesh Failure Report")
+    print()
+    print(f"failures: {summary.get('failure_count', 0)}")
+    print(f"active: {summary.get('active_failures', 0)}")
+    print(f"resolved: {summary.get('resolved_failures', 0)}")
+    print(f"failure_rate: {summary.get('failure_rate', 0)}%")
+    print(f"mttr_seconds: {summary.get('mttr_seconds') or '-'}")
+    print()
+    _print_failure_counter(
+        "Most Common Failures", report.get("most_common_failures", [])
+    )
+    _print_failure_counter("Failing Agents", report.get("failing_agents", []))
+    _print_failure_counter("Failing Tools", report.get("failing_tools", []))
+    _print_failure_counter("Affected Workflows", report.get("affected_workflows", []))
+
+
+def _print_failure_counter(title: str, rows: list[dict[str, Any]]) -> None:
+    print(title)
+    if not rows:
+        print("  none")
+        print()
+        return
+    for row in rows[:10]:
+        print(f"  - {row.get('name')}: {row.get('count')}")
+    print()
 
 
 def _print_node_inspection(inspection: dict[str, Any]) -> None:
@@ -2090,6 +2198,38 @@ async def _doctor(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _failures(args: argparse.Namespace) -> int:
+    async def run(db):
+        registry = await get_failure_registry(db, limit=args.limit, persist=True)
+        _print_failures(registry)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _failure_inspect(args: argparse.Namespace) -> int:
+    async def run(db):
+        await get_failure_registry(db, limit=args.limit, persist=True)
+        records = await list_openmesh_events(db, limit=args.limit)
+        detail = inspect_failure(records, args.failure_id)
+        if not detail:
+            print(f"OpenMesh failure not found: {args.failure_id}")
+            return 1
+        _print_failure_detail(detail)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _failure_report(args: argparse.Namespace) -> int:
+    async def run(db):
+        report = await get_failure_report(db, limit=args.limit, persist=True)
+        _print_failure_report(report)
+        return 0
+
+    return await _with_db(run)
+
+
 async def _integrations(args: argparse.Namespace) -> int:
     _print_integrations(list_integrations())
     return 0
@@ -2864,6 +3004,41 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser("doctor", help="Check OpenMesh local configuration.")
     doctor.set_defaults(func=_doctor)
+
+    failures = subparsers.add_parser(
+        "failures", help="Detect, classify, and list OpenMesh failures."
+    )
+    failures.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive failure intelligence from.",
+    )
+    failures.set_defaults(func=_failures)
+
+    failure = subparsers.add_parser("failure", help="Inspect OpenMesh failures.")
+    failure_subparsers = failure.add_subparsers(dest="failure_command", required=True)
+    failure_inspect = failure_subparsers.add_parser(
+        "inspect", help="Inspect one detected failure."
+    )
+    failure_inspect.add_argument("failure_id", help="Failure id or source event id.")
+    failure_inspect.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive failure intelligence from.",
+    )
+    failure_inspect.set_defaults(func=_failure_inspect)
+    failure_report = failure_subparsers.add_parser(
+        "report", help="Show aggregate failure intelligence metrics."
+    )
+    failure_report.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive failure intelligence from.",
+    )
+    failure_report.set_defaults(func=_failure_report)
 
     integrations = subparsers.add_parser(
         "integrations", help="Show OpenMesh framework integration status."

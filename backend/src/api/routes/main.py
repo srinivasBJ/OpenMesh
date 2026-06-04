@@ -26,6 +26,7 @@ from ...db.models import (
 )
 from ...agents.brain import generate_agent_profile
 from ...core.security import protect_write
+from ...failures import get_failure_registry, get_failure_report, inspect_failure
 from ...runtimes import discover_runtimes
 from ...shared.openmesh_events import agent_node, make_openmesh_event
 from ...services.openmesh_collector import collector
@@ -811,6 +812,37 @@ async def get_openmesh_node_status(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_node_status(db, limit=limit)
+
+
+@router.get("/openmesh/failures")
+async def list_openmesh_failures(
+    limit: int = Query(5000, le=10000),
+    persist: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_failure_registry(db, limit=limit, persist=persist)
+
+
+@router.get("/openmesh/failures/report")
+async def get_openmesh_failure_report(
+    limit: int = Query(5000, le=10000),
+    persist: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_failure_report(db, limit=limit, persist=persist)
+
+
+@router.get("/openmesh/failures/{failure_id:path}")
+async def inspect_openmesh_failure(
+    failure_id: str,
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    records = await list_openmesh_events(db, limit=limit)
+    detail = inspect_failure(records, failure_id)
+    if not detail:
+        raise HTTPException(404, "OpenMesh failure not found")
+    return detail
 
 
 @router.get("/openmesh/discovery")

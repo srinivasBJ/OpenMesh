@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import {
   Activity,
+  AlertTriangle,
   BarChart2,
   GitBranch,
   Layers,
@@ -79,6 +80,18 @@ type DistributedNodeRegistry = {
     host_relationships?: number;
   };
 };
+type FailureReport = {
+  summary?: {
+    failure_count?: number;
+    active_failures?: number;
+    resolved_failures?: number;
+    failure_rate?: number;
+    mttr_seconds?: number | null;
+  };
+  most_common_failures?: Array<{ name?: string; count?: number }>;
+  failing_agents?: Array<{ name?: string; count?: number }>;
+  failing_tools?: Array<{ name?: string; count?: number }>;
+};
 
 export default function ObservatoryPage() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: statsApi.get, refetchInterval: 30000 });
@@ -106,6 +119,11 @@ export default function ObservatoryPage() {
   const { data: distributedNodes = {} } = useQuery<DistributedNodeRegistry>({
     queryKey: ["openmesh-distributed-nodes"],
     queryFn: () => openmeshApi.nodes(),
+    refetchInterval: 15000,
+  });
+  const { data: failureReport = {} } = useQuery<FailureReport>({
+    queryKey: ["openmesh-failure-report"],
+    queryFn: () => openmeshApi.failureReport(),
     refetchInterval: 15000,
   });
   const { data: mcpMetrics = {} } = useQuery<McpMetrics>({
@@ -144,6 +162,10 @@ export default function ObservatoryPage() {
   const nodeSummary = distributedNodes.summary || {};
   const observedNodes = distributedNodes.nodes || [];
   const longestUptime = observedNodes.reduce((max, node) => Math.max(max, node.uptime_seconds || 0), 0);
+  const failureSummary = failureReport.summary || {};
+  const topFailure = failureReport.most_common_failures?.[0];
+  const topFailingAgent = failureReport.failing_agents?.[0];
+  const topFailingTool = failureReport.failing_tools?.[0];
 
   return (
     <div className="om-page">
@@ -207,6 +229,10 @@ export default function ObservatoryPage() {
                 <MetricCell label="Hosted Runtime" value={nodeSummary.hosted_runtimes || 0} />
                 <MetricCell label="Hosted MCP" value={nodeSummary.hosted_mcp_servers || 0} />
                 <MetricCell label="Host Edges" value={nodeSummary.host_relationships || 0} />
+                <MetricCell label="Failures" value={failureSummary.failure_count || 0} />
+                <MetricCell label="Fail Rate" value={`${failureSummary.failure_rate || 0}%`} />
+                <MetricCell label="MTTR" value={formatDuration(failureSummary.mttr_seconds)} />
+                <MetricCell label="Active Fail" value={failureSummary.active_failures || 0} />
                 <MetricCell label="MCP Active" value={mcpMetrics.active_mcp_servers || 0} />
                 <MetricCell label="Tool Calls" value={mcpMetrics.tool_calls || 0} />
                 <MetricCell label="Tool Failed" value={mcpMetrics.failed_tool_calls || 0} />
@@ -288,6 +314,18 @@ export default function ObservatoryPage() {
         </section>
 
         <section className="grid gap-5 xl:grid-cols-3">
+          <ControlPanel title="Failure Intelligence" icon={<AlertTriangle size={16} />}>
+            <div className="grid grid-cols-2 gap-3">
+              <MetricCell label="Active" value={failureSummary.active_failures || 0} />
+              <MetricCell label="Resolved" value={failureSummary.resolved_failures || 0} />
+            </div>
+            <div className="mt-4 space-y-3">
+              <FailureInsight label="Common" value={topFailure ? `${topFailure.name} (${topFailure.count || 0})` : "none"} />
+              <FailureInsight label="Agent" value={topFailingAgent ? `${topFailingAgent.name} (${topFailingAgent.count || 0})` : "none"} />
+              <FailureInsight label="Tool" value={topFailingTool ? `${topFailingTool.name} (${topFailingTool.count || 0})` : "none"} />
+            </div>
+          </ControlPanel>
+
           <ControlPanel title="Distributed Nodes" icon={<Server size={16} />}>
             <EntityList
               empty="No OpenMesh nodes have joined this ecosystem yet."
@@ -422,6 +460,15 @@ function EmptyOperationalMessage({ text }: { text: string }) {
   return (
     <div className="rounded-[4px] border border-dashed border-[color:var(--om-border)] bg-black/25 p-5 text-sm leading-6 text-[color:var(--om-dim)]">
       {text}
+    </div>
+  );
+}
+
+function FailureInsight({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[4px] border border-[color:var(--om-border)] bg-black/25 px-4 py-3">
+      <span className="stat-label">{label}</span>
+      <span className="truncate text-right font-mono text-xs text-[color:var(--om-rust-300)]">{value}</span>
     </div>
   );
 }

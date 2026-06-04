@@ -92,6 +92,8 @@ export const openmeshApi = {
   runtimeMetrics: () => api.get("/openmesh/runtime/metrics").then(r => r.data),
   nodes: () => api.get("/openmesh/nodes").then(r => r.data),
   nodeStatus: () => api.get("/openmesh/node/status").then(r => r.data),
+  failures: () => api.get("/openmesh/failures").then(r => r.data),
+  failureReport: () => api.get("/openmesh/failures/report").then(r => r.data),
   mcpMetrics: () => api.get("/openmesh/mcp/metrics").then(r => r.data),
   tools: () => api.get("/openmesh/tools").then(r => r.data),
   resources: () => api.get("/openmesh/resources").then(r => r.data),

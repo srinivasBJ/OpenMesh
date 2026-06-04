@@ -21,6 +21,12 @@ from src.db.openmesh_sessions import (
     create_openmesh_session,
     session_to_dict,
 )
+from src.failures import (
+    build_failure_registry,
+    classify_failure,
+    detect_and_persist_failures,
+    failure_report,
+)
 from src.db.openmesh_snapshots import (
     create_openmesh_snapshot,
     snapshot_record_to_detail,
@@ -98,6 +104,7 @@ from src.services.federation import (
 from src.services.openmesh_doctor import (
     build_capability_diagnostics,
     build_ecosystem_diagnostics,
+    build_failure_intelligence_diagnostics,
     build_graph_diagnostics,
     build_mcp_config_diagnostics,
     build_node_diagnostics,
@@ -172,6 +179,9 @@ from src.cli.openmesh import (
     _print_federation,
     _print_federation_inspection,
     _print_federation_peers,
+    _print_failure_detail,
+    _print_failure_report,
+    _print_failures,
     _print_mcp,
     _print_mcp_config,
     _print_mcp_discovery,
@@ -1378,6 +1388,10 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             node_type_definition("openmesh_node")["display_name"],
             "OpenMesh Node",
         )
+        self.assertEqual(
+            node_type_definition("failure")["display_name"],
+            "Failure",
+        )
         self.assertEqual(relationship_definition("uses")["name"], "uses")
         self.assertEqual(
             validate_relationship(
@@ -1395,6 +1409,18 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             validate_relationship("hosts", "openmesh_node", "mcp_server")["status"],
+            "valid",
+        )
+        self.assertEqual(
+            validate_relationship("affects", "failure", "agent")["status"],
+            "valid",
+        )
+        self.assertEqual(
+            validate_relationship("affects", "failure", "workflow")["status"],
+            "valid",
+        )
+        self.assertEqual(
+            validate_relationship("caused_by", "failure", "tool")["status"],
             "valid",
         )
         self.assertEqual(
@@ -1436,6 +1462,18 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "node.heartbeat", source_type="openmesh_node", target_type="agent"
             ),
             "hosts",
+        )
+        self.assertEqual(
+            relationship_type_for(
+                "failure.detected", source_type="failure", target_type="agent"
+            ),
+            "affects",
+        )
+        self.assertEqual(
+            relationship_type_for(
+                "failure.classified", source_type="failure", target_type="tool"
+            ),
+            "caused_by",
         )
         self.assertEqual(
             relationship_type_for(
@@ -1615,6 +1653,141 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(registry["summary"]["node_count"], 4)
         self.assertGreaterEqual(registry["summary"]["hosted_agents"], 8)
         self.assertEqual(ecosystem["summary"]["groups"]["nodes"], 4)
+
+    def test_failure_taxonomy_classifies_common_failure_signals(self):
+        permission = classify_failure(
+            "tool.call.failed",
+            {"error": "permission denied opening file"},
+            agent_node("agent:test", "Research Agent"),
+            {"node_id": "tool:file", "node_type": "tool", "name": "file_reader"},
+        )
+        timeout = classify_failure(
+            "llm.request",
+            {"error": "request timed out"},
+            {"node_id": "model:qwen", "node_type": "model", "name": "qwen"},
+            None,
+        )
+        context = classify_failure(
+            "task.failed",
+            {"error": "context window exceeded"},
+            agent_node("agent:test", "Research Agent"),
+            None,
+        )
+
+        self.assertEqual(permission["category"], "permission_failure")
+        self.assertEqual(timeout["category"], "timeout_failure")
+        self.assertEqual(context["category"], "context_failure")
+
+    async def test_failure_intelligence_persists_graph_nodes_and_relationships(self):
+        db = FakeAsyncSession()
+        agent = agent_node("agent:failure:research", "Research Agent", "research")
+        workflow = {
+            "node_id": "workflow:failure:research",
+            "node_type": "workflow",
+            "name": "Research Workflow",
+            "runtime": "openmesh.test",
+            "metadata": {"framework": "test", "source": "test"},
+        }
+        tool = {
+            "node_id": "tool:web_search",
+            "node_type": "tool",
+            "name": "web_search",
+            "runtime": "openmesh.test",
+            "metadata": {"capabilities": ["search"]},
+        }
+        started = make_openmesh_event(
+            "workflow.started",
+            workflow,
+            {"workflow": "Research Workflow"},
+            target=agent,
+            trace_id="trace_failure",
+            session_id="sess_failure",
+        )
+        failed = make_openmesh_event(
+            "tool.call.failed",
+            agent,
+            {
+                "tool": "web_search",
+                "error": "search timed out",
+                "error_type": "TimeoutError",
+            },
+            target=tool,
+            severity="error",
+            trace_id="trace_failure",
+            session_id="sess_failure",
+        )
+        records = [
+            record_from_event(started, timestamp=datetime(2026, 6, 4, 8, 0, 0)),
+            record_from_event(failed, timestamp=datetime(2026, 6, 4, 8, 1, 0)),
+        ]
+        registry = build_failure_registry(records)
+        persisted = await detect_and_persist_failures(
+            db, records=records, registry=registry, broadcast=False
+        )
+        failure_records = [
+            record for record in db.added if getattr(record, "event_id", None)
+        ]
+        graph = reduce_graph_state([*records, *failure_records])
+        node_types = {node["type"] for node in graph["nodes"]}
+        relationship_types = {edge["relationship_type"] for edge in graph["edges"]}
+
+        self.assertEqual(registry["summary"]["failure_count"], 1)
+        self.assertEqual(registry["failures"][0]["category"], "timeout_failure")
+        self.assertGreaterEqual(persisted["created"], 2)
+        self.assertIn("failure", node_types)
+        self.assertIn("affects", relationship_types)
+        self.assertIn("caused_by", relationship_types)
+        self.assertEqual(graph["validation"]["status"], "OK")
+
+        completed = make_openmesh_event(
+            "tool.call.completed",
+            agent,
+            {"tool": "web_search"},
+            target=tool,
+            trace_id="trace_failure",
+            session_id="sess_failure",
+        )
+        completed_record = record_from_event(
+            completed, timestamp=datetime(2026, 6, 4, 8, 2, 0)
+        )
+        resolved_records = [*records, *failure_records, completed_record]
+        resolved_registry = build_failure_registry(resolved_records)
+        resolved_persisted = await detect_and_persist_failures(
+            db, records=resolved_records, registry=resolved_registry, broadcast=False
+        )
+        failure_event_types = {
+            record.event_type
+            for record in db.added
+            if getattr(record, "event_id", None)
+        }
+
+        self.assertEqual(resolved_registry["failures"][0]["status"], "resolved")
+        self.assertEqual(resolved_persisted["created"], 1)
+        self.assertIn("failure.resolved", failure_event_types)
+
+    def test_failure_report_and_doctor_surface_failure_metrics(self):
+        failed = make_openmesh_event(
+            "process.failed",
+            {
+                "node_id": "process:test",
+                "node_type": "process",
+                "name": "pytest",
+                "runtime": "subprocess",
+            },
+            {"error": "exit code 1", "exit_code": 1},
+            severity="error",
+            trace_id="trace_process_failure",
+            session_id="sess_process_failure",
+        )
+        records = [record_from_event(failed, timestamp=datetime(2026, 6, 4, 8, 0, 0))]
+        registry = build_failure_registry(records)
+        report = failure_report(registry["failures"], total_events=len(records))
+        diagnostics = build_failure_intelligence_diagnostics(records)
+
+        self.assertEqual(report["summary"]["failure_count"], 1)
+        self.assertEqual(report["summary"]["active_failures"], 1)
+        self.assertEqual(diagnostics["name"], "Failure Intelligence")
+        self.assertEqual(diagnostics["severity"], "WARNING")
 
     def test_federation_registry_builds_metadata_only_views(self):
         event = self.make_event("message.sent")
@@ -4818,6 +4991,75 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Developer Laptop", printed)
         self.assertIn("OpenMesh Node Status", printed)
         self.assertIn("OpenMesh Node Registered", printed)
+
+    def test_cli_failure_printers_display_intelligence(self):
+        failure = {
+            "failure_id": "failure:evt_failed",
+            "category": "tool_failure",
+            "display_name": "Tool Failure",
+            "confidence": 0.9,
+            "source_event_id": "evt_failed",
+            "source_event_type": "tool.call.failed",
+            "trace_id": "trace_failure",
+            "session_id": "sess_failure",
+            "timestamp": "2026-06-04T08:00:00Z",
+            "status": "active",
+            "error": "tool crashed",
+            "error_type": "RuntimeError",
+            "upstream_cause": {
+                "event_id": "evt_failed",
+                "event_type": "tool.call.failed",
+                "node": {"node_id": "tool:web_search", "name": "web_search"},
+                "reason": "failure event directly referenced the likely cause",
+            },
+            "downstream_impact": {
+                "downstream_event_count": 2,
+                "downstream_failure_count": 1,
+                "impacted_nodes": [{"node_id": "agent:a", "name": "Research Agent"}],
+            },
+            "affected_agents": [{"node_id": "agent:a", "name": "Research Agent"}],
+            "affected_workflows": [
+                {"node_id": "workflow:a", "name": "Research Workflow"}
+            ],
+        }
+        registry = {
+            "failures": [failure],
+            "summary": {
+                "failure_count": 1,
+                "active_failures": 1,
+                "resolved_failures": 0,
+                "failure_rate": 50,
+            },
+        }
+        report = {
+            "summary": {
+                "failure_count": 1,
+                "active_failures": 1,
+                "resolved_failures": 0,
+                "failure_rate": 50,
+                "mttr_seconds": None,
+            },
+            "most_common_failures": [{"name": "tool_failure", "count": 1}],
+            "failing_agents": [{"name": "Research Agent", "count": 1}],
+            "failing_tools": [{"name": "web_search", "count": 1}],
+            "affected_workflows": [{"name": "Research Workflow", "count": 1}],
+        }
+        detail = {
+            "failure": failure,
+            "taxonomy": {"description": "A tool call failed or returned an error."},
+        }
+        with patch("builtins.print") as printer:
+            _print_failures(registry)
+            _print_failure_detail(detail)
+            _print_failure_report(report)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Failures", printed)
+        self.assertIn("OpenMesh Failure: failure:evt_failed", printed)
+        self.assertIn("Root Cause", printed)
+        self.assertIn("OpenMesh Failure Report", printed)
 
     def test_cli_evaluation_printer_displays_metrics(self):
         report = {

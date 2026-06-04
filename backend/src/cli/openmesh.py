@@ -29,6 +29,7 @@ from ..services.evaluation import (
     run_evaluation_suite,
 )
 from ..failures import get_failure_registry, get_failure_report, inspect_failure
+from ..reputation import get_agent_reputation, get_agent_score
 from ..services.federation import (
     get_federation_peers,
     get_federation_registry,
@@ -584,6 +585,83 @@ def _print_failure_counter(title: str, rows: list[dict[str, Any]]) -> None:
     for row in rows[:10]:
         print(f"  - {row.get('name')}: {row.get('count')}")
     print()
+
+
+def _print_rankings(report: dict[str, Any]) -> None:
+    summary = report.get("summary", {})
+    rankings = report.get("rankings", [])
+    print("OpenMesh Agent Rankings")
+    print()
+    print(
+        f"agents: {summary.get('agent_count', 0)}  "
+        f"avg_score: {summary.get('average_agent_score', 0)}  "
+        f"trust_edges: {summary.get('trust_relationship_count', 0)}"
+    )
+    print()
+    if not rankings:
+        print("No agent reputation data found.")
+        return
+    print(
+        f"{'score':>6} {'status':<10} {'success':>7} {'workflow':>8} "
+        f"{'tool':>7} {'handoff':>8} agent"
+    )
+    for agent in rankings:
+        metrics = agent.get("metrics", {})
+        print(
+            f"{agent.get('agent_score', 0):>6.1f} "
+            f"{_short(agent.get('status'), 10):<10} "
+            f"{metrics.get('success_rate', 0):>6.1f}% "
+            f"{metrics.get('workflow_completion_rate', 0):>7.1f}% "
+            f"{metrics.get('tool_reliability', 0):>6.1f}% "
+            f"{metrics.get('handoff_quality', 0):>7.1f}% "
+            f"{agent.get('agent_name')} ({agent.get('agent_id')})"
+        )
+
+
+def _print_agent_score(detail: dict[str, Any]) -> None:
+    agent = detail["agent"]
+    metrics = agent.get("metrics", {})
+    print(f"OpenMesh Agent Score: {agent['agent_name']}")
+    print()
+    print(f"agent_id: {agent['agent_id']}")
+    print(f"agent_score: {agent.get('agent_score', 0)}")
+    print(f"status: {agent.get('status')}")
+    print(f"first_seen: {agent.get('first_seen') or '-'}")
+    print(f"last_seen: {agent.get('last_seen') or '-'}")
+    print(f"event_count: {agent.get('event_count', 0)}")
+    print(f"trace_count: {agent.get('trace_count', 0)}")
+    print(f"session_count: {agent.get('session_count', 0)}")
+    print()
+    print("Metrics")
+    for key in (
+        "success_rate",
+        "workflow_completion_rate",
+        "tool_reliability",
+        "handoff_quality",
+        "response_latency_score",
+        "cost_efficiency",
+    ):
+        print(f"  {key}: {metrics.get(key, 0)}")
+    print(f"  average_latency_ms: {metrics.get('average_latency_ms') or '-'}")
+    print(f"  total_tokens: {metrics.get('total_tokens', 0)}")
+    print(f"  total_cost_usd: {metrics.get('total_cost_usd', 0)}")
+    print()
+    print("Outgoing Trust")
+    _print_trust_rows(detail.get("outgoing_trust", []))
+    print()
+    print("Incoming Trust")
+    _print_trust_rows(detail.get("incoming_trust", []))
+
+
+def _print_trust_rows(rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        print("  none")
+        return
+    for row in rows[:10]:
+        print(
+            f"  {row.get('source_agent_name')} -> {row.get('target_agent_name')} "
+            f"trust={row.get('trust_score')} evidence={len(row.get('evidence_event_ids', []))}"
+        )
 
 
 def _print_node_inspection(inspection: dict[str, Any]) -> None:
@@ -2230,6 +2308,29 @@ async def _failure_report(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _rankings(args: argparse.Namespace) -> int:
+    async def run(db):
+        report = await get_agent_reputation(db, limit=args.limit, persist=True)
+        _print_rankings(report)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _agent_score(args: argparse.Namespace) -> int:
+    async def run(db):
+        detail = await get_agent_score(
+            db, args.agent_id, limit=args.limit, persist=True
+        )
+        if not detail:
+            print(f"OpenMesh agent reputation not found: {args.agent_id}")
+            return 1
+        _print_agent_score(detail)
+        return 0
+
+    return await _with_db(run)
+
+
 async def _integrations(args: argparse.Namespace) -> int:
     _print_integrations(list_integrations())
     return 0
@@ -3039,6 +3140,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum events to derive failure intelligence from.",
     )
     failure_report.set_defaults(func=_failure_report)
+
+    rankings = subparsers.add_parser(
+        "rankings", help="Rank agents by observed OpenMesh reputation."
+    )
+    rankings.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive reputation from.",
+    )
+    rankings.set_defaults(func=_rankings)
+
+    agent = subparsers.add_parser("agent", help="Inspect OpenMesh agent reputation.")
+    agent_subparsers = agent.add_subparsers(dest="agent_command", required=True)
+    agent_score = agent_subparsers.add_parser(
+        "score", help="Show one agent reputation score."
+    )
+    agent_score.add_argument("agent_id", help="Agent id or agent name.")
+    agent_score.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive reputation from.",
+    )
+    agent_score.set_defaults(func=_agent_score)
 
     integrations = subparsers.add_parser(
         "integrations", help="Show OpenMesh framework integration status."

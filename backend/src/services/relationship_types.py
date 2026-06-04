@@ -145,6 +145,13 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
         source_types=("agent",),
         target_types=("agent",),
     ),
+    "trusts": RelationshipType(
+        type="trusts",
+        label="trusts",
+        description="One agent has accumulated enough successful collaboration evidence to trust another agent.",
+        source_types=("agent",),
+        target_types=("agent",),
+    ),
     "contains": RelationshipType(
         type="contains",
         label="contains",
@@ -227,6 +234,7 @@ EVENT_RELATIONSHIPS = {
     "agent.handoff.completed": "delegates_to",
     "agent.message.sent": "communicates_with",
     "agent.message.received": "communicates_with",
+    "agent.reputation.trusts": "trusts",
     "message.sent": "communicates_with",
     "collaboration.created": "collaborates_with",
     "delegation.created": "delegates_to",
@@ -294,6 +302,12 @@ def relationship_type_for(
         "memory_store",
     }:
         return "caused_by"
+    if (
+        source_type == "agent"
+        and target_type == "agent"
+        and event_type.startswith("agent.reputation.")
+    ):
+        return "trusts"
     if target_type in {"agent", "service", "process"}:
         return "communicates_with"
     return None

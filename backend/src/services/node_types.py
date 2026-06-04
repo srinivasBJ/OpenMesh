@@ -29,7 +29,7 @@ NODE_TYPES: dict[str, NodeType] = {
         "Agent",
         "An autonomous or assisted agent.",
         "agents",
-        COMMON_METADATA + ("role", "source"),
+        COMMON_METADATA + ("role", "source", "agent_score", "reputation_status"),
     ),
     "tool": NodeType(
         "tool",

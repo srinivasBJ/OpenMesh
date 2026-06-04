@@ -27,6 +27,7 @@ from ...db.models import (
 from ...agents.brain import generate_agent_profile
 from ...core.security import protect_write
 from ...failures import get_failure_registry, get_failure_report, inspect_failure
+from ...reputation import get_agent_reputation, get_agent_score
 from ...runtimes import discover_runtimes
 from ...shared.openmesh_events import agent_node, make_openmesh_event
 from ...services.openmesh_collector import collector
@@ -843,6 +844,28 @@ async def inspect_openmesh_failure(
     if not detail:
         raise HTTPException(404, "OpenMesh failure not found")
     return detail
+
+
+@router.get("/openmesh/reputation")
+async def get_openmesh_agent_reputation(
+    limit: int = Query(5000, le=10000),
+    persist: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_agent_reputation(db, limit=limit, persist=persist)
+
+
+@router.get("/openmesh/reputation/{agent_id:path}")
+async def inspect_openmesh_agent_reputation(
+    agent_id: str,
+    limit: int = Query(5000, le=10000),
+    persist: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    score = await get_agent_score(db, agent_id, limit=limit, persist=persist)
+    if not score:
+        raise HTTPException(404, "OpenMesh agent reputation not found")
+    return score
 
 
 @router.get("/openmesh/discovery")

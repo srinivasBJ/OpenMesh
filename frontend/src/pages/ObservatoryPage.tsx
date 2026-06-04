@@ -92,6 +92,31 @@ type FailureReport = {
   failing_agents?: Array<{ name?: string; count?: number }>;
   failing_tools?: Array<{ name?: string; count?: number }>;
 };
+type ReputationAgent = {
+  agent_id?: string;
+  agent_name?: string;
+  agent_score?: number;
+  status?: string;
+  metrics?: {
+    success_rate?: number;
+    workflow_completion_rate?: number;
+    tool_reliability?: number;
+    handoff_quality?: number;
+    average_latency_ms?: number | null;
+    reviews_completed?: number;
+  };
+};
+type ReputationReport = {
+  summary?: {
+    agent_count?: number;
+    average_agent_score?: number;
+    trust_relationship_count?: number;
+  };
+  top_agents?: ReputationAgent[];
+  top_reviewers?: ReputationAgent[];
+  most_reliable_agents?: ReputationAgent[];
+  fastest_agents?: ReputationAgent[];
+};
 
 export default function ObservatoryPage() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: statsApi.get, refetchInterval: 30000 });
@@ -124,6 +149,11 @@ export default function ObservatoryPage() {
   const { data: failureReport = {} } = useQuery<FailureReport>({
     queryKey: ["openmesh-failure-report"],
     queryFn: () => openmeshApi.failureReport(),
+    refetchInterval: 15000,
+  });
+  const { data: reputationReport = {} } = useQuery<ReputationReport>({
+    queryKey: ["openmesh-reputation"],
+    queryFn: () => openmeshApi.reputation(),
     refetchInterval: 15000,
   });
   const { data: mcpMetrics = {} } = useQuery<McpMetrics>({
@@ -166,6 +196,11 @@ export default function ObservatoryPage() {
   const topFailure = failureReport.most_common_failures?.[0];
   const topFailingAgent = failureReport.failing_agents?.[0];
   const topFailingTool = failureReport.failing_tools?.[0];
+  const reputationSummary = reputationReport.summary || {};
+  const topAgent = reputationReport.top_agents?.[0];
+  const topReviewer = reputationReport.top_reviewers?.[0];
+  const mostReliableAgent = reputationReport.most_reliable_agents?.[0];
+  const fastestAgent = reputationReport.fastest_agents?.[0];
 
   return (
     <div className="om-page">
@@ -233,6 +268,10 @@ export default function ObservatoryPage() {
                 <MetricCell label="Fail Rate" value={`${failureSummary.failure_rate || 0}%`} />
                 <MetricCell label="MTTR" value={formatDuration(failureSummary.mttr_seconds)} />
                 <MetricCell label="Active Fail" value={failureSummary.active_failures || 0} />
+                <MetricCell label="Agents Scored" value={reputationSummary.agent_count || 0} />
+                <MetricCell label="Avg Score" value={formatMetric(reputationSummary.average_agent_score)} />
+                <MetricCell label="Trust Edges" value={reputationSummary.trust_relationship_count || 0} />
+                <MetricCell label="Top Score" value={formatMetric(topAgent?.agent_score)} />
                 <MetricCell label="MCP Active" value={mcpMetrics.active_mcp_servers || 0} />
                 <MetricCell label="Tool Calls" value={mcpMetrics.tool_calls || 0} />
                 <MetricCell label="Tool Failed" value={mcpMetrics.failed_tool_calls || 0} />
@@ -314,6 +353,19 @@ export default function ObservatoryPage() {
         </section>
 
         <section className="grid gap-5 xl:grid-cols-3">
+          <ControlPanel title="Agent Reputation" icon={<ShieldCheck size={16} />}>
+            <div className="grid grid-cols-2 gap-3">
+              <MetricCell label="Scored" value={reputationSummary.agent_count || 0} />
+              <MetricCell label="Trust Edges" value={reputationSummary.trust_relationship_count || 0} />
+            </div>
+            <div className="mt-4 space-y-3">
+              <ReputationInsight label="Top Agent" agent={topAgent} metric="agent_score" />
+              <ReputationInsight label="Top Reviewer" agent={topReviewer} metric="reviews_completed" />
+              <ReputationInsight label="Most Reliable" agent={mostReliableAgent} metric="tool_reliability" />
+              <ReputationInsight label="Fastest" agent={fastestAgent} metric="average_latency_ms" suffix="ms" />
+            </div>
+          </ControlPanel>
+
           <ControlPanel title="Failure Intelligence" icon={<AlertTriangle size={16} />}>
             <div className="grid grid-cols-2 gap-3">
               <MetricCell label="Active" value={failureSummary.active_failures || 0} />
@@ -469,6 +521,35 @@ function FailureInsight({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-3 rounded-[4px] border border-[color:var(--om-border)] bg-black/25 px-4 py-3">
       <span className="stat-label">{label}</span>
       <span className="truncate text-right font-mono text-xs text-[color:var(--om-rust-300)]">{value}</span>
+    </div>
+  );
+}
+
+function ReputationInsight({
+  label,
+  agent,
+  metric,
+  suffix = "",
+}: {
+  label: string;
+  agent?: ReputationAgent;
+  metric: "agent_score" | "reviews_completed" | "tool_reliability" | "average_latency_ms";
+  suffix?: string;
+}) {
+  const value =
+    metric === "agent_score"
+      ? agent?.agent_score
+      : metric === "reviews_completed"
+        ? agent?.metrics?.reviews_completed
+        : metric === "tool_reliability"
+          ? agent?.metrics?.tool_reliability
+          : agent?.metrics?.average_latency_ms;
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[4px] border border-[color:var(--om-border)] bg-black/25 px-4 py-3">
+      <span className="stat-label">{label}</span>
+      <span className="truncate text-right font-mono text-xs text-[color:var(--om-rust-300)]">
+        {agent?.agent_name ? `${agent.agent_name} (${formatMetric(value, suffix)})` : "none"}
+      </span>
     </div>
   );
 }

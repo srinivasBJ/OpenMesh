@@ -27,6 +27,11 @@ from src.failures import (
     detect_and_persist_failures,
     failure_report,
 )
+from src.reputation import (
+    build_agent_reputation,
+    detect_and_persist_reputation,
+    reputation_diagnostics,
+)
 from src.db.openmesh_snapshots import (
     create_openmesh_snapshot,
     snapshot_record_to_detail,
@@ -182,6 +187,7 @@ from src.cli.openmesh import (
     _print_failure_detail,
     _print_failure_report,
     _print_failures,
+    _print_agent_score,
     _print_mcp,
     _print_mcp_config,
     _print_mcp_discovery,
@@ -195,6 +201,7 @@ from src.cli.openmesh import (
     _print_snapshot_diff,
     _print_snapshots,
     _print_query_result,
+    _print_rankings,
     _print_replay,
     _print_runtime_discovery,
     _print_runtime_observation,
@@ -1424,6 +1431,10 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             "valid",
         )
         self.assertEqual(
+            validate_relationship("trusts", "agent", "agent")["status"],
+            "valid",
+        )
+        self.assertEqual(
             relationship_type_for(
                 "tool.call.started", source_type="agent", target_type="tool"
             ),
@@ -1474,6 +1485,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "failure.classified", source_type="failure", target_type="tool"
             ),
             "caused_by",
+        )
+        self.assertEqual(
+            relationship_type_for(
+                "agent.reputation.trusts", source_type="agent", target_type="agent"
+            ),
+            "trusts",
         )
         self.assertEqual(
             relationship_type_for(
@@ -1788,6 +1805,99 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report["summary"]["active_failures"], 1)
         self.assertEqual(diagnostics["name"], "Failure Intelligence")
         self.assertEqual(diagnostics["severity"], "WARNING")
+
+    async def test_agent_reputation_scores_and_persists_trust_edges(self):
+        db = FakeAsyncSession()
+        planner = agent_node("agent:planner", "Planner Agent", "planner")
+        reviewer = agent_node("agent:reviewer", "Reviewer Agent", "reviewer")
+        tool = {
+            "node_id": "tool:github",
+            "node_type": "tool",
+            "name": "github_tool",
+            "runtime": "openmesh.test",
+            "metadata": {"capabilities": ["repo"]},
+        }
+        workflow = {
+            "node_id": "workflow:release",
+            "node_type": "workflow",
+            "name": "Release Workflow",
+            "runtime": "openmesh.test",
+            "metadata": {"framework": "test", "workflow_type": "release"},
+        }
+        events = [
+            make_openmesh_event(
+                "workflow.started",
+                workflow,
+                {"workflow_id": "workflow:release"},
+                target=planner,
+                trace_id="trace_reputation",
+                session_id="sess_reputation",
+            ),
+            make_openmesh_event(
+                "agent.handoff.started",
+                planner,
+                {"handoff_id": "handoff-1"},
+                target=reviewer,
+                trace_id="trace_reputation",
+                session_id="sess_reputation",
+            ),
+            make_openmesh_event(
+                "agent.handoff.completed",
+                planner,
+                {"handoff_id": "handoff-1", "relationship_type": "reviews"},
+                target=reviewer,
+                metrics={"latency_ms": 240},
+                trace_id="trace_reputation",
+                session_id="sess_reputation",
+            ),
+            make_openmesh_event(
+                "agent.message.sent",
+                planner,
+                {"message_id": "msg-1"},
+                target=reviewer,
+                trace_id="trace_reputation",
+                session_id="sess_reputation",
+            ),
+            make_openmesh_event(
+                "tool.call.completed",
+                reviewer,
+                {"tool": "github_tool"},
+                target=tool,
+                metrics={"latency_ms": 320, "input_tokens": 100, "output_tokens": 50},
+                trace_id="trace_reputation",
+                session_id="sess_reputation",
+            ),
+            make_openmesh_event(
+                "workflow.completed",
+                workflow,
+                {"workflow_id": "workflow:release"},
+                target=reviewer,
+                trace_id="trace_reputation",
+                session_id="sess_reputation",
+            ),
+        ]
+        records = [
+            record_from_event(event, timestamp=datetime(2026, 6, 4, 9, index, 0))
+            for index, event in enumerate(events)
+        ]
+        report = build_agent_reputation(records)
+        persisted = await detect_and_persist_reputation(
+            db, records=records, report=report, broadcast=False
+        )
+        reputation_records = [
+            record for record in db.added if getattr(record, "event_id", None)
+        ]
+        graph = reduce_graph_state([*records, *reputation_records])
+        diagnostics = reputation_diagnostics(records)
+
+        self.assertEqual(report["summary"]["agent_count"], 2)
+        self.assertEqual(report["summary"]["trust_relationship_count"], 1)
+        self.assertGreater(report["rankings"][0]["agent_score"], 70)
+        self.assertEqual(persisted["created"], 1)
+        self.assertIn("trusts", {edge["relationship_type"] for edge in graph["edges"]})
+        self.assertEqual(graph["validation"]["status"], "OK")
+        self.assertEqual(diagnostics["name"], "Agent Reputation")
+        self.assertEqual(diagnostics["severity"], "INFO")
 
     def test_federation_registry_builds_metadata_only_views(self):
         event = self.make_event("message.sent")
@@ -5060,6 +5170,63 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("OpenMesh Failure: failure:evt_failed", printed)
         self.assertIn("Root Cause", printed)
         self.assertIn("OpenMesh Failure Report", printed)
+
+    def test_cli_reputation_printers_display_rankings_and_score(self):
+        agent = {
+            "agent_id": "agent:planner",
+            "agent_name": "Planner Agent",
+            "agent_score": 92.5,
+            "status": "elite",
+            "first_seen": "2026-06-04T09:00:00Z",
+            "last_seen": "2026-06-04T09:05:00Z",
+            "event_count": 8,
+            "trace_count": 1,
+            "session_count": 1,
+            "metrics": {
+                "success_rate": 100,
+                "workflow_completion_rate": 100,
+                "tool_reliability": 100,
+                "handoff_quality": 100,
+                "response_latency_score": 98,
+                "cost_efficiency": 95,
+                "average_latency_ms": 240,
+                "reviews_completed": 1,
+                "total_tokens": 150,
+                "total_cost_usd": 0,
+            },
+        }
+        trust = {
+            "source_agent_name": "Planner Agent",
+            "target_agent_name": "Reviewer Agent",
+            "trust_score": 59,
+            "evidence_event_ids": ["evt_handoff", "evt_message"],
+        }
+        report = {
+            "rankings": [agent],
+            "summary": {
+                "agent_count": 1,
+                "average_agent_score": 92.5,
+                "trust_relationship_count": 1,
+            },
+        }
+        detail = {
+            "agent": agent,
+            "outgoing_trust": [trust],
+            "incoming_trust": [],
+            "summary": report["summary"],
+        }
+
+        with patch("builtins.print") as printer:
+            _print_rankings(report)
+            _print_agent_score(detail)
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Agent Rankings", printed)
+        self.assertIn("Planner Agent", printed)
+        self.assertIn("OpenMesh Agent Score", printed)
+        self.assertIn("Outgoing Trust", printed)
 
     def test_cli_evaluation_printer_displays_metrics(self):
         report = {

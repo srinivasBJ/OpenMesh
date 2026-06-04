@@ -1,42 +1,112 @@
 # OpenMesh Roadmap
 
-## Now
+This file mirrors the current launch roadmap in the repository root:
+[../ROADMAP.md](../ROADMAP.md).
 
-- Prepare the v0.1 release package and documentation.
-- Keep API, dashboard, CLI, and TUI reading from shared query services.
-- Keep LangGraph, CrewAI, AutoGen, OpenHands, Claude Code, and OpenCode integration plugins SDK-backed and observable through the existing collector path.
-- Keep tests focused on protocol, trace, graph, discovery, diagnostics, SDK, and integration behavior.
-- Keep ecosystem snapshots derived from existing reducers rather than introducing a parallel graph or registry model.
-- Keep snapshot diffs derived from persisted snapshot payloads rather than introducing a second graph or registry model.
-- Keep timelines derived from existing events, sessions, snapshots, diffs, graph state, traces, and provenance.
-- Keep workflow replay and time travel derived from timeline and snapshot payloads rather than introducing a second timeline or graph model.
-- Keep structured queries derived from graph, discovery, provenance, trace, session, timeline, and snapshot read models.
-- Keep federation metadata-only and derived from protocol, graph, snapshot, timeline, and replay read models.
-- Keep evaluation measurement-only until baseline costs are understood.
+Use this copy when browsing docs directly.
 
-## Next
+## Current State
 
-- Publish the Python package after clean wheel and TestPyPI validation.
-- Add richer process observation metadata such as working directory, duration, and environment hints.
-- Add trace/session filtering to CLI commands.
-- Add snapshot export formats after the persisted snapshot and diff payloads stabilize.
-- Add timeline filtering after the core historical read model stabilizes.
-- Add replay filtering, saved replay presets, and richer TUI playback controls after the stateless replay read model stabilizes.
-- Add query filters, aliases, and saved-query management after the structured query grammar stabilizes.
-- Add federation import/export and signed metadata exchange after metadata-only federation stabilizes.
-- Establish performance baselines from synthetic 100, 1,000, and 10,000 node ecosystem evaluations.
-- Add API tests around OpenMesh routes.
-- Add release automation for package build, artifact inspection, and smoke tests.
+OpenMesh v1.0 Alpha is published as `v1.0.0-alpha`.
 
-## Later
+The current architecture is:
 
-- Harden framework-specific callback coverage after real-world users exercise the integration plugins.
-- Improve terminal UI inspection depth after the plain CLI workflows are reliable.
-- Explore Active Analysis and MCP intelligence as a future layer:
-  - MCP endpoint health checks
-  - Live capability discovery
-  - Tool inventory generation from live endpoints
-  - Authentication analysis
-  - Permission visibility
-  - Dependency and trust-chain mapping
-  - Security posture insights
+```text
+Observe
+-> Event
+-> Trace / Span / Session
+-> Graph + Provenance
+-> Discovery
+-> Inspection
+-> Snapshot
+-> Diff
+-> Timeline
+-> Replay
+-> Query
+```
+
+Validated alpha capabilities:
+
+- Fresh macOS clone to populated graph in under five minutes.
+- SQLite local mode with no Docker, Postgres, API keys, or local model servers.
+- CLI, TUI, backend API, frontend routes, graph, timeline, workflow replay, and
+  observatory routes.
+- Python package wheel build as `openmesh-1.0.0a0`.
+
+## Immediate Priorities
+
+P0 alpha stabilization:
+
+- Resolve or document frontend dependency audit findings.
+- Add automated browser route and console smoke tests.
+- Add pagination/windowing for graph, timeline, replay, query, and genome APIs.
+- Add API response-size budgets.
+- Add contributor issue labels and a first-contribution board.
+- Add command recipes and `--json` examples.
+- Revalidate Dependabot PRs after the alpha tag in a separate hardening batch.
+
+## V1 Beta Priorities
+
+- Add optional dependency extras such as `openmesh[langgraph]`,
+  `openmesh[crewai]`, `openmesh[providers]`, and `openmesh[dev]`.
+- Add reproducible real-world integration fixtures.
+- Add OpenTelemetry collector interoperability tests.
+- Add supported Docker Compose path for API plus frontend.
+- Add SQLite migration rollback and backup checks.
+- Add synthetic 100, 1,000, and 10,000 node stress reports.
+- Add graph/timeline/replay filtering for larger datasets.
+
+## V1.0 Stable Candidate
+
+- Define supported single-node deployment.
+- Document retention, backup, and migration procedures.
+- Add release automation for wheel build, artifact inspection, tag validation,
+  and GitHub release publication.
+- Add protocol and registry compatibility tests.
+- Add plugin packaging fixtures.
+- Add read-only API auth option for self-hosted deployments.
+
+## Later Phases
+
+Cloud foundation:
+
+- Hosted OpenMesh deployment.
+- Multi-user organizations.
+- Team workspaces.
+- Hosted event storage.
+- Shared observability dashboards.
+
+Ecosystem integrations:
+
+- LangSmith integration.
+- OpenTelemetry interoperability hardening.
+- Datadog export hardening.
+- Grafana Tempo export hardening.
+- Prometheus export hardening.
+
+Enterprise:
+
+- RBAC.
+- SSO.
+- Audit logs.
+- Compliance reporting.
+- Team governance.
+
+Agent network:
+
+- Public agent registry.
+- Public workflow registry.
+- Community-shared observability packs.
+- Agent reputation network.
+
+## Not Yet
+
+Defer these until graph, trace, replay, and query paths are fast, boring, and
+well-tested:
+
+- AI root-cause analysis.
+- Security posture scoring.
+- Permission and trust-chain analysis.
+- Live MCP capability execution.
+- Automated remediation.
+- Hosted multi-tenant governance.

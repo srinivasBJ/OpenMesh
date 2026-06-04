@@ -1,203 +1,274 @@
-# Roadmap
+# OpenMesh Roadmap
 
-This roadmap keeps OpenMeshAI contributor-friendly by separating cleanup, architecture, and product expansion into phases.
+Last updated: 2026-06-04
 
-## Phase 1: Repository Cleanup
+OpenMesh v1.0 Alpha is published as `v1.0.0-alpha`.
 
-Goal: make the project understandable, testable, and welcoming to contributors.
+This roadmap starts from the current shipped architecture:
 
-Status: in progress.
+```text
+Observe
+-> Event
+-> Trace / Span / Session
+-> Graph + Provenance
+-> Discovery
+-> Inspection
+-> Snapshot
+-> Diff
+-> Timeline
+-> Replay
+-> Query
+```
 
-Work items:
+OpenMesh should keep evolving as a terminal-first, graph-first observability
+platform for AI agent ecosystems. The dashboard remains a visualization layer;
+the durable product center is the protocol, collector, CLI/TUI, graph,
+provenance, and ecosystem registry.
 
-- Rewrite README around OpenMeshAI as an agent mesh platform.
-- Add contributor docs, architecture docs, roadmap, issue templates, and maintainer notes.
-- Split `backend/src/api/routes/main.py` into domain route modules.
-- Add backend tests for health checks, protected writes, agent listing, feed listing, and manual tick.
-- Add frontend smoke tests or lightweight component tests.
-- Add an explicit license file.
-- Remove or archive obsolete scaffold artifacts.
-- Replace remaining AgentVerse references where they are not historical notes.
-- Add typed frontend API response interfaces.
-- Decide whether Alembic migrations should become mandatory before adding new tables.
+## Current Release State
 
-Exit criteria:
+Status: v1.0 Alpha.
 
-- New contributors can understand the repo in under 30 minutes.
-- CI validates backend linting and frontend builds.
-- The docs clearly mark current functionality versus planned functionality.
+Validated:
 
-## Phase 2: Provider Abstraction Layer
+- Fresh macOS clone to populated graph in under five minutes.
+- SQLite local mode with no Docker, Postgres, API keys, or local model servers.
+- CLI, TUI, backend API, frontend routes, graph, timeline, workflow replay, and
+  observatory routes.
+- Python package wheel build as `openmesh-1.0.0a0`.
+- GitHub prerelease: `v1.0.0-alpha`.
 
-Goal: make agents provider-agnostic.
+Current readiness:
 
-Work items:
+- V1 Alpha readiness: 88%.
+- V1.0 readiness: 58%.
+- Final alpha readiness score: 7.8/10.
 
-- Introduce a provider interface for text generation.
-- Move Anthropic-specific logic behind an adapter.
-- Preserve current offline fallback behavior.
-- Add provider metadata to generated outputs.
-- Add provider configuration through environment variables first.
-- Add tests for provider selection and fallback behavior.
-- Prepare a provider registry model, but do not require UI management yet.
+## Product Principles
 
-Providers to design for:
+- Keep OpenMesh terminal-first and graph-first.
+- Prefer evolution over architecture rewrites.
+- Do not introduce a second graph model, second event store, or parallel
+  collector pipeline.
+- Keep snapshots, diffs, timelines, replays, and queries derived from persisted
+  OpenMesh history.
+- Keep integrations SDK/protocol-backed rather than special-case graph writers.
+- Keep local no-key onboarding excellent.
+- Treat cloud, enterprise, and AI analysis as later layers on top of reliable
+  observability data.
 
-- Anthropic
-- OpenAI
-- Ollama
-- DeepSeek
-- Gemini
-- OpenRouter
-- Custom HTTP endpoints
+## Phase 0 - V1 Alpha Launch
 
-Exit criteria:
+Status: complete.
 
-- Agent behavior calls a provider-neutral interface.
-- The existing simulator still works with Anthropic and offline mode.
-- Adding a new provider does not require editing simulator logic.
+Completed:
 
-## Phase 3: Mesh Database Models
+- Event, trace, span, session, graph, provenance, discovery, inspection,
+  snapshot, diff, timeline, replay, and query foundations.
+- CLI and TUI.
+- Frontend graph/control-room experience.
+- Python SDK with sync and async support.
+- Framework/runtime/provider/MCP/export surfaces.
+- Simulation engine for realistic no-key data.
+- Fresh install validation.
+- Release docs and launch verification.
 
-Goal: introduce durable graph primitives without disrupting existing simulator features.
+Release artifacts:
 
-Work items:
+- [docs/RELEASE_NOTES_V1_ALPHA.md](docs/RELEASE_NOTES_V1_ALPHA.md)
+- [docs/LAUNCH_VERIFICATION.md](docs/LAUNCH_VERIFICATION.md)
+- [docs/V1_ALPHA_READINESS.md](docs/V1_ALPHA_READINESS.md)
+- [docs/FRESH_INSTALL_VALIDATION.md](docs/FRESH_INSTALL_VALIDATION.md)
 
-- Add migrations for `mesh_nodes`, `mesh_edges`, `mesh_sessions`, `mesh_events`, `mesh_traces`, `provider_registry`, and `tool_registry`.
-- Define node and edge type enums or constrained values.
-- Backfill mesh nodes for existing agents and guilds.
-- Emit mesh events for posts, comments, messages, wiki edits, guild joins, memory retrievals, and model calls.
-- Add API endpoints for graph reads and event history.
-- Add tests for event creation and trace integrity.
+## Phase 1 - Alpha Stabilization
 
-Exit criteria:
+Goal: make the public alpha easier to install, test, demo, and contribute to.
 
-- Every current simulation action can produce a mesh event.
-- The graph can be queried independently of the current feed/history pages.
-
-## Phase 4: Mesh Explorer UI
-
-Goal: make the mesh visible.
-
-Work items:
-
-- Add a `Mesh` navigation item.
-- Build an interactive graph view using React Flow, D3.js, or Cytoscape.js.
-- Show agents, models, tools, services, users, and guilds as distinct node types.
-- Show message, tool call, memory, collaboration, delegation, observation, and knowledge-transfer edges.
-- Update the graph in real time from WebSocket events.
-- Add a node inspector for identity, capabilities, provider, connected agents, recent activity, memory usage, tool usage, reputation, and guild membership.
-
-Exit criteria:
-
-- Users can see who talked to whom and what systems participated.
-- Clicking a node exposes useful observability context.
-
-## Phase 5: Agent Trace System
-
-Goal: make decisions and workflows replayable.
+Priority: P0.
 
 Work items:
 
-- Add trace creation and completion semantics.
-- Attach mesh events to traces and sessions.
-- Add trace timeline API endpoints.
-- Add a trace timeline UI.
-- Capture summaries, inputs, outputs, provider metadata, tool metadata, and timestamps.
-- Add replay/read-only reconstruction of trace chains.
+- Resolve or formally document frontend dependency audit findings.
+- Add automated browser route and console smoke tests.
+- Add response pagination/windowing for graph, timeline, replay, query, and
+  genome APIs.
+- Add API response-size budgets and regression tests.
+- Add contributor issue labels and a first-contribution issue board.
+- Add command recipes for the top five workflows:
+  - no-key demo graph
+  - workflow replay
+  - process observation
+  - provider discovery
+  - frontend graph inspection
+- Add `--json` examples for scriptable CLI usage.
+- Revalidate Dependabot PRs after the alpha tag and merge safe dependency
+  hardening PRs in a separate post-alpha batch.
+- Standardize the canonical repository URL everywhere as
+  `https://github.com/srinivasBJ/OpenMesh`.
 
 Exit criteria:
 
-- Users can inspect a full chain of agent activity from trigger to output.
-- Trace data is stored durably and can be replayed after refresh.
+- Browser route smoke is part of CI.
+- Fresh install remains green.
+- Dependency warnings are either fixed or explicitly accepted.
+- External contributors can find scoped starter work quickly.
 
-## Phase 6: External Agent Registration
+## Phase 2 - V1 Beta Readiness
 
-Goal: let outside systems join the mesh.
+Goal: harden the architecture for broader external testing.
+
+Priority: P0/P1.
 
 Work items:
 
-- Design REST registration endpoint.
-- Design WebSocket bridge protocol.
-- Add heartbeat and presence tracking.
-- Add scoped API credentials for external systems.
-- Represent external agents as mesh nodes.
-- Ingest external messages, tool calls, model calls, and traces.
-- Document integration examples.
+- Add optional dependency extras such as:
+  - `openmesh[langgraph]`
+  - `openmesh[crewai]`
+  - `openmesh[providers]`
+  - `openmesh[dev]`
+- Add real-world integration fixtures that do not require secrets.
+- Add OpenTelemetry collector interoperability tests.
+- Add a supported Docker Compose path for API plus frontend.
+- Add migration rollback and backup/restore checks for SQLite.
+- Add stress reports for synthetic 100, 1,000, and 10,000 node ecosystems.
+- Add graph/timeline/replay filtering for large datasets.
+- Add a short demo script and screenshots for GitHub/social launch surfaces.
 
 Exit criteria:
 
-- An external process can register an agent and appear in the UI.
-- External events can be observed alongside simulator events.
+- V1.0 readiness score is at least 7.5/10.
+- Integration examples are reproducible without hidden local state.
+- API payload sizes are bounded or paginated.
+- A new contributor can run tests and a browser smoke locally.
 
-## Phase 7: CLI + SDK
+## Phase 3 - V1.0 Stable Candidate
 
-Goal: make OpenMeshAI easy to connect from local tools and external runtimes.
+Goal: make OpenMesh credible as a stable local/self-hosted observability tool.
 
-Planned CLI commands:
-
-- `openmesh connect`
-- `openmesh register`
-- `openmesh inspect`
-- `openmesh trace`
-- `openmesh run`
+Priority: P1.
 
 Work items:
 
-- Create CLI package structure.
-- Create TypeScript and/or Python SDK package structure.
-- Add authentication and workspace configuration.
-- Add examples for connecting local agents and tools.
-- Add trace helpers for external runtimes.
+- Define a supported single-node deployment profile.
+- Document database backup, retention, and migration procedures.
+- Add release automation for wheel build, artifact inspection, tag validation,
+  and GitHub prerelease/release publication.
+- Add compatibility tests for protocol and registry versions.
+- Add plugin packaging documentation and validation fixtures.
+- Add read-only API auth option for self-hosted deployments.
+- Add operational dashboards for ingestion rate, graph reduction time, replay
+  generation time, and query latency.
 
 Exit criteria:
 
-- Developers can connect local agents to OpenMeshAI without writing raw HTTP calls.
-- CLI-connected agents appear automatically in the web interface.
+- V1.0 readiness score is at least 8.5/10.
+- Fresh install, self-hosted install, and package install paths are all
+  documented and validated.
+- CI covers backend, frontend, browser smoke, packaging, and release checks.
 
-## Phase 8: Reference Framework Integrations
+## Phase 4 - Cloud Foundation
 
-Goal: prove OpenMesh can observe real agent frameworks through the SDK without replacing their runtimes.
+Goal: make OpenMesh usable by teams without managing local infrastructure.
 
-Status: LangGraph is the first reference integration.
+Priority: P2.
 
-Work items:
+Future work:
 
-- Keep LangGraph instrumentation lightweight and opt-in.
-- Track node lifecycle events as `node.started`, `node.completed`, and `node.failed`.
-- Track execution transitions as `node.transition` graph relationships.
-- Maintain an integration registry for installed and active integrations.
-- Keep CrewAI, AutoGen, and OpenHands as future backlog items until the LangGraph path is stable.
+- Hosted OpenMesh deployment.
+- Multi-user organizations.
+- Team workspaces.
+- Hosted event storage.
+- Shared observability dashboards.
+- Workspace-level data retention controls.
 
-Exit criteria:
+Do not start this phase until the local/self-hosted V1 path is stable.
 
-- A minimal LangGraph workflow appears in OpenMesh events, traces, graph output, and the TUI.
-- Future framework integrations can reuse the same SDK -> collector -> persistence -> graph pipeline.
+## Phase 5 - Ecosystem Integrations
 
-## Future Backlog: Active Analysis & MCP Discovery
+Goal: connect OpenMesh to the broader observability and agent tooling ecosystem.
 
-OpenMesh should remain focused on discovery, registry, relationship mapping, and observability. Analysis is a future layer built on top of reliable event and graph data.
+Priority: P1/P2.
 
-Potential future capabilities:
+Future work:
 
-- MCP endpoint health checks
-- Capability discovery
-- Tool inventory generation
-- Authentication analysis
-- Permission visibility
-- Dependency and trust-chain mapping
-- Security posture insights
+- LangSmith integration.
+- OpenTelemetry collector interoperability hardening.
+- Datadog export hardening.
+- Grafana Tempo export hardening.
+- Prometheus export hardening.
+- Additional framework plugins after the plugin architecture is stable.
 
-## Long-Term Vision
+Rule: integrations must use the SDK/protocol/collector path and must not bypass
+the OpenMesh graph reducer.
 
-Future work should remain compatible with:
+## Phase 6 - Enterprise Features
 
-- Agent economies
-- Agent marketplaces
-- Agent governance
-- Agent elections
-- Agent reputation systems
-- Cross-mesh communication
-- Federated agent networks
-- Multi-model collaboration
-- Distributed runtimes
+Goal: make OpenMesh suitable for organizational governance.
+
+Priority: P2.
+
+Future work:
+
+- RBAC.
+- SSO.
+- Audit logs.
+- Compliance reporting.
+- Team governance.
+- Workspace access policies.
+
+Do not prioritize this before payload scaling, browser smoke, and deployment
+basics are solved.
+
+## Phase 7 - Agent Network
+
+Goal: make observed agent ecosystems portable and shareable.
+
+Priority: P2.
+
+Future work:
+
+- Public agent registry.
+- Public workflow registry.
+- Community-shared observability packs.
+- Agent reputation network.
+- Shared integration packs.
+
+This phase should build on proven reputation, genome, workflow, and ecosystem
+registry data rather than inventing separate social primitives.
+
+## Deferred Until The Data Layer Is Boring
+
+These are valuable, but should wait until trace/graph/replay/query paths are
+fast, tested, and predictable:
+
+- AI-generated root-cause analysis.
+- Security posture scoring.
+- Permission and trust-chain analysis.
+- Live MCP capability execution.
+- Automated remediation.
+- Hosted multi-tenant governance.
+
+## Success Metrics
+
+V1 Alpha stabilization:
+
+- Fresh clone to graph remains under five minutes.
+- CI is green on every release-prep commit.
+- Browser smoke has zero console errors on public routes.
+- At least 10 external users can run `openmesh simulate` and see graph output.
+
+V1 Beta:
+
+- 1,000-node synthetic ecosystem stays responsive in CLI/API.
+- Graph and timeline endpoints are paginated or windowed.
+- At least three real-world integration examples are reproducible.
+- Docs have one clear start path and one clear contributor path.
+
+V1.0:
+
+- Stable package install.
+- Stable self-hosted install.
+- Reliable migration path.
+- Tested export path.
+- Clear compatibility policy.
+- Public users can understand, run, and extend OpenMesh without maintainer help.

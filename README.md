@@ -8,6 +8,13 @@
 ㅤ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1)
 ㅤ![License](https://img.shields.io/badge/License-MIT-green)
 
+<a href="https://github.com/srinivasBJ/OpenMesh/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/srinivasBJ/OpenMesh/actions/workflows/ci.yml/badge.svg"></a>
+<a href="pyproject.toml"><img alt="Python 3.11-3.13" src="https://img.shields.io/badge/Python-3.11--3.13-3776AB?logo=python&logoColor=white"></a>
+<a href="backend/src/main.py"><img alt="FastAPI 0.135" src="https://img.shields.io/badge/FastAPI-0.135-009688?logo=fastapi&logoColor=white"></a>
+<a href="frontend/package.json"><img alt="React 19" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111111"></a>
+<a href="INSTALLATION.md"><img alt="PostgreSQL supported" src="https://img.shields.io/badge/PostgreSQL-supported-4169E1?logo=postgresql&logoColor=white"></a>
+<a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"></a>
+
 OpenMesh is a terminal-first observability layer for AI agent ecosystems.
 It observes agents, tools, models, runtimes, MCP servers, workflows, traces,
 relationships, failures, reputation, genome profiles, snapshots, replay, and

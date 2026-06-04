@@ -166,6 +166,53 @@ OPENMESH CONTROL ROOM
 Events 180  Traces 4  Nodes 38  Edges 111  Sessions 1  Registry 39
 ```
 
+## Workflow Replay
+
+List workflows and replay one by `workflow_id`:
+
+```bash
+.venv/bin/openmesh workflow list
+```
+
+Example output:
+
+```text
+Workflows
+
+workflow_id                        workflow                 type           status       started
+workflow:sim:c38c86dc:03           Implementation Pass      openmesh-sim   completed    2026-06-04T11:44:56.214018Z
+workflow:sim:c38c86dc:02           Planning Loop            openmesh-sim   completed    2026-06-04T11:44:56.211757Z
+workflow:sim:c38c86dc:01           Research Intake          openmesh-sim   completed    2026-06-04T11:44:56.208252Z
+```
+
+Replay:
+
+```bash
+.venv/bin/openmesh replay workflow workflow:sim:c38c86dc:03
+```
+
+Use the first-column `workflow_id` from your own `openmesh workflow list`
+output. The `c38c86dc` segment is run-specific and changes for each simulation.
+
+Result: PASS.
+
+Observed output:
+
+```text
+OpenMesh Workflow Replay
+
+subject: Implementation Pass
+control: start (playing)
+position: 0 / 33
+
+Summary
+  frames: 34
+  nodes: 9
+  relationships: 10
+  workflows: 3
+  events_replayed: 1
+```
+
 ## Backend API Startup
 
 Terminal 1:
@@ -371,6 +418,7 @@ export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
 | Ecosystem CLI | PASS |
 | Timeline CLI | PASS |
 | TUI startup | PASS |
+| Workflow replay | PASS |
 | Backend API startup | PASS |
 | Backend API smoke | PASS |
 | Frontend install | PASS |

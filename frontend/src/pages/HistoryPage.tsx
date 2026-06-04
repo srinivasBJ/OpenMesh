@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Baby, BookOpen, Clock, GitBranch, Layers, Radio, Star, Users, Zap } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { AlertTriangle, Baby, BookOpen, Clock, GitBranch, Layers, Pause, Play, Radio, SkipBack, SkipForward, Star, Users, Zap } from "lucide-react";
 import { eventsApi, openmeshApi } from "@/api";
 import OpenMeshEmptyState from "@/components/shared/OpenMeshEmptyState";
 import OpenMeshLoading from "@/components/shared/OpenMeshLoading";
 import { brandText, cn, timeAgo } from "@/lib/utils";
-import type { OpenMeshTimeline, OpenMeshTraceSummary } from "@/types/openmesh";
+import type { OpenMeshReplay, OpenMeshReplayFrame, OpenMeshTimeline, OpenMeshTraceSummary } from "@/types/openmesh";
 
 const EVENT_ICONS: Record<string, any> = {
   birth: Baby, guild_founded: Layers, discovery: Zap,
@@ -23,6 +24,9 @@ const EVENT_COLORS: Record<string, string> = {
 };
 
 export default function HistoryPage() {
+  const [replayControl, setReplayControl] = useState<"start" | "pause" | "step" | "previous" | "stop">("pause");
+  const [replayPosition, setReplayPosition] = useState(0);
+  const [replaySpeed, setReplaySpeed] = useState(1);
   const {
     data: events = [],
     isLoading: eventsLoading,
@@ -53,6 +57,28 @@ export default function HistoryPage() {
     queryFn: () => openmeshApi.timeline(500),
     refetchInterval: 15000,
   });
+  const { data: replay } = useQuery({
+    queryKey: ["openmesh-history-replay", replayControl, replayPosition, replaySpeed],
+    queryFn: () =>
+      openmeshApi.replayEcosystem({
+        control: replayControl,
+        position: replayPosition,
+        speed: replaySpeed,
+        limit: 500,
+      }),
+    refetchInterval: false,
+  });
+
+  useEffect(() => {
+    if (replayControl !== "start") return undefined;
+    const interval = window.setInterval(() => {
+      setReplayPosition((position) => {
+        const maxPosition = Math.max((replay?.state?.frame_count || 1) - 1, 0);
+        return Math.min(position + 1, maxPosition);
+      });
+    }, Math.max(300, 1200 / replaySpeed));
+    return () => window.clearInterval(interval);
+  }, [replayControl, replaySpeed, replay?.state?.frame_count]);
 
   const traceList = Array.isArray(traces) ? traces : [];
   const eventList = Array.isArray(events) ? events : [];
@@ -133,6 +159,29 @@ export default function HistoryPage() {
             </section>
 
             <div className="space-y-5">
+              <ReplayPanel
+                replay={replay}
+                replayControl={replayControl}
+                replaySpeed={replaySpeed}
+                onPlay={() => setReplayControl("start")}
+                onPause={() => setReplayControl("pause")}
+                onStop={() => {
+                  setReplayControl("stop");
+                  setReplayPosition(0);
+                }}
+                onPrevious={() => {
+                  const position = replay?.state?.position ?? replayPosition;
+                  setReplayControl("previous");
+                  setReplayPosition(Math.max(position, 0));
+                }}
+                onNext={() => {
+                  const position = replay?.state?.position ?? replayPosition;
+                  setReplayControl("step");
+                  setReplayPosition(Math.max(position, 0));
+                }}
+                onSpeedChange={setReplaySpeed}
+              />
+
               <section className="om-panel overflow-hidden">
                 <div className="border-b border-[color:var(--om-border)] p-4">
                   <div className="om-kicker">Evolution Ledger</div>
@@ -182,7 +231,124 @@ export default function HistoryPage() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function ReplayPanel({
+  replay,
+  replayControl,
+  replaySpeed,
+  onPlay,
+  onPause,
+  onStop,
+  onPrevious,
+  onNext,
+  onSpeedChange,
+}: {
+  replay?: OpenMeshReplay;
+  replayControl: string;
+  replaySpeed: number;
+  onPlay: () => void;
+  onPause: () => void;
+  onStop: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+  onSpeedChange: (speed: number) => void;
+}) {
+  const state = replay?.state || {};
+  const metrics = replay?.metrics || {};
+  const current = state.current_frame || undefined;
+  const visible = replay?.visible_frames || [];
+  const maxPosition = Math.max((state.frame_count || 0) - 1, 0);
+
+  return (
+    <section className="om-panel overflow-hidden">
+      <div className="border-b border-[color:var(--om-border)] p-4">
+        <div className="om-kicker">Time Travel Console</div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-sm font-semibold text-white">Workflow Replay</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <ReplayButton label="Previous" onClick={onPrevious}><SkipBack size={14} /></ReplayButton>
+            {replayControl === "start" ? (
+              <ReplayButton label="Pause" onClick={onPause}><Pause size={14} /></ReplayButton>
+            ) : (
+              <ReplayButton label="Play" onClick={onPlay}><Play size={14} /></ReplayButton>
+            )}
+            <ReplayButton label="Next" onClick={onNext}><SkipForward size={14} /></ReplayButton>
+            <button type="button" className="om-button" onClick={onStop}>Stop</button>
+            <select
+              className="input h-9 w-[88px] text-xs"
+              value={replaySpeed}
+              onChange={(event) => onSpeedChange(Number(event.target.value))}
+              aria-label="Replay speed"
+            >
+              <option value={0.5}>0.5x</option>
+              <option value={1}>1x</option>
+              <option value={2}>2x</option>
+              <option value={4}>4x</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 p-4 lg:grid-cols-[1.1fr_.9fr]">
+        <div className="rounded-[6px] border border-[color:var(--om-border)] bg-black/30 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="om-kicker">Current Frame</div>
+            <span className="font-mono text-xs text-[color:var(--om-muted)]">
+              {state.position ?? "-"} / {maxPosition}
+            </span>
+          </div>
+          {current ? (
+            <div className="mt-3">
+              <div className="text-sm font-semibold text-white">{replayFrameTitle(current)}</div>
+              <div className="mt-1 font-mono text-xs text-[color:var(--om-muted)]">{current.timestamp || "time unknown"}</div>
+              <p className="mt-3 text-sm leading-6 text-[color:var(--om-steel-300)]">{current.description || "OpenMesh replay frame"}</p>
+            </div>
+          ) : (
+            <MiniEmpty label="Replay is waiting for timeline events." />
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Metric label="Events" value={metrics.events_replayed || 0} />
+          <Metric label="Mutations" value={metrics.graph_mutations || 0} />
+          <Metric label="Duration" value={formatSeconds(metrics.duration)} />
+          <Metric label="Workflow" value={formatSeconds(metrics.workflow_duration)} />
+        </div>
+      </div>
+
+      <div className="border-t border-[color:var(--om-border)] p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="om-kicker">Visible Evolution</div>
+          <span className="text-xs text-[color:var(--om-muted)]">{visible.length} frames replayed</span>
+        </div>
+        {visible.length === 0 ? (
+          <MiniEmpty label="No replay frames are visible at the current position." />
+        ) : (
+          <div className="max-h-[220px] overflow-auto space-y-2">
+            {visible.slice(-10).map((frame) => (
+              <div key={`${frame.frame_index}-${frame.action}`} className="flex items-center gap-3 rounded-[4px] border border-[color:var(--om-border)] bg-black/25 px-3 py-2">
+                <span className="font-mono text-[10px] text-[color:var(--om-rust-300)]">#{frame.frame_index ?? "-"}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs font-semibold text-[color:var(--om-text)]">{replayFrameTitle(frame)}</div>
+                  <div className="truncate text-[11px] text-[color:var(--om-muted)]">{frame.description || "-"}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ReplayButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" className="om-icon-button" onClick={onClick} aria-label={label} title={label}>
+      {children}
+    </button>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-[5px] border border-[color:var(--om-border)] bg-black/35 px-3 py-2">
       <div className="text-lg font-semibold text-white">{value}</div>
@@ -322,4 +488,13 @@ function rowDescription(row: Record<string, unknown>) {
 
 function rowTime(row: Record<string, unknown>) {
   return String(row.timestamp || row.created_at || row.started_at || row.first_seen || row.last_seen || "");
+}
+
+function replayFrameTitle(frame: OpenMeshReplayFrame) {
+  return brandText(String(frame.action || frame.event_type || frame.category || "Replay frame"));
+}
+
+function formatSeconds(value?: number | null) {
+  if (value === null || value === undefined) return "-";
+  return `${Number(value).toFixed(value >= 10 ? 0 : 1)}s`;
 }

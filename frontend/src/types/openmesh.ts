@@ -176,3 +176,49 @@ export interface OpenMeshTimeline {
   timeline?: Array<Record<string, unknown>>;
   summary?: Record<string, number>;
 }
+
+export interface OpenMeshReplayFrame {
+  frame_index?: number;
+  timestamp?: string;
+  action?: string;
+  category?: string;
+  description?: string;
+  event_id?: string;
+  event_type?: string;
+  trace_id?: string;
+  session_id?: string;
+  source?: string;
+  target?: string;
+  relationship_type?: string;
+  [key: string]: unknown;
+}
+
+export interface OpenMeshReplay {
+  scope?: string;
+  subject?: Record<string, unknown>;
+  source?: Record<string, unknown>;
+  controls?: Array<{ name: string; description: string }>;
+  state?: {
+    control?: string;
+    status?: string;
+    position?: number;
+    requested_position?: number;
+    next_position?: number;
+    previous_position?: number;
+    jump_timestamp?: string | null;
+    jump_event_id?: string | null;
+    speed?: number;
+    frame_count?: number;
+    visible_frame_count?: number;
+    current_frame?: OpenMeshReplayFrame | null;
+  };
+  frames?: OpenMeshReplayFrame[];
+  visible_frames?: OpenMeshReplayFrame[];
+  metrics?: {
+    events_replayed?: number;
+    duration?: number | null;
+    graph_mutations?: number;
+    workflow_duration?: number | null;
+  };
+  summary?: Record<string, number | null>;
+}

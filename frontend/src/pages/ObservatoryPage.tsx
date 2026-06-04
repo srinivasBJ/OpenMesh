@@ -47,6 +47,14 @@ type WorkflowMetrics = {
   busiest_agent?: { agent?: string; events?: number } | null;
   handoff_latency_ms?: number | null;
 };
+type ReplayMetrics = {
+  metrics?: {
+    events_replayed?: number;
+    duration?: number | null;
+    graph_mutations?: number;
+    workflow_duration?: number | null;
+  };
+};
 
 export default function ObservatoryPage() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: statsApi.get, refetchInterval: 30000 });
@@ -81,6 +89,11 @@ export default function ObservatoryPage() {
     queryFn: () => openmeshApi.workflowMetrics(),
     refetchInterval: 15000,
   });
+  const { data: replayMetrics = {} } = useQuery<ReplayMetrics>({
+    queryKey: ["openmesh-replay-metrics"],
+    queryFn: () => openmeshApi.replayEcosystem({ limit: 500 }),
+    refetchInterval: 15000,
+  });
   const { events } = useWSStore();
 
   const graphNodes = graph.nodes as GraphNode[];
@@ -98,6 +111,7 @@ export default function ObservatoryPage() {
   const relationshipActivity = graphEdges.reduce((count, edge) => count + Number(edge.event_count || 0), 0);
   const topMcpTool = mcpMetrics.most_used_tools?.[0];
   const busiestAgent = workflowMetrics.busiest_agent;
+  const replay = replayMetrics.metrics || {};
 
   return (
     <div className="om-page">
@@ -165,6 +179,10 @@ export default function ObservatoryPage() {
                 <MetricCell label="Avg Handoff" value={formatMetric(workflowMetrics.average_handoffs)} />
                 <MetricCell label="Handoff Lat" value={formatMetric(workflowMetrics.handoff_latency_ms, "ms")} />
                 <MetricCell label="Busy Agent" value={busiestAgent?.agent ? `${busiestAgent.agent} (${busiestAgent.events || 0})` : "-"} />
+                <MetricCell label="Replay Ev" value={replay.events_replayed || 0} />
+                <MetricCell label="Replay Mut" value={replay.graph_mutations || 0} />
+                <MetricCell label="Replay Dur" value={formatMetric(replay.duration, "s")} />
+                <MetricCell label="WF Replay" value={formatMetric(replay.workflow_duration, "s")} />
               </div>
             </div>
           </ControlPanel>

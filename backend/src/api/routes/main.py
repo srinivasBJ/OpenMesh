@@ -61,6 +61,7 @@ from ...services.openmesh_queries import (
 )
 from ...services.query_engine import execute_query
 from ...services.replay import (
+    get_replay,
     get_snapshot_replay,
     get_trace_replay,
     get_workflow_replay,
@@ -945,14 +946,44 @@ async def get_openmesh_snapshot_replay(
     snapshot_id: str,
     control: str = Query("start"),
     position: int = Query(0, ge=0),
+    timestamp: str | None = Query(None),
+    event_id: str | None = Query(None),
+    speed: float = Query(1.0, gt=0, le=10),
     db: AsyncSession = Depends(get_db),
 ):
     replay = await get_snapshot_replay(
-        db, snapshot_id, control=control, position=position
+        db,
+        snapshot_id,
+        control=control,
+        position=position,
+        timestamp=timestamp,
+        event_id=event_id,
+        speed=speed,
     )
     if not replay:
         raise HTTPException(404, "OpenMesh snapshot replay not found")
     return replay
+
+
+@router.get("/openmesh/replay/ecosystem")
+async def get_openmesh_ecosystem_replay(
+    control: str = Query("start"),
+    position: int = Query(0, ge=0),
+    timestamp: str | None = Query(None),
+    event_id: str | None = Query(None),
+    speed: float = Query(1.0, gt=0, le=10),
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_replay(
+        db,
+        control=control,
+        position=position,
+        timestamp=timestamp,
+        event_id=event_id,
+        speed=speed,
+        limit=limit,
+    )
 
 
 @router.get("/openmesh/replay/trace/{trace_id}")
@@ -960,11 +991,21 @@ async def get_openmesh_trace_replay(
     trace_id: str,
     control: str = Query("start"),
     position: int = Query(0, ge=0),
+    timestamp: str | None = Query(None),
+    event_id: str | None = Query(None),
+    speed: float = Query(1.0, gt=0, le=10),
     limit: int = Query(5000, le=10000),
     db: AsyncSession = Depends(get_db),
 ):
     replay = await get_trace_replay(
-        db, trace_id, control=control, position=position, limit=limit
+        db,
+        trace_id,
+        control=control,
+        position=position,
+        timestamp=timestamp,
+        event_id=event_id,
+        speed=speed,
+        limit=limit,
     )
     if not replay:
         raise HTTPException(404, "OpenMesh trace replay not found")
@@ -976,11 +1017,21 @@ async def get_openmesh_workflow_replay(
     workflow_id: str,
     control: str = Query("start"),
     position: int = Query(0, ge=0),
+    timestamp: str | None = Query(None),
+    event_id: str | None = Query(None),
+    speed: float = Query(1.0, gt=0, le=10),
     limit: int = Query(5000, le=10000),
     db: AsyncSession = Depends(get_db),
 ):
     replay = await get_workflow_replay(
-        db, workflow_id, control=control, position=position, limit=limit
+        db,
+        workflow_id,
+        control=control,
+        position=position,
+        timestamp=timestamp,
+        event_id=event_id,
+        speed=speed,
+        limit=limit,
     )
     if not replay:
         raise HTTPException(404, "OpenMesh workflow replay not found")

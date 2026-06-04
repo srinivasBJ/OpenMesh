@@ -113,11 +113,11 @@ Replay flow:
 ```text
 timeline payloads + snapshot payloads
   -> ordered replay frames
-  -> stateless playback controls
-  -> CLI, TUI, and API replay views
+  -> stateless playback controls and time-travel jumps
+  -> CLI, TUI, API, and frontend replay views
 ```
 
-Replays are derived from the Timeline Engine, Snapshot Engine, Diff Engine, Event Store, and Trace Store. They reconstruct node appearance, relationship creation, workflow evolution, capability evolution, MCP evolution, and session progression without writing a replay table or duplicating graph state.
+Replays are derived from the Timeline Engine, Snapshot Engine, Diff Engine, Event Store, and Trace Store. They reconstruct node appearance, relationship creation and removal, workflow start and completion, handoffs, messages, capability evolution, MCP evolution, and session progression without writing a replay table or duplicating graph state.
 
 Query flow:
 

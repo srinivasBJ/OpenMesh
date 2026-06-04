@@ -706,7 +706,7 @@ def replay_rows(replay: dict[str, Any]) -> list[str]:
             f"nodes {summary.get('nodes', 0)}  "
             f"relationships {summary.get('relationships', 0)}"
         ),
-        "space start/pause  n step  x stop",
+        "space start/pause  n step  m previous  x stop",
         "",
         "Current",
     ]
@@ -1230,6 +1230,7 @@ class OpenMeshTui(App):
         ("u", "next_query", "Next Query"),
         ("space", "toggle_replay", "Play/Pause"),
         ("n", "step_replay", "Step"),
+        ("m", "previous_replay", "Previous"),
         ("x", "stop_replay", "Stop"),
         ("a", "select_snapshot_a", "Select A"),
         ("b", "select_snapshot_b", "Select B"),
@@ -1646,6 +1647,13 @@ class OpenMeshTui(App):
         if self.lower_right_mode != "replay":
             return
         self.replay_control = "step"
+        self._refresh_events()
+        self.query_one("#event-body", Widget).focus()
+
+    def action_previous_replay(self) -> None:
+        if self.lower_right_mode != "replay":
+            return
+        self.replay_control = "previous"
         self._refresh_events()
         self.query_one("#event-body", Widget).focus()
 

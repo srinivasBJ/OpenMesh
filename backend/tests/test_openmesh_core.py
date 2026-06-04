@@ -27,6 +27,7 @@ from src.db.openmesh_snapshots import (
     snapshot_record_to_summary,
 )
 from src.api.routes.main import (
+    get_openmesh_ecosystem_replay as api_get_openmesh_ecosystem_replay,
     get_openmesh_snapshot_replay as api_get_openmesh_snapshot_replay,
     get_openmesh_trace_replay as api_get_openmesh_trace_replay,
     get_openmesh_workflow_replay as api_get_openmesh_workflow_replay,
@@ -2875,7 +2876,21 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                         "trace_ids": ["trace_replay"],
                         "event_ids": ["evt_replay"],
                     },
-                }
+                },
+                {
+                    "timestamp": "2026-06-03T10:07:00Z",
+                    "kind": "relationships.removed",
+                    "operation": "removed",
+                    "source": "agent-a",
+                    "source_name": "Research Agent",
+                    "target": "workflow:research",
+                    "target_name": "Research Flow",
+                    "relationship_type": "runs",
+                    "provenance": {
+                        "trace_ids": ["trace_replay"],
+                        "event_ids": ["evt_removed"],
+                    },
+                },
             ],
             "workflow_changes": [
                 {
@@ -2928,7 +2943,37 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                     "session_id": "sess_replay",
                     "source": "Research Agent",
                     "target": "Research Flow",
-                }
+                },
+                {
+                    "timestamp": "2026-06-03T10:00:40Z",
+                    "kind": "event",
+                    "event_id": "evt_workflow_started",
+                    "event_type": "workflow.started",
+                    "trace_id": "trace_replay",
+                    "session_id": "sess_replay",
+                    "source": "OpenMesh",
+                    "target": "Research Flow",
+                },
+                {
+                    "timestamp": "2026-06-03T10:00:45Z",
+                    "kind": "event",
+                    "event_id": "evt_handoff",
+                    "event_type": "agent.handoff.started",
+                    "trace_id": "trace_replay",
+                    "session_id": "sess_replay",
+                    "source": "Research Agent",
+                    "target": "Reviewer Agent",
+                },
+                {
+                    "timestamp": "2026-06-03T10:00:46Z",
+                    "kind": "event",
+                    "event_id": "evt_message",
+                    "event_type": "agent.message.sent",
+                    "trace_id": "trace_replay",
+                    "session_id": "sess_replay",
+                    "source": "Research Agent",
+                    "target": "Reviewer Agent",
+                },
             ],
         }
 
@@ -2944,11 +2989,37 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("capability.evolved", actions)
         self.assertIn("session.started", actions)
         self.assertIn("snapshot.created", actions)
+        self.assertIn("relationship.removed", actions)
+        self.assertIn("workflow.started", actions)
+        self.assertIn("handoff.occurred", actions)
+        self.assertIn("message.exchanged", actions)
         self.assertGreaterEqual(replay["summary"]["frames"], 8)
+        self.assertIn("metrics", replay)
+        self.assertGreaterEqual(replay["metrics"]["events_replayed"], 1)
+        self.assertGreaterEqual(replay["summary"]["handoffs"], 1)
+        self.assertGreaterEqual(replay["summary"]["messages"], 1)
 
         stopped = build_replay_from_timeline(timeline, control="stop", position=3)
         self.assertEqual(stopped["state"]["status"], "stopped")
         self.assertEqual(stopped["visible_frames"], [])
+
+        previous = build_replay_from_timeline(timeline, control="previous", position=3)
+        self.assertEqual(previous["state"]["position"], 2)
+
+        jumped_event = build_replay_from_timeline(
+            timeline, control="jump", event_id="evt_message"
+        )
+        self.assertEqual(
+            jumped_event["state"]["current_frame"]["event_id"], "evt_message"
+        )
+
+        jumped_time = build_replay_from_timeline(
+            timeline, control="jump", timestamp="2026-06-03T10:02:30Z"
+        )
+        self.assertLessEqual(
+            jumped_time["state"]["current_frame"]["timestamp"],
+            "2026-06-03T10:02:30Z",
+        )
 
     def test_replay_from_snapshot_reconstructs_snapshot_state(self):
         snapshot = self.make_snapshot_payload(
@@ -3089,36 +3160,66 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(no_snapshots["errors"][0]["code"], "snapshot_pair_not_found")
 
     async def test_replay_api_routes_return_derived_payloads(self):
+        async def fake_ecosystem_replay(db, **kwargs):
+            return {
+                "scope": "ecosystem",
+                "subject": {"id": "openmesh.ecosystem"},
+                "state": {
+                    "control": kwargs["control"],
+                    "jump_event_id": kwargs["event_id"],
+                    "speed": kwargs["speed"],
+                },
+            }
+
         async def fake_trace_replay(db, trace_id, **kwargs):
             return {
                 "scope": "trace",
                 "subject": {"trace_id": trace_id},
-                "state": {"control": kwargs["control"]},
+                "state": {
+                    "control": kwargs["control"],
+                    "jump_timestamp": kwargs["timestamp"],
+                },
             }
 
         async def fake_workflow_replay(db, workflow_id, **kwargs):
             return {
                 "scope": "workflow",
                 "subject": {"workflow": workflow_id},
-                "state": {"position": kwargs["position"]},
+                "state": {
+                    "position": kwargs["position"],
+                    "speed": kwargs["speed"],
+                },
             }
 
         async def fake_snapshot_replay(db, snapshot_id, **kwargs):
             return {
                 "scope": "snapshot",
                 "subject": {"snapshot_id": snapshot_id},
-                "state": {"control": kwargs["control"]},
+                "state": {
+                    "control": kwargs["control"],
+                    "jump_event_id": kwargs["event_id"],
+                },
             }
 
         with (
+            patch("src.api.routes.main.get_replay", fake_ecosystem_replay),
             patch("src.api.routes.main.get_trace_replay", fake_trace_replay),
             patch("src.api.routes.main.get_workflow_replay", fake_workflow_replay),
             patch("src.api.routes.main.get_snapshot_replay", fake_snapshot_replay),
         ):
+            ecosystem = await api_get_openmesh_ecosystem_replay(
+                control="jump",
+                position=4,
+                event_id="evt_api",
+                speed=2.0,
+                limit=100,
+                db=FakeAsyncSession(),
+            )
             trace = await api_get_openmesh_trace_replay(
                 "trace_api",
                 control="pause",
                 position=2,
+                timestamp="2026-06-03T10:00:00Z",
                 limit=100,
                 db=FakeAsyncSession(),
             )
@@ -3126,6 +3227,7 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "workflow_api",
                 control="step",
                 position=3,
+                speed=3.0,
                 limit=100,
                 db=FakeAsyncSession(),
             )
@@ -3133,14 +3235,21 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "snap_api",
                 control="start",
                 position=0,
+                event_id="evt_snapshot",
                 db=FakeAsyncSession(),
             )
 
+        self.assertEqual(ecosystem["scope"], "ecosystem")
+        self.assertEqual(ecosystem["state"]["jump_event_id"], "evt_api")
+        self.assertEqual(ecosystem["state"]["speed"], 2.0)
         self.assertEqual(trace["subject"]["trace_id"], "trace_api")
         self.assertEqual(trace["state"]["control"], "pause")
+        self.assertEqual(trace["state"]["jump_timestamp"], "2026-06-03T10:00:00Z")
         self.assertEqual(workflow["scope"], "workflow")
         self.assertEqual(workflow["state"]["position"], 3)
+        self.assertEqual(workflow["state"]["speed"], 3.0)
         self.assertEqual(snapshot["subject"]["snapshot_id"], "snap_api")
+        self.assertEqual(snapshot["state"]["jump_event_id"], "evt_snapshot")
 
     async def test_replay_api_routes_return_404_when_missing(self):
         async def missing_replay(*args, **kwargs):

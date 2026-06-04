@@ -2,6 +2,7 @@ import axios from "axios";
 import type {
   OpenMeshGraph,
   OpenMeshNodeInspection,
+  OpenMeshReplay,
   OpenMeshTimeline,
   OpenMeshTraceDetail,
   OpenMeshTraceSummary,
@@ -76,6 +77,16 @@ export const openmeshApi = {
     api.get<OpenMeshTimeline>("/openmesh/timeline", { params: { limit } }).then(r => r.data),
   traceTimeline: (traceId: string, limit?: number) =>
     api.get<OpenMeshTimeline>(`/openmesh/timeline/trace/${encodeURIComponent(traceId)}`, { params: { limit } }).then(r => r.data),
+  replayEcosystem: (params?: { control?: string; position?: number; timestamp?: string; event_id?: string; speed?: number; limit?: number }) =>
+    api.get<OpenMeshReplay>("/openmesh/replay/ecosystem", { params }).then(r => r.data),
+  replayTrace: (
+    traceId: string,
+    params?: { control?: string; position?: number; timestamp?: string; event_id?: string; speed?: number; limit?: number },
+  ) => api.get<OpenMeshReplay>(`/openmesh/replay/trace/${encodeURIComponent(traceId)}`, { params }).then(r => r.data),
+  replayWorkflow: (
+    workflowId: string,
+    params?: { control?: string; position?: number; timestamp?: string; event_id?: string; speed?: number; limit?: number },
+  ) => api.get<OpenMeshReplay>(`/openmesh/replay/workflow/${encodeURIComponent(workflowId)}`, { params }).then(r => r.data),
   ecosystem: () => api.get("/openmesh/ecosystem").then(r => r.data),
   localLlmMetrics: () => api.get("/openmesh/local-llm/metrics").then(r => r.data),
   runtimeMetrics: () => api.get("/openmesh/runtime/metrics").then(r => r.data),

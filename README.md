@@ -83,7 +83,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Ecosystem snapshots for freezing graph, discovery, traces, sessions, registries, and provenance at a point in time
 - Historical snapshot diffs for comparing nodes, relationships, workflows, MCP servers, capabilities, traces, sessions, and graph statistics across time
 - Historical timelines for navigating ecosystem, node, workflow, and trace evolution over time
-- Ecosystem replays for playing back timeline, snapshot, trace, and workflow evolution without creating a second graph model
+- Ecosystem and workflow replay for playing back timeline, snapshot, trace, workflow, handoff, and message evolution without creating a second graph model
 - Structured query engine for asking graph, trace, session, snapshot, MCP, and capability questions from existing OpenMesh state
 - Federation metadata registry for multiple OpenMesh instances, peers, snapshots, timelines, and replay summaries
 - Phase 1 LLM provider observation for OpenAI, Anthropic, and OpenRouter; see [docs/LLM_INTEGRATION.md](docs/LLM_INTEGRATION.md)
@@ -91,6 +91,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Phase 3 coding-agent runtime discovery and observation for Claude Code, Codex CLI, OpenCode, Aider, and Cursor; see [docs/RUNTIME_OBSERVABILITY.md](docs/RUNTIME_OBSERVABILITY.md)
 - Phase 4 MCP and tool ecosystem observability for MCP servers, tools, resources, and tool-call relationships; see [docs/MCP_OBSERVABILITY.md](docs/MCP_OBSERVABILITY.md)
 - Phase 5 multi-agent handoff observability for delegation, messages, workflow containment, review edges, and replay; see [docs/MULTI_AGENT_OBSERVABILITY.md](docs/MULTI_AGENT_OBSERVABILITY.md)
+- Phase 6 workflow replay and time travel controls for stepping through ecosystem history; see [docs/WORKFLOW_REPLAY.md](docs/WORKFLOW_REPLAY.md)
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
@@ -281,7 +282,8 @@ openmesh discover
 openmesh graph --details
 openmesh inspect openmesh.cli
 openmesh timeline
-openmesh replay --control step
+openmesh replay ecosystem --control step
+openmesh replay workflow workflow:openmesh:multi-agent-handoff-demo --control previous --position 8
 openmesh query relationships created since 2020-01-01T00:00:00Z
 openmesh tui --once
 ```
@@ -339,6 +341,9 @@ openmesh run-demo research --provider ollama --model hermes3
 openmesh run-demo multi-agent
 openmesh workflow inspect workflow:openmesh:multi-agent-handoff-demo
 openmesh workflow replay workflow:openmesh:multi-agent-handoff-demo
+openmesh replay ecosystem --control step
+openmesh replay trace <trace_id> --control jump --event-id <event_id>
+openmesh replay workflow workflow:openmesh:multi-agent-handoff-demo --control previous --position 8
 openmesh run -- <command>
 openmesh events
 openmesh traces

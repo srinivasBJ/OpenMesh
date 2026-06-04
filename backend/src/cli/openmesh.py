@@ -1238,6 +1238,14 @@ def _print_replay(replay: dict[str, Any]) -> None:
     print(
         f"position: {state.get('position')} / {max(state.get('frame_count', 0) - 1, 0)}"
     )
+    if state.get("speed") is not None:
+        print(f"speed: {state.get('speed')}x")
+    if state.get("jump_event_id") or state.get("jump_timestamp"):
+        print(
+            "jump: "
+            f"event={state.get('jump_event_id') or '-'} "
+            f"timestamp={state.get('jump_timestamp') or '-'}"
+        )
     print()
     print("Controls")
     for control in replay.get("controls", []):
@@ -1909,6 +1917,9 @@ async def _replay(args: argparse.Namespace) -> int:
             db,
             control=args.control,
             position=args.position,
+            timestamp=args.timestamp,
+            event_id=args.event_id,
+            speed=args.speed,
             limit=args.limit,
         )
         _print_replay(replay)
@@ -1924,6 +1935,9 @@ async def _replay_snapshot(args: argparse.Namespace) -> int:
             args.snapshot_id,
             control=args.control,
             position=args.position,
+            timestamp=args.timestamp,
+            event_id=args.event_id,
+            speed=args.speed,
         )
         if not replay:
             print(f"OpenMesh snapshot replay not found: {args.snapshot_id}")
@@ -1941,6 +1955,9 @@ async def _replay_trace(args: argparse.Namespace) -> int:
             args.trace_id,
             control=args.control,
             position=args.position,
+            timestamp=args.timestamp,
+            event_id=args.event_id,
+            speed=args.speed,
             limit=args.limit,
         )
         if not replay:
@@ -1959,6 +1976,9 @@ async def _replay_workflow(args: argparse.Namespace) -> int:
             args.workflow_id,
             control=args.control,
             position=args.position,
+            timestamp=args.timestamp,
+            event_id=args.event_id,
+            speed=args.speed,
             limit=args.limit,
         )
         if not replay:
@@ -2672,6 +2692,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     replay.set_defaults(func=_replay)
     replay_subparsers = replay.add_subparsers(dest="replay_command")
+    replay_ecosystem = replay_subparsers.add_parser(
+        "ecosystem", help="Replay OpenMesh ecosystem history."
+    )
+    _add_replay_options(replay_ecosystem)
+    replay_ecosystem.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive replay from.",
+    )
+    replay_ecosystem.set_defaults(func=_replay)
     replay_snapshot = replay_subparsers.add_parser(
         "snapshot", help="Replay one saved ecosystem snapshot."
     )
@@ -3110,7 +3141,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _add_replay_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--control",
-        choices=("start", "pause", "stop", "step"),
+        choices=("start", "pause", "stop", "step", "previous", "jump"),
         default="start",
         help="Playback control to apply to the derived replay.",
     )
@@ -3119,6 +3150,20 @@ def _add_replay_options(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=0,
         help="Frame position to start, pause, stop, or step from.",
+    )
+    parser.add_argument(
+        "--timestamp",
+        help="Jump to the latest replay frame at or before this ISO timestamp.",
+    )
+    parser.add_argument(
+        "--event-id",
+        help="Jump to the replay frame created by this event id.",
+    )
+    parser.add_argument(
+        "--speed",
+        type=float,
+        default=1.0,
+        help="Playback speed multiplier for consumers that animate replay output.",
     )
 
 

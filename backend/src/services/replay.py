@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..replay import PLAYBACK_CONTROLS, replay_metrics, resolve_replay_position
 from ..db.openmesh_snapshots import get_openmesh_snapshot, snapshot_record_to_detail
 from .timeline import (
     get_timeline,
@@ -12,18 +13,25 @@ from .timeline import (
 )
 
 
-PLAYBACK_CONTROLS = ("start", "pause", "stop", "step")
-
-
 async def get_replay(
     db: AsyncSession,
     *,
     control: str = "start",
     position: int = 0,
+    timestamp: str | None = None,
+    event_id: str | None = None,
+    speed: float = 1.0,
     limit: int = 5000,
 ) -> dict[str, Any]:
     timeline = await get_timeline(db, limit=limit)
-    return build_replay_from_timeline(timeline, control=control, position=position)
+    return build_replay_from_timeline(
+        timeline,
+        control=control,
+        position=position,
+        timestamp=timestamp,
+        event_id=event_id,
+        speed=speed,
+    )
 
 
 async def get_trace_replay(
@@ -32,12 +40,22 @@ async def get_trace_replay(
     *,
     control: str = "start",
     position: int = 0,
+    timestamp: str | None = None,
+    event_id: str | None = None,
+    speed: float = 1.0,
     limit: int = 5000,
 ) -> dict[str, Any] | None:
     timeline = await get_trace_timeline(db, trace_id, limit=limit)
     if not timeline:
         return None
-    return build_replay_from_timeline(timeline, control=control, position=position)
+    return build_replay_from_timeline(
+        timeline,
+        control=control,
+        position=position,
+        timestamp=timestamp,
+        event_id=event_id,
+        speed=speed,
+    )
 
 
 async def get_workflow_replay(
@@ -46,12 +64,22 @@ async def get_workflow_replay(
     *,
     control: str = "start",
     position: int = 0,
+    timestamp: str | None = None,
+    event_id: str | None = None,
+    speed: float = 1.0,
     limit: int = 5000,
 ) -> dict[str, Any] | None:
     timeline = await get_workflow_timeline(db, workflow_id, limit=limit)
     if not timeline:
         return None
-    return build_replay_from_timeline(timeline, control=control, position=position)
+    return build_replay_from_timeline(
+        timeline,
+        control=control,
+        position=position,
+        timestamp=timestamp,
+        event_id=event_id,
+        speed=speed,
+    )
 
 
 async def get_snapshot_replay(
@@ -60,16 +88,32 @@ async def get_snapshot_replay(
     *,
     control: str = "start",
     position: int = 0,
+    timestamp: str | None = None,
+    event_id: str | None = None,
+    speed: float = 1.0,
 ) -> dict[str, Any] | None:
     record = await get_openmesh_snapshot(db, snapshot_id)
     if not record:
         return None
     snapshot = snapshot_record_to_detail(record)
-    return build_replay_from_snapshot(snapshot, control=control, position=position)
+    return build_replay_from_snapshot(
+        snapshot,
+        control=control,
+        position=position,
+        timestamp=timestamp,
+        event_id=event_id,
+        speed=speed,
+    )
 
 
 def build_replay_from_timeline(
-    timeline: dict[str, Any], *, control: str = "start", position: int = 0
+    timeline: dict[str, Any],
+    *,
+    control: str = "start",
+    position: int = 0,
+    timestamp: str | None = None,
+    event_id: str | None = None,
+    speed: float = 1.0,
 ) -> dict[str, Any]:
     frames = _timeline_frames(timeline)
     return _replay_payload(
@@ -78,12 +122,21 @@ def build_replay_from_timeline(
         frames=frames,
         control=control,
         position=position,
+        timestamp=timestamp,
+        event_id=event_id,
+        speed=speed,
         source={"type": "timeline", "summary": timeline.get("summary", {})},
     )
 
 
 def build_replay_from_snapshot(
-    snapshot: dict[str, Any], *, control: str = "start", position: int = 0
+    snapshot: dict[str, Any],
+    *,
+    control: str = "start",
+    position: int = 0,
+    timestamp: str | None = None,
+    event_id: str | None = None,
+    speed: float = 1.0,
 ) -> dict[str, Any]:
     frames = _snapshot_frames(snapshot)
     return _replay_payload(
@@ -95,6 +148,9 @@ def build_replay_from_snapshot(
         frames=frames,
         control=control,
         position=position,
+        timestamp=timestamp,
+        event_id=event_id,
+        speed=speed,
         source={"type": "snapshot", "counts": snapshot.get("counts", {})},
     )
 
@@ -106,14 +162,24 @@ def _replay_payload(
     frames: list[dict[str, Any]],
     control: str,
     position: int,
+    timestamp: str | None,
+    event_id: str | None,
+    speed: float,
     source: dict[str, Any],
 ) -> dict[str, Any]:
     normalized_control = control if control in PLAYBACK_CONTROLS else "start"
     frame_count = len(frames)
-    current_position = _position_for_control(normalized_control, position, frame_count)
+    current_position = resolve_replay_position(
+        frames,
+        control=normalized_control,
+        position=position,
+        timestamp=timestamp,
+        event_id=event_id,
+    )
     visible_frames = (
         [] if normalized_control == "stop" else frames[: current_position + 1]
     )
+    metrics = replay_metrics(frames, visible_frames)
     return {
         "scope": scope,
         "subject": subject,
@@ -126,6 +192,14 @@ def _replay_payload(
                 "name": "step",
                 "description": "Advance one frame from the selected frame.",
             },
+            {
+                "name": "previous",
+                "description": "Move one frame backward from the selected frame.",
+            },
+            {
+                "name": "jump",
+                "description": "Jump to a timestamp or event id.",
+            },
         ],
         "state": {
             "control": normalized_control,
@@ -133,6 +207,12 @@ def _replay_payload(
             "position": current_position,
             "requested_position": max(position, 0),
             "next_position": min(current_position + 1, max(frame_count - 1, 0)),
+            "previous_position": max(current_position - 1, 0)
+            if current_position >= 0
+            else -1,
+            "jump_timestamp": timestamp,
+            "jump_event_id": event_id,
+            "speed": speed,
             "frame_count": frame_count,
             "visible_frame_count": len(visible_frames),
             "current_frame": frames[current_position]
@@ -141,16 +221,9 @@ def _replay_payload(
         },
         "frames": frames,
         "visible_frames": visible_frames,
-        "summary": _frame_summary(frames),
+        "metrics": metrics,
+        "summary": {**_frame_summary(frames), **metrics},
     }
-
-
-def _position_for_control(control: str, position: int, frame_count: int) -> int:
-    if frame_count == 0 or control == "stop":
-        return -1
-    if control == "step":
-        return min(max(position, 0) + 1, frame_count - 1)
-    return min(max(position, 0), frame_count - 1)
 
 
 def _status_for_control(control: str) -> str:
@@ -160,6 +233,10 @@ def _status_for_control(control: str) -> str:
         return "paused"
     if control == "step":
         return "stepped"
+    if control == "previous":
+        return "rewound"
+    if control == "jump":
+        return "jumped"
     return "stopped"
 
 
@@ -186,10 +263,17 @@ def _timeline_frames(timeline: dict[str, Any]) -> list[dict[str, Any]]:
                     )
                 )
         if source and target:
+            operation = change.get("operation")
+            relationship_action = (
+                "relationship.removed"
+                if operation == "removed"
+                or str(change.get("kind") or "").endswith(".removed")
+                else "relationship.created"
+            )
             frames.append(
                 _frame(
                     change.get("timestamp"),
-                    "relationship.created",
+                    relationship_action,
                     category="relationship",
                     description=(
                         f"{source_name} {change.get('relationship_type')} {target_name}"
@@ -375,14 +459,16 @@ def _event_frames(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for entry in entries:
         if entry.get("kind") != "event":
             continue
+        event_type = str(entry.get("event_type") or "")
+        action, category = _event_replay_action(event_type)
         frames.append(
             _frame(
                 entry.get("timestamp"),
-                "event.observed",
-                category="event",
+                action,
+                category=category,
                 description=f"{entry.get('event_type')} {entry.get('source') or '-'} -> {entry.get('target') or '-'}",
                 event_id=entry.get("event_id"),
-                event_type=entry.get("event_type"),
+                event_type=event_type,
                 trace_id=entry.get("trace_id"),
                 session_id=entry.get("session_id"),
                 source=entry.get("source"),
@@ -390,6 +476,16 @@ def _event_frames(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
             )
         )
     return frames
+
+
+def _event_replay_action(event_type: str) -> tuple[str, str]:
+    if event_type in {"workflow.started", "workflow.completed"}:
+        return event_type, "workflow"
+    if event_type.startswith("agent.handoff."):
+        return "handoff.occurred", "handoff"
+    if event_type.startswith("agent.message."):
+        return "message.exchanged", "message"
+    return "event.observed", "event"
 
 
 def _frame(
@@ -427,6 +523,9 @@ def _frame_summary(frames: list[dict[str, Any]]) -> dict[str, int]:
         "mcp": 0,
         "sessions": 0,
         "snapshots": 0,
+        "handoffs": 0,
+        "messages": 0,
+        "events": 0,
     }
     for frame in frames:
         category = frame.get("category")
@@ -444,4 +543,10 @@ def _frame_summary(frames: list[dict[str, Any]]) -> dict[str, int]:
             summary["sessions"] += 1
         elif category == "snapshot":
             summary["snapshots"] += 1
+        elif category == "handoff":
+            summary["handoffs"] += 1
+        elif category == "message":
+            summary["messages"] += 1
+        elif category == "event":
+            summary["events"] += 1
     return summary

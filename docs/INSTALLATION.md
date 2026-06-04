@@ -74,7 +74,7 @@ openmesh discover
 openmesh graph --details
 openmesh inspect openmesh.cli
 openmesh timeline
-openmesh replay --control step
+openmesh replay ecosystem --control step
 openmesh query relationships created since 2020-01-01T00:00:00Z
 openmesh tui --once
 ```
@@ -102,8 +102,8 @@ openmesh doctor
 openmesh discover
 openmesh graph --details
 openmesh timeline
-openmesh replay --control step
-openmesh query traces involving research-agent
+openmesh replay ecosystem --control step
+openmesh query --limit 1000 agents using web_search
 ```
 
 ## Backend API

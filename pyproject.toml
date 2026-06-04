@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Terminal-first observability and ecosystem registry for AI agents."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
-license = { text = "MIT" }
+license = "MIT"
 authors = [
   { name = "OpenMesh Contributors" }
 ]
@@ -24,7 +24,6 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Topic :: Software Development :: Libraries :: Python Modules",
@@ -51,9 +50,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/srinivasBJ/OpenMeshAI"
-Repository = "https://github.com/srinivasBJ/OpenMeshAI"
-Issues = "https://github.com/srinivasBJ/OpenMeshAI/issues"
+Homepage = "https://github.com/srinivasBJ/OpenMesh"
+Repository = "https://github.com/srinivasBJ/OpenMesh"
+Issues = "https://github.com/srinivasBJ/OpenMesh/issues"
 
 [tool.setuptools]
 include-package-data = true
@@ -67,10 +66,15 @@ packages = [
   "src.cli",
   "src.core",
   "src.db",
+  "src.db.migrations",
+  "src.exporters",
+  "src.failures",
+  "src.genome",
   "src.jobs",
   "src.mcp",
   "src.providers",
   "src.replay",
+  "src.reputation",
   "src.runtimes",
   "src.sdk",
   "src.sdk.integrations",

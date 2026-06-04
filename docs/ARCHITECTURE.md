@@ -1,5 +1,9 @@
 # OpenMesh Architecture
 
+For the v1.0 alpha subsystem inventory, see
+[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md). This file keeps the shorter
+event-flow overview.
+
 Current event flow:
 
 ```text
@@ -35,6 +39,10 @@ Core backend pieces:
 - `backend/src/sdk/integrations/opencode.py`: OpenCode metadata integration.
 - `backend/src/cli/openmesh.py`: terminal consumer and process observer.
 - `backend/src/cli/tui.py`: terminal control-room UI.
+- `backend/src/failures/`: failure taxonomy and classification.
+- `backend/src/reputation/`: agent reputation scoring.
+- `backend/src/genome/`: behavioral genome profiles.
+- `backend/src/exporters/`: OpenTelemetry, Jaeger, Datadog, Tempo, and Prometheus export payloads.
 
 Protocol:
 

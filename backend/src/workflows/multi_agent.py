@@ -50,7 +50,7 @@ async def run_multi_agent_demo(
     messages: int = 60,
     broadcast: bool = False,
 ) -> dict[str, Any]:
-    agent_count = min(max(agents, 4), 6)
+    agent_count = min(max(agents, 4), len(MULTI_AGENT_AGENT_SPECS))
     handoff_count = max(handoffs, 20)
     message_count = max(messages, 50)
     selected_agents = [

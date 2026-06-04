@@ -1,52 +1,25 @@
-# Contributing To OpenMeshAI
+# Contributing To OpenMesh
 
-Thanks for helping build OpenMeshAI. The project is early, and thoughtful structure matters as much as new features right now.
+OpenMesh is in v1.0 alpha hardening. Contributions are most valuable when they
+make the product easier to install, validate, observe, and understand.
 
-## What We Are Building
-
-OpenMeshAI is an open-source platform for observing, understanding, and managing AI agent ecosystems.
-
-The current app is a working prototype with simulated agents. The long-term platform is an agent mesh: identity, runtime, social, observability, and collaboration layers for AI systems.
-
-When contributing, clearly separate:
-
-- Existing behavior
-- Incremental implementation work
-- Future-facing design
-
-## Best First Contributions
-
-Good starter areas:
-
-- Improve docs and examples.
-- Add tests around existing behavior.
-- Split large files into clearer modules.
-- Add TypeScript types for API responses.
-- Improve error states and empty states in the UI.
-- Replace outdated AgentVerse wording.
-- Improve local setup reliability.
-
-See [GOOD_FIRST_ISSUES.md](GOOD_FIRST_ISSUES.md).
-
-## Development Setup
-
-### Backend
+## Setup
 
 ```bash
-cp backend/.env.example backend/.env
-docker compose up -d postgres redis
-cd backend
-pip install -r requirements.txt
-uvicorn src.main:app --reload --port 8000
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+
+export OPENMESH_DB_MODE=sqlite
+export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
+export OPENMESH_SCHEDULER_ENABLED=0
+
+openmesh doctor
+openmesh simulate --agents 8 --events 100
 ```
 
-Use offline mode for low-friction local development:
-
-```env
-LLM_MODE=offline
-```
-
-### Frontend
+Frontend:
 
 ```bash
 cd frontend
@@ -54,61 +27,35 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`.
+## Before A Pull Request
 
-## Before Opening A Pull Request
-
-Run the checks that apply to your change.
-
-Backend:
+Run:
 
 ```bash
-cd backend
-ruff check src/
+ruff check .
+ruff format --check .
+python -m compileall backend/src
+python -m unittest discover -s backend/tests
+cd frontend && npm run build
 ```
 
-Frontend:
+## Contribution Guidelines
 
-```bash
-cd frontend
-npm run build
-```
+- Preserve the single event pipeline.
+- Do not add alternate graph, replay, timeline, or registry storage.
+- Prefer SQLite-first local workflows.
+- Keep optional integrations optional.
+- Update docs when commands, setup, API routes, or behavior change.
+- Add tests for collector, persistence, graph, trace, replay, diagnostics, or CLI
+  changes.
+- Keep frontend changes accessible and avoid blank pages.
 
-If you add tests, include the test command in your PR description.
+## Good First Areas
 
-## Coding Guidelines
+- Documentation and examples.
+- CLI help text and error messages.
+- Tests around existing commands.
+- Frontend empty states and route resilience.
+- Packaging and install validation.
 
-### Backend
-
-- Keep route handlers small when touching API code.
-- Prefer domain modules over growing `backend/src/api/routes/main.py`.
-- Keep provider-specific model calls out of simulator logic once the provider abstraction exists.
-- Use structured schemas for request and response shapes.
-- Add tests when changing persistence, security, scheduler behavior, or event emission.
-- Preserve `LLM_MODE=offline`.
-
-### Frontend
-
-- Follow the existing React, Vite, TanStack Query, Zustand, and Tailwind setup.
-- Avoid broad visual rewrites unless the issue is specifically design-related.
-- Add reusable types for API responses instead of spreading `any` further.
-- Keep screens useful for operators: dense, inspectable, and clear.
-
-### Documentation
-
-- Be explicit about what exists today and what is planned.
-- Avoid implying that mesh, CLI, SDK, external agents, or provider registry features exist before they are implemented.
-- Prefer examples that contributors can run locally.
-
-## Pull Request Checklist
-
-- The change has a clear purpose.
-- Documentation was updated if behavior or setup changed.
-- Current functionality and planned functionality are not mixed together.
-- Relevant checks were run locally.
-- New environment variables were added to `backend/.env.example`.
-- New API endpoints are listed in README or architecture docs if public.
-
-## Community Standards
-
-Participation is covered by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Community behavior is governed by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

@@ -2473,12 +2473,13 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         ):
             result = await run_multi_agent_demo(
                 db,
-                agents=5,
+                agents=6,
                 handoffs=22,
                 messages=55,
                 broadcast=False,
             )
 
+        self.assertEqual(len(result["agents"]), 5)
         records = [record for record in db.added if getattr(record, "event_id", None)]
         event_types = [record.event_type for record in records]
         self.assertIn("workflow.started", event_types)

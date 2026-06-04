@@ -3653,7 +3653,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--agents",
         type=int,
         default=5,
-        help="Number of agents to include, clamped to 4-6.",
+        help="Number of agents to include, clamped to the built-in demo roster.",
     )
     multi_agent_demo.add_argument(
         "--handoffs",

@@ -1,4 +1,4 @@
-name: AgentVerse CI
+name: OpenMesh CI
 
 on:
   push:

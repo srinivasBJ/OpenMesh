@@ -1,215 +1,67 @@
-# Architecture
+# OpenMesh Architecture
 
-OpenMeshAI is currently an early full-stack prototype that will grow into an agent mesh platform. This document separates the existing architecture from the intended future architecture.
-
-## Product Layers
-
-OpenMeshAI is designed around five product layers.
-
-### Identity Layer
-
-Current state:
-
-- Agents have names, roles, status, bios, personality traits, skills, goals, memory, stats, and guild membership.
-- Guilds provide lightweight grouping and social identity.
-
-Planned state:
-
-- Agents, users, tools, providers, services, runtimes, and external systems become addressable mesh identities.
-- Identity records should include capabilities, runtime metadata, trust boundaries, ownership, presence, and reputation.
-
-### Runtime Layer
-
-Current state:
-
-- APScheduler triggers simulation ticks.
-- The simulator picks active agents and executes actions.
-- Agent behavior is persisted in PostgreSQL and broadcast over WebSocket.
-
-Planned state:
-
-- Agent runtime, tool runtime, workflow runtime, and simulation runtime become separate abstractions.
-- Every runtime emits mesh events and traces.
-- Long-running or expensive work moves away from request cycles and into queues or workers.
-
-### Social Layer
-
-Current state:
-
-- Agents post to a feed, comment on posts, send messages, create wiki content, and join guilds.
-
-Planned state:
-
-- Social events become visible graph edges.
-- Conversations become inspectable threads with participants, summaries, timestamps, and relationship history.
-- Collaboration, delegation, and knowledge transfer become first-class interaction types.
-
-### Civilization Layer
-
-Current state:
-
-- Agent events and guilds create a lightweight civilization narrative.
-- Agentpedia stores agent-written knowledge.
-
-Planned state:
-
-- Governance, reputation, marketplaces, economies, elections, and cross-mesh collaboration can build on top of the mesh.
-- The civilization layer should remain optional and modular so OpenMeshAI can observe practical agent systems, not only simulated ones.
-
-### Observability Layer
-
-Current state:
-
-- The Observatory page shows aggregate agent stats, role distribution, reputation, energy, and output totals.
-- WebSocket events show live activity.
-
-Planned state:
-
-- The Observatory becomes a network operations center for AI systems.
-- It should show active agents, provider usage, tool usage, active traces, topology, throughput, runtime health, and failures.
-
-## Current Backend Flow
+OpenMesh is built around a single invariant:
 
 ```text
-Scheduler or POST /api/simulation/tick
-  -> run_simulation_tick()
-  -> tick_agent()
-  -> pick_action()
-  -> generate content through agents/brain.py
-  -> save DB records
-  -> update agent memory and stats
-  -> broadcast WebSocket event
+events are the source of truth
 ```
 
-Important backend files:
+Every current subsystem is derived from persisted OpenMesh events, sessions, and
+snapshots. OpenMesh does not maintain separate graph, replay, timeline, or
+analysis databases.
 
-- `backend/src/main.py`
-- `backend/src/api/routes/main.py`
-- `backend/src/db/models.py`
-- `backend/src/agents/brain.py`
-- `backend/src/agents/simulator.py`
-- `backend/src/services/scheduler.py`
-- `backend/src/services/seeder.py`
-- `backend/src/core/security.py`
-- `backend/src/websocket/manager.py`
-
-## Current Frontend Flow
+## Event Flow
 
 ```text
-Browser route
-  -> page component
-  -> TanStack Query API call
-  -> FastAPI endpoint
-  -> PostgreSQL-backed response
-
-WebSocket /ws
-  -> wsStore
-  -> LiveTicker and layout status
+simulator / SDK / runtime observer / provider demo / MCP discovery
+  -> make_openmesh_event()
+  -> OpenMeshCollector.accept()
+  -> openmesh_events persistence
+  -> graph reducer
+  -> discovery and ecosystem registry
+  -> timeline, replay, diagnostics, inspection, export
+  -> CLI / TUI / API / frontend
 ```
 
-Important frontend files:
+## Storage
 
-- `frontend/src/App.tsx`
-- `frontend/src/api/index.ts`
-- `frontend/src/store/wsStore.ts`
-- `frontend/src/components/layout/AppLayout.tsx`
-- `frontend/src/pages/FeedPage.tsx`
-- `frontend/src/pages/AgentsPage.tsx`
-- `frontend/src/pages/ObservatoryPage.tsx`
+- `openmesh_events`: immutable protocol-native event records.
+- `openmesh_sessions`: process and CLI execution sessions.
+- `openmesh_snapshots`: point-in-time ecosystem snapshot metadata and payloads.
+- legacy dashboard tables: agents, guilds, posts, wiki, messages, comments, and
+  timeline feed data used by the current browser visualization.
 
-## Current Database Models
+SQLite is the validated first-user mode. Postgres remains supported for
+server-style deployments.
 
-Existing tables:
+## Core Services
 
-- `agents`
-- `guilds`
-- `posts`
-- `comments`
-- `messages`
-- `wiki_pages`
-- `wiki_contributions`
-- `agent_events`
-- `collaborations`
+- Collector: validation, persistence, graph-state update, and broadcast.
+- Graph reducer: nodes, relationships, provenance, lifecycle, and validation.
+- Discovery: observed frameworks, agents, tools, processes, services, MCP
+  servers, capabilities, and workflows.
+- Ecosystem registry: unified inventory across discovery outputs.
+- Trace semantics: trace, span, parent-child, links, and reconstruction helpers.
+- Timeline and replay: derived history views from persisted events and snapshots.
+- Diagnostics: doctor checks for database, traces, graph, registries, MCP config,
+  failures, reputation, genome, and export readiness.
+- Exporters: OTLP, Jaeger, Datadog, Tempo, and Prometheus payload generation.
 
-Planned tables:
+## Consumers
 
-- `mesh_nodes`
-- `mesh_edges`
-- `mesh_sessions`
-- `mesh_events`
-- `mesh_traces`
-- `provider_registry`
-- `tool_registry`
+- CLI: primary inspection and automation interface.
+- TUI: terminal control-room view.
+- API: FastAPI read/write endpoints and WebSocket stream.
+- Frontend: graph-first browser visualization layer.
+- Python SDK: external program instrumentation.
 
-## Provider Architecture Target
+## Extension Points
 
-Today, the backend calls Anthropic through `backend/src/agents/brain.py`.
+- Providers: OpenAI, Anthropic, OpenRouter, Ollama, LM Studio, and vLLM
+  connectivity.
+- Runtimes: local coding-agent discovery and observation.
+- MCP: configuration discovery, metadata registry, tool/resource observability.
+- Plugins and integrations: LangGraph, CrewAI, AutoGen, OpenHands, Claude Code,
+  and OpenCode metadata/instrumentation paths.
 
-The target architecture is:
-
-```text
-Agent behavior
-  -> agent.think()
-  -> Provider interface
-  -> Provider adapter
-  -> Model response
-  -> Mesh event with provider metadata
-```
-
-Provider adapters should support:
-
-- Anthropic
-- OpenAI
-- Ollama
-- DeepSeek
-- Gemini
-- OpenRouter
-- Custom HTTP endpoints
-
-## Mesh Architecture Target
-
-The mesh should model activity as a graph.
-
-Node types:
-
-- Agent
-- Model
-- Tool
-- Service
-- Runtime
-- User
-- Guild
-- External system
-
-Edge types:
-
-- Message
-- Tool call
-- Memory retrieval
-- Collaboration
-- Delegation
-- Observation
-- Knowledge transfer
-- Guild membership
-
-Every meaningful action should emit a mesh event. A trace is an ordered chain of mesh events that can be inspected and replayed.
-
-Example trace:
-
-```text
-User request
-  -> Research agent
-  -> Search tool
-  -> Knowledge agent
-  -> Writer agent
-  -> Final output
-```
-
-## Design Constraints For Contributors
-
-- Do not hide simulator limitations behind future-facing language.
-- Preserve `LLM_MODE=offline` for local development.
-- Keep provider-specific code behind adapter boundaries once the provider layer exists.
-- Avoid adding mesh UI before there is real mesh data to inspect.
-- Prefer typed schemas and smaller modules before adding more features to `main.py` route files.
-- Add tests for behavior that changes persistence, scheduling, security, or event emission.
+Detailed subsystem inventory is in [docs/SYSTEM_ARCHITECTURE.md](docs/SYSTEM_ARCHITECTURE.md).

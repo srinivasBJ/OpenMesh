@@ -33,6 +33,12 @@ from ..services.federation import (
     get_federation_registry,
     inspect_federation_node,
 )
+from ..services.distributed_nodes import (
+    DISTRIBUTED_NODE_TYPES,
+    get_distributed_node_registry,
+    get_node_status,
+    register_distributed_node,
+)
 from ..services.graph_exploration import (
     explore_graph_node,
     filter_graph,
@@ -1370,6 +1376,70 @@ def _print_federation_inspection(inspection: dict[str, Any]) -> None:
         print(f"  {key}: {value}")
 
 
+def _print_node_status(status: dict[str, Any]) -> None:
+    local = status.get("local_node", {})
+    summary = status.get("summary", {})
+    observed = status.get("observed_node")
+    print("OpenMesh Node Status")
+    print()
+    print(f"node_id: {local.get('node_id')}")
+    print(f"node_name: {local.get('node_name')}")
+    print(f"node_type: {local.get('node_type')}")
+    print(f"config_path: {local.get('config_path')}")
+    print(f"registered: {'yes' if status.get('registered') else 'no'}")
+    if observed:
+        print(f"status: {observed.get('status')}")
+        print(f"last_seen: {observed.get('last_seen') or '-'}")
+        print(f"uptime_seconds: {observed.get('uptime_seconds', 0)}")
+    print()
+    print("Registry")
+    print(f"  active_nodes: {summary.get('active_nodes', 0)}")
+    print(f"  hosted_agents: {summary.get('hosted_agents', 0)}")
+    print(f"  hosted_runtimes: {summary.get('hosted_runtimes', 0)}")
+    print(f"  hosted_mcp_servers: {summary.get('hosted_mcp_servers', 0)}")
+
+
+def _print_distributed_node_registry(registry: dict[str, Any]) -> None:
+    nodes = registry.get("nodes", [])
+    summary = registry.get("summary", {})
+    print("OpenMesh Nodes")
+    print()
+    print(
+        f"nodes: {summary.get('node_count', 0)}  "
+        f"active: {summary.get('active_nodes', 0)}  "
+        f"host relationships: {summary.get('host_relationships', 0)}"
+    )
+    print()
+    if not nodes:
+        print("No distributed OpenMesh nodes observed.")
+        return
+    print(
+        f"{'node':<28} {'type':<12} {'status':<10} "
+        f"{'agents':>6} {'runtime':>7} {'mcp':>5} last_seen"
+    )
+    for node in nodes:
+        hosted = node.get("hosted_counts", {})
+        print(
+            f"{_short(node.get('node_name'), 28):<28} "
+            f"{_short(node.get('node_type'), 12):<12} "
+            f"{_short(node.get('status'), 10):<10} "
+            f"{hosted.get('agents', 0):>6} "
+            f"{hosted.get('runtimes', 0):>7} "
+            f"{hosted.get('mcp_servers', 0):>5} "
+            f"{node.get('last_seen') or '-'}"
+        )
+
+
+def _print_node_registration(result: dict[str, Any]) -> None:
+    node = result.get("node", {})
+    print("OpenMesh Node Registered")
+    print()
+    print(f"node_id: {node.get('node_id')}")
+    print(f"node_name: {node.get('node_name')}")
+    print(f"node_type: {node.get('node_type')}")
+    print(f"events: {len(result.get('events', []))}")
+
+
 def _print_evaluation(report: dict[str, Any]) -> None:
     print("OpenMesh Evaluation")
     print()
@@ -1416,6 +1486,10 @@ def _print_simulation_summary(summary: dict[str, Any]) -> None:
         "events",
         "tool_calls",
         "workflows",
+        "distributed_nodes",
+        "host_relationships",
+        "runtimes",
+        "mcp_servers",
         "messages",
         "posts",
         "wiki_articles",
@@ -2138,6 +2212,39 @@ async def _federation_inspect(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _node_status(args: argparse.Namespace) -> int:
+    async def run(db):
+        status = await get_node_status(db, limit=args.limit)
+        _print_node_status(status)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _node_register(args: argparse.Namespace) -> int:
+    async def run(db):
+        result = await register_distributed_node(
+            db,
+            node_id=args.node_id,
+            node_name=args.name,
+            node_type=args.type,
+            broadcast=False,
+        )
+        _print_node_registration(result)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _node_list(args: argparse.Namespace) -> int:
+    async def run(db):
+        registry = await get_distributed_node_registry(db, limit=args.limit)
+        _print_distributed_node_registry(registry)
+        return 0
+
+    return await _with_db(run)
+
+
 async def _evaluate(args: argparse.Namespace) -> int:
     report = await run_evaluation_suite(
         args.sizes,
@@ -2154,8 +2261,11 @@ async def _simulate(args: argparse.Namespace) -> int:
     if args.agents < 2:
         print("openmesh simulate requires at least 2 agents.")
         return 2
-    if args.events < args.agents:
-        print("openmesh simulate requires --events to be >= --agents.")
+    if args.nodes < 0:
+        print("openmesh simulate requires --nodes to be >= 0.")
+        return 2
+    if args.events < args.agents + args.nodes:
+        print("openmesh simulate requires --events to be >= --agents + --nodes.")
         return 2
 
     async def run(db):
@@ -2163,6 +2273,7 @@ async def _simulate(args: argparse.Namespace) -> int:
             db,
             agent_count=args.agents,
             event_count=args.events,
+            node_count=args.nodes,
             seed=args.seed,
             broadcast=False,
         )
@@ -2860,6 +2971,42 @@ def build_parser() -> argparse.ArgumentParser:
     )
     federation_peers.set_defaults(func=_federation_peers)
 
+    node = subparsers.add_parser(
+        "node", help="Manage this OpenMesh installation's distributed node identity."
+    )
+    node_subparsers = node.add_subparsers(dest="node_command", required=True)
+    node_status = node_subparsers.add_parser(
+        "status", help="Show local node identity and observed registry status."
+    )
+    node_status.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive node registry status from.",
+    )
+    node_status.set_defaults(func=_node_status)
+    node_register = node_subparsers.add_parser(
+        "register", help="Register this OpenMesh installation in the event graph."
+    )
+    node_register.add_argument("--node-id", help="Stable node id to register.")
+    node_register.add_argument("--name", help="Human-readable node name.")
+    node_register.add_argument(
+        "--type",
+        choices=DISTRIBUTED_NODE_TYPES,
+        help="Installation type.",
+    )
+    node_register.set_defaults(func=_node_register)
+    node_list = node_subparsers.add_parser(
+        "list", help="List observed distributed OpenMesh nodes."
+    )
+    node_list.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive distributed node registry from.",
+    )
+    node_list.set_defaults(func=_node_list)
+
     evaluate = subparsers.add_parser(
         "evaluate", help="Run synthetic OpenMesh performance benchmarks."
     )
@@ -2896,6 +3043,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=300,
         help="Number of OpenMesh events to persist.",
+    )
+    simulate.add_argument(
+        "--nodes",
+        type=int,
+        default=0,
+        help="Number of distributed OpenMesh nodes to generate.",
     )
     simulate.add_argument(
         "--seed",

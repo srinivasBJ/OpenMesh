@@ -90,6 +90,20 @@ WIKI_TOPICS: tuple[tuple[str, str], ...] = (
     ("Simulation Field Report", "Synthetic ecosystem observations for demos."),
 )
 
+DISTRIBUTED_NODE_BLUEPRINTS: tuple[tuple[str, str], ...] = (
+    ("laptop", "Field Laptop"),
+    ("workstation", "Control Workstation"),
+    ("server", "Rack Server"),
+    ("cloud", "Cloud Relay"),
+)
+
+MCP_SERVER_BLUEPRINTS: tuple[tuple[str, str], ...] = (
+    ("filesystem-server", "stdio"),
+    ("github-server", "http"),
+    ("memory-server", "stdio"),
+    ("postgres-server", "tcp"),
+)
+
 
 @dataclass
 class SimulationTrace:
@@ -155,24 +169,85 @@ def _file_graph_node(run_id: str, title: str) -> dict[str, Any]:
     }
 
 
+def _distributed_graph_node(
+    run_id: str, index: int, kind: str, name: str
+) -> dict[str, Any]:
+    node_name = f"{name} {run_id}"
+    return {
+        "node_id": f"openmesh-node:sim:{run_id}:{kind}:{index:02d}",
+        "node_type": "openmesh_node",
+        "name": node_name,
+        "runtime": "openmesh.simulator",
+        "metadata": {
+            "node_type": kind,
+            "node_kind": kind,
+            "hostname": f"{_slug(name)}-{run_id}",
+            "platform": "simulation",
+            "status": "active",
+        },
+    }
+
+
+def _runtime_graph_node(run_id: str, index: int, host_kind: str) -> dict[str, Any]:
+    executable = {
+        "laptop": "codex",
+        "workstation": "claude",
+        "server": "opencode",
+        "cloud": "openmesh-worker",
+    }.get(host_kind, "openmesh-worker")
+    return {
+        "node_id": f"runtime:sim:{run_id}:{host_kind}:{index:02d}",
+        "node_type": "runtime",
+        "name": f"{host_kind.title()} Runtime",
+        "runtime": "openmesh.simulator",
+        "metadata": {
+            "executable": executable,
+            "status": "active",
+            "detected": True,
+        },
+    }
+
+
+def _mcp_graph_node(
+    run_id: str, index: int, name: str, transport: str
+) -> dict[str, Any]:
+    return {
+        "node_id": f"mcp:sim:{run_id}:{_slug(name)}:{index:02d}",
+        "node_type": "mcp_server",
+        "name": name,
+        "runtime": "openmesh.simulator",
+        "metadata": {
+            "transport": transport,
+            "endpoint": f"simulation://{_slug(name)}",
+            "version": "sim-0.2",
+        },
+    }
+
+
 async def run_local_simulation(
     db: AsyncSession,
     *,
     agent_count: int = 14,
     event_count: int = 300,
+    node_count: int = 0,
     seed: int | None = None,
     broadcast: bool = False,
 ) -> dict[str, Any]:
     if agent_count < 2:
         raise ValueError("--agents must be at least 2")
-    if event_count < agent_count:
-        raise ValueError("--events must be greater than or equal to --agents")
+    if node_count < 0:
+        raise ValueError("--nodes must be greater than or equal to 0")
+    minimum_events = agent_count + node_count
+    if event_count < minimum_events:
+        raise ValueError("--events must be greater than or equal to --agents + --nodes")
 
     rng = random.Random(seed)
     run_id = uuid4().hex[:8]
     session_id = f"sess_sim_{run_id}"
     started_at = datetime.utcnow()
     command = f"openmesh simulate --agents {agent_count} --events {event_count}"
+    if node_count:
+        command = f"{command} --nodes {node_count}"
     if seed is not None:
         command = f"{command} --seed {seed}"
 
@@ -209,8 +284,12 @@ async def run_local_simulation(
 
     emitted: list[dict[str, Any]] = []
     tool_calls = 0
+    host_relationships = 0
     traces = _create_trace_contexts(run_id, agent_nodes, rng, event_count)
     tool_nodes = [_tool_graph_node(name) for name, _ in TOOL_BLUEPRINTS]
+    distributed_nodes = _create_distributed_nodes(run_id, node_count)
+    runtime_nodes = _create_runtime_nodes(run_id, distributed_nodes)
+    mcp_nodes = _create_mcp_nodes(run_id, distributed_nodes)
 
     async def emit(
         event_type: str,
@@ -255,6 +334,19 @@ async def run_local_simulation(
             trace.last_event_id = event["event_id"]
         return event
 
+    for node in distributed_nodes:
+        await emit(
+            "node.joined",
+            node,
+            {
+                "simulation_run_id": run_id,
+                "node_id": node["node_id"],
+                "node_name": node["name"],
+                "node_type": node["metadata"]["node_type"],
+                "status": "active",
+            },
+        )
+
     for node in agent_nodes:
         await emit(
             "agent.registered",
@@ -265,6 +357,47 @@ async def run_local_simulation(
                 "role": node["metadata"]["role"],
             },
         )
+
+    if distributed_nodes:
+        for index, target in enumerate(agent_nodes):
+            event = await emit(
+                "node.heartbeat",
+                distributed_nodes[index % len(distributed_nodes)],
+                {
+                    "simulation_run_id": run_id,
+                    "relationship_type": "hosts",
+                    "hosted_type": "agent",
+                    "status": "active",
+                },
+                target=target,
+            )
+            host_relationships += 1 if event else 0
+        for index, target in enumerate(runtime_nodes):
+            event = await emit(
+                "node.heartbeat",
+                distributed_nodes[index % len(distributed_nodes)],
+                {
+                    "simulation_run_id": run_id,
+                    "relationship_type": "hosts",
+                    "hosted_type": "runtime",
+                    "status": "active",
+                },
+                target=target,
+            )
+            host_relationships += 1 if event else 0
+        for index, target in enumerate(mcp_nodes):
+            event = await emit(
+                "node.heartbeat",
+                distributed_nodes[index % len(distributed_nodes)],
+                {
+                    "simulation_run_id": run_id,
+                    "relationship_type": "hosts",
+                    "hosted_type": "mcp_server",
+                    "status": "active",
+                },
+                target=target,
+            )
+            host_relationships += 1 if event else 0
 
     for trace in traces:
         await emit(
@@ -470,6 +603,10 @@ async def run_local_simulation(
         "events": len(emitted),
         "tool_calls": tool_calls,
         "workflows": len(traces),
+        "distributed_nodes": len(distributed_nodes),
+        "host_relationships": host_relationships,
+        "runtimes": len(runtime_nodes),
+        "mcp_servers": len(mcp_nodes),
         "messages": len(messages),
         "posts": len(posts),
         "wiki_articles": len(wiki_pages),
@@ -525,6 +662,37 @@ async def _emit_tool_call(
         links=[{"event_id": start_event["event_id"], "type": "follows"}],
     )
     return start_event
+
+
+def _create_distributed_nodes(run_id: str, node_count: int) -> list[dict[str, Any]]:
+    nodes = []
+    for index in range(node_count):
+        kind, name = DISTRIBUTED_NODE_BLUEPRINTS[
+            index % len(DISTRIBUTED_NODE_BLUEPRINTS)
+        ]
+        nodes.append(_distributed_graph_node(run_id, index + 1, kind, name))
+    return nodes
+
+
+def _create_runtime_nodes(
+    run_id: str, distributed_nodes: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    return [
+        _runtime_graph_node(run_id, index + 1, node["metadata"]["node_type"])
+        for index, node in enumerate(distributed_nodes)
+    ]
+
+
+def _create_mcp_nodes(
+    run_id: str, distributed_nodes: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    if not distributed_nodes:
+        return []
+    count = min(len(distributed_nodes), len(MCP_SERVER_BLUEPRINTS))
+    return [
+        _mcp_graph_node(run_id, index + 1, name, transport)
+        for index, (name, transport) in enumerate(MCP_SERVER_BLUEPRINTS[:count])
+    ]
 
 
 def _create_guilds(run_id: str) -> list[Guild]:

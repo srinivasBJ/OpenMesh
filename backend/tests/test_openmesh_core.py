@@ -86,6 +86,10 @@ from src.services.ecosystem_registry import (
     build_ecosystem_registry,
     validate_ecosystem_entities,
 )
+from src.services.distributed_nodes import (
+    build_distributed_node_registry,
+    register_distributed_node,
+)
 from src.services.federation import (
     build_federation_registry,
     discover_federation_peers,
@@ -171,6 +175,9 @@ from src.cli.openmesh import (
     _print_mcp,
     _print_mcp_config,
     _print_mcp_discovery,
+    _print_distributed_node_registry,
+    _print_node_registration,
+    _print_node_status,
     _print_plugin_detail,
     _print_plugin_validation,
     _print_plugins,
@@ -1367,11 +1374,27 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
             node_type_definition("federation_node")["display_name"],
             "Federation Node",
         )
+        self.assertEqual(
+            node_type_definition("openmesh_node")["display_name"],
+            "OpenMesh Node",
+        )
         self.assertEqual(relationship_definition("uses")["name"], "uses")
         self.assertEqual(
             validate_relationship(
                 "federates_with", "federation_node", "federation_node"
             )["status"],
+            "valid",
+        )
+        self.assertEqual(
+            validate_relationship("hosts", "openmesh_node", "agent")["status"],
+            "valid",
+        )
+        self.assertEqual(
+            validate_relationship("hosts", "openmesh_node", "runtime")["status"],
+            "valid",
+        )
+        self.assertEqual(
+            validate_relationship("hosts", "openmesh_node", "mcp_server")["status"],
             "valid",
         )
         self.assertEqual(
@@ -1407,6 +1430,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
                 "agent.message.sent", source_type="agent", target_type="agent"
             ),
             "communicates_with",
+        )
+        self.assertEqual(
+            relationship_type_for(
+                "node.heartbeat", source_type="openmesh_node", target_type="agent"
+            ),
+            "hosts",
         )
         self.assertEqual(
             relationship_type_for(
@@ -1482,6 +1511,110 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(len(discovery["agents"]), 10)
         self.assertGreaterEqual(len(discovery["tools"]), 4)
         self.assertGreaterEqual(len(discovery["workflows"]), 3)
+
+    async def test_distributed_node_registration_persists_events(self):
+        db = FakeAsyncSession()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = str(Path(tmpdir) / "node.json")
+            with patch.dict(os.environ, {"OPENMESH_NODE_CONFIG": config_path}):
+                result = await register_distributed_node(
+                    db,
+                    node_id="node-test",
+                    node_name="Developer Laptop",
+                    node_type="laptop",
+                    broadcast=False,
+                )
+
+        records = [record for record in db.added if getattr(record, "event_id", None)]
+        registry = build_distributed_node_registry(records)
+
+        self.assertEqual(result["node"]["node_id"], "node-test")
+        self.assertEqual(
+            {record.event_type for record in records}, {"node.joined", "node.heartbeat"}
+        )
+        self.assertEqual(registry["summary"]["node_count"], 1)
+        self.assertEqual(registry["nodes"][0]["node_type"], "laptop")
+
+    def test_distributed_node_registry_derives_hosted_entities_from_edges(self):
+        host = {
+            "node_id": "openmesh-node:test:laptop",
+            "node_type": "openmesh_node",
+            "name": "Developer Laptop",
+            "runtime": "openmesh.test",
+            "metadata": {
+                "node_type": "laptop",
+                "node_kind": "laptop",
+                "hostname": "dev-laptop",
+                "platform": "darwin",
+            },
+        }
+        agent = agent_node("agent:test:research", "Research Agent", "research")
+        runtime = {
+            "node_id": "runtime:test:codex",
+            "node_type": "runtime",
+            "name": "Codex CLI",
+            "runtime": "openmesh.test",
+            "metadata": {"executable": "codex", "status": "active"},
+        }
+        mcp_server = {
+            "node_id": "mcp:test:filesystem",
+            "node_type": "mcp_server",
+            "name": "filesystem-server",
+            "runtime": "openmesh.test",
+            "metadata": {"transport": "stdio", "endpoint": "local"},
+        }
+        records = [
+            record_from_event(
+                make_openmesh_event(
+                    "node.heartbeat",
+                    host,
+                    {"relationship_type": "hosts"},
+                    target=target,
+                    trace_id="trace_distributed",
+                    session_id="sess_distributed",
+                ),
+                timestamp=datetime(2026, 6, 4, 8, index, 0),
+            )
+            for index, target in enumerate((agent, runtime, mcp_server), start=1)
+        ]
+
+        registry = build_distributed_node_registry(records)
+        graph = reduce_graph_state(records)
+        relationship_types = {edge["relationship_type"] for edge in graph["edges"]}
+
+        self.assertEqual(registry["summary"]["node_count"], 1)
+        self.assertEqual(registry["summary"]["hosted_agents"], 1)
+        self.assertEqual(registry["summary"]["hosted_runtimes"], 1)
+        self.assertEqual(registry["summary"]["hosted_mcp_servers"], 1)
+        self.assertIn("hosts", relationship_types)
+        self.assertEqual(graph["validation"]["status"], "OK")
+
+    async def test_local_simulation_can_generate_distributed_node_activity(self):
+        db = FakeAsyncSession()
+
+        summary = await run_local_simulation(
+            db,
+            agent_count=8,
+            event_count=100,
+            node_count=4,
+            seed=11,
+            broadcast=False,
+        )
+
+        records = [record for record in db.added if getattr(record, "event_id", None)]
+        graph = reduce_graph_state(records)
+        registry = build_distributed_node_registry(records)
+        relationship_types = {edge["relationship_type"] for edge in graph["edges"]}
+        node_types = {node["type"] for node in graph["nodes"]}
+        ecosystem = build_ecosystem_registry(records)
+
+        self.assertEqual(summary["distributed_nodes"], 4)
+        self.assertGreaterEqual(summary["host_relationships"], 8)
+        self.assertIn("openmesh_node", node_types)
+        self.assertIn("hosts", relationship_types)
+        self.assertEqual(registry["summary"]["node_count"], 4)
+        self.assertGreaterEqual(registry["summary"]["hosted_agents"], 8)
+        self.assertEqual(ecosystem["summary"]["groups"]["nodes"], 4)
 
     def test_federation_registry_builds_metadata_only_views(self):
         event = self.make_event("message.sent")
@@ -4633,6 +4766,58 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("OpenMesh Federation Peers", printed)
         self.assertIn("Remote A", printed)
         self.assertIn("metadata_only", printed)
+
+    def test_cli_distributed_node_printers_display_metadata(self):
+        registry = {
+            "nodes": [
+                {
+                    "node_id": "node-test",
+                    "node_name": "Developer Laptop",
+                    "node_type": "laptop",
+                    "status": "active",
+                    "last_seen": "2026-06-04T08:00:00Z",
+                    "hosted_counts": {
+                        "agents": 2,
+                        "runtimes": 1,
+                        "mcp_servers": 1,
+                    },
+                }
+            ],
+            "summary": {
+                "node_count": 1,
+                "active_nodes": 1,
+                "host_relationships": 4,
+                "hosted_agents": 2,
+                "hosted_runtimes": 1,
+                "hosted_mcp_servers": 1,
+            },
+        }
+        with patch("builtins.print") as printer:
+            _print_distributed_node_registry(registry)
+            _print_node_status(
+                {
+                    "local_node": {
+                        "node_id": "node-test",
+                        "node_name": "Developer Laptop",
+                        "node_type": "laptop",
+                        "config_path": "/tmp/node.json",
+                    },
+                    "registered": True,
+                    "observed_node": registry["nodes"][0],
+                    "summary": registry["summary"],
+                }
+            )
+            _print_node_registration(
+                {"node": registry["nodes"][0], "events": [{"event_id": "evt_1"}]}
+            )
+
+        printed = "\n".join(
+            str(call.args[0]) for call in printer.call_args_list if call.args
+        )
+        self.assertIn("OpenMesh Nodes", printed)
+        self.assertIn("Developer Laptop", printed)
+        self.assertIn("OpenMesh Node Status", printed)
+        self.assertIn("OpenMesh Node Registered", printed)
 
     def test_cli_evaluation_printer_displays_metrics(self):
         report = {

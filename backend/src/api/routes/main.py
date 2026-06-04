@@ -6,7 +6,7 @@ All endpoints for the frontend to consume.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func, or_
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any, Dict, Optional
 import random
 
@@ -44,6 +44,11 @@ from ...services.federation import (
     get_federation_peers,
     get_federation_registry,
     inspect_federation_node,
+)
+from ...services.distributed_nodes import (
+    get_distributed_node_registry,
+    get_node_status,
+    ingest_federated_events,
 )
 from ...services.openmesh_queries import get_events as get_openmesh_event_list
 from ...services.openmesh_queries import (
@@ -99,6 +104,11 @@ class SpawnAgentRequest(BaseModel):
 class OpenMeshQueryRequest(BaseModel):
     query: str
     limit: int = 5000
+
+
+class OpenMeshFederatedEventsRequest(BaseModel):
+    event: Optional[Dict[str, Any]] = None
+    events: list[Dict[str, Any]] = Field(default_factory=list)
 
 
 @router.get("/agents")
@@ -771,6 +781,36 @@ async def inspect_openmesh_federation_node(
     if not inspection:
         raise HTTPException(404, "OpenMesh federation node not found")
     return inspection
+
+
+@router.post("/openmesh/federation/events")
+async def ingest_openmesh_federated_events(
+    request: OpenMeshFederatedEventsRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(protect_write),
+):
+    events = list(request.events)
+    if request.event:
+        events.insert(0, request.event)
+    if not events:
+        raise HTTPException(400, "No OpenMesh events supplied")
+    return await ingest_federated_events(db, events)
+
+
+@router.get("/openmesh/nodes")
+async def list_openmesh_distributed_nodes(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_distributed_node_registry(db, limit=limit)
+
+
+@router.get("/openmesh/node/status")
+async def get_openmesh_node_status(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_node_status(db, limit=limit)
 
 
 @router.get("/openmesh/discovery")

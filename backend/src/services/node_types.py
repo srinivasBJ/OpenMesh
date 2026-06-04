@@ -96,6 +96,23 @@ NODE_TYPES: dict[str, NodeType] = {
             "federation_schema_version",
         ),
     ),
+    "openmesh_node": NodeType(
+        "openmesh_node",
+        "OpenMesh Node",
+        "A concrete OpenMesh installation contributing events to a shared graph.",
+        "nodes",
+        COMMON_METADATA
+        + (
+            "node_type",
+            "node_kind",
+            "hostname",
+            "platform",
+            "config_path",
+            "status",
+            "registered_at",
+            "last_seen",
+        ),
+    ),
     "mcp_server": NodeType(
         "mcp_server",
         "MCP Server",

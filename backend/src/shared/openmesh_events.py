@@ -28,6 +28,7 @@ OpenMeshNodeType = Literal[
     "guild",
     "wiki",
     "post",
+    "openmesh_node",
 ]
 
 OpenMeshSeverity = Literal["debug", "info", "warning", "error"]

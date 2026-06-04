@@ -90,6 +90,8 @@ export const openmeshApi = {
   ecosystem: () => api.get("/openmesh/ecosystem").then(r => r.data),
   localLlmMetrics: () => api.get("/openmesh/local-llm/metrics").then(r => r.data),
   runtimeMetrics: () => api.get("/openmesh/runtime/metrics").then(r => r.data),
+  nodes: () => api.get("/openmesh/nodes").then(r => r.data),
+  nodeStatus: () => api.get("/openmesh/node/status").then(r => r.data),
   mcpMetrics: () => api.get("/openmesh/mcp/metrics").then(r => r.data),
   tools: () => api.get("/openmesh/tools").then(r => r.data),
   resources: () => api.get("/openmesh/resources").then(r => r.data),

@@ -18,6 +18,7 @@ ECOSYSTEM_NODE_TYPES = {
     "workflow": "workflows",
     "mcp_server": "mcp_servers",
     "capability": "capabilities",
+    "openmesh_node": "nodes",
 }
 ECOSYSTEM_GROUPS = (*ECOSYSTEM_NODE_TYPES.values(), "mcp_configs")
 

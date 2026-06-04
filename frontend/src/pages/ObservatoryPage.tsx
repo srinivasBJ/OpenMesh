@@ -55,6 +55,30 @@ type ReplayMetrics = {
     workflow_duration?: number | null;
   };
 };
+type DistributedNodeRegistry = {
+  nodes?: Array<{
+    node_id?: string;
+    node_name?: string;
+    node_type?: string;
+    status?: string;
+    last_seen?: string;
+    uptime_seconds?: number;
+    event_count?: number;
+    hosted_counts?: {
+      agents?: number;
+      runtimes?: number;
+      mcp_servers?: number;
+    };
+  }>;
+  summary?: {
+    node_count?: number;
+    active_nodes?: number;
+    hosted_agents?: number;
+    hosted_runtimes?: number;
+    hosted_mcp_servers?: number;
+    host_relationships?: number;
+  };
+};
 
 export default function ObservatoryPage() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: statsApi.get, refetchInterval: 30000 });
@@ -77,6 +101,11 @@ export default function ObservatoryPage() {
   const { data: runtimeMetrics = {} } = useQuery<RuntimeMetrics>({
     queryKey: ["openmesh-runtime-metrics"],
     queryFn: () => openmeshApi.runtimeMetrics(),
+    refetchInterval: 15000,
+  });
+  const { data: distributedNodes = {} } = useQuery<DistributedNodeRegistry>({
+    queryKey: ["openmesh-distributed-nodes"],
+    queryFn: () => openmeshApi.nodes(),
     refetchInterval: 15000,
   });
   const { data: mcpMetrics = {} } = useQuery<McpMetrics>({
@@ -112,6 +141,9 @@ export default function ObservatoryPage() {
   const topMcpTool = mcpMetrics.most_used_tools?.[0];
   const busiestAgent = workflowMetrics.busiest_agent;
   const replay = replayMetrics.metrics || {};
+  const nodeSummary = distributedNodes.summary || {};
+  const observedNodes = distributedNodes.nodes || [];
+  const longestUptime = observedNodes.reduce((max, node) => Math.max(max, node.uptime_seconds || 0), 0);
 
   return (
     <div className="om-page">
@@ -169,6 +201,12 @@ export default function ObservatoryPage() {
                   label="Run Uptime"
                   value={`${runtimeMetrics.runtime_uptime?.available || 0}/${runtimeMetrics.runtime_uptime?.total || 0}`}
                 />
+                <MetricCell label="Active Nodes" value={nodeSummary.active_nodes || 0} />
+                <MetricCell label="Node Uptime" value={formatDuration(longestUptime)} />
+                <MetricCell label="Hosted Agents" value={nodeSummary.hosted_agents || 0} />
+                <MetricCell label="Hosted Runtime" value={nodeSummary.hosted_runtimes || 0} />
+                <MetricCell label="Hosted MCP" value={nodeSummary.hosted_mcp_servers || 0} />
+                <MetricCell label="Host Edges" value={nodeSummary.host_relationships || 0} />
                 <MetricCell label="MCP Active" value={mcpMetrics.active_mcp_servers || 0} />
                 <MetricCell label="Tool Calls" value={mcpMetrics.tool_calls || 0} />
                 <MetricCell label="Tool Failed" value={mcpMetrics.failed_tool_calls || 0} />
@@ -250,6 +288,22 @@ export default function ObservatoryPage() {
         </section>
 
         <section className="grid gap-5 xl:grid-cols-3">
+          <ControlPanel title="Distributed Nodes" icon={<Server size={16} />}>
+            <EntityList
+              empty="No OpenMesh nodes have joined this ecosystem yet."
+              items={observedNodes.slice(0, 7).map((node) => {
+                const hosted = node.hosted_counts || {};
+                return {
+                  id: node.node_id || node.node_name || "node",
+                  title: brandText(node.node_name, node.node_id || "OpenMesh node"),
+                  subtitle: `${node.node_type || "node"} host`,
+                  value: `${hosted.agents || 0} ag / ${hosted.runtimes || 0} rt / ${hosted.mcp_servers || 0} mcp`,
+                  status: node.status === "active" ? "active" : "idle",
+                };
+              })}
+            />
+          </ControlPanel>
+
           <ControlPanel title="Workflows" icon={<Layers size={16} />}>
             <EntityList
               empty="No workflow nodes are visible yet."
@@ -321,6 +375,14 @@ function formatMetric(value?: number | null, suffix = "") {
   if (value === null || value === undefined) return "-";
   const formatted = Number.isInteger(value) ? String(value) : value.toFixed(1);
   return suffix ? `${formatted}${suffix}` : formatted;
+}
+
+function formatDuration(seconds?: number | null) {
+  if (!seconds) return "-";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h`;
 }
 
 function StatusPill({ status, label }: { status: "active" | "idle" | "failed"; label: string }) {

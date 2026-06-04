@@ -166,6 +166,13 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
         source_types=("federation_node",),
         target_types=("federation_node",),
     ),
+    "hosts": RelationshipType(
+        type="hosts",
+        label="hosts",
+        description="An OpenMesh node hosts an agent, runtime, or MCP server.",
+        source_types=("openmesh_node",),
+        target_types=("agent", "runtime", "mcp_server"),
+    ),
 }
 
 
@@ -202,6 +209,7 @@ EVENT_RELATIONSHIPS = {
     "mcp.config.discovered": "defines",
     "mcp.capability.discovered": "exposes",
     "federation.peer.discovered": "federates_with",
+    "node.heartbeat": "hosts",
 }
 
 

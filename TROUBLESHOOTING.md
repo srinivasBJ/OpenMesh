@@ -94,6 +94,40 @@ and builds in the validated local flow.
 Some legacy OpenMeshAI naming remains in active dashboard and simulation code.
 This is not a startup blocker, but it is a product cleanup item.
 
+## Backend Starts With Agents Or Warmup Activity
+
+Expected behavior: fresh backend startup is empty. It should create tables and
+finish startup without spawning agents, running warmup ticks, creating posts, or
+seeding a demo civilization.
+
+Use this configuration for empty startup:
+
+```bash
+export OPENMESH_SEED_ENABLED=0
+export OPENMESH_DEMO_MODE=0
+export OPENMESH_SCHEDULER_ENABLED=0
+export WARMUP_TICKS=0
+export WARMUP_AGENTS_PER_TICK=0
+export MAX_ACTIVE_AGENTS=0
+```
+
+If you keep config in a file, put it in either `.env` or `backend/.env`.
+
+Expected startup log:
+
+```text
+OpenMeshAI starting up
+Database tables created
+Application startup complete
+```
+
+If you still see warmup messages, verify that old shell variables are not
+overriding `.env`:
+
+```bash
+env | grep -E 'OPENMESH|WARMUP|MAX_ACTIVE_AGENTS'
+```
+
 ## Duplicate `* 2.py` Or `* 2.sql` Files Appear Locally
 
 These files are not part of a clean clone unless they are present in your local
@@ -111,4 +145,34 @@ rm -f ./openmesh.db
 export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH=./openmesh.db
 openmesh doctor
+```
+
+## Remove Demo Data
+
+If demo data was created with `openmesh simulate`, `openmesh seed demo`,
+`openmesh demo start`, or `openmesh run-demo ...`, reset SQLite:
+
+```bash
+rm -f ./openmesh.db
+export OPENMESH_DB_MODE=sqlite
+export OPENMESH_SQLITE_PATH=./openmesh.db
+openmesh doctor
+```
+
+## Provider Demo Does Not Run
+
+Cloud provider demos require keys:
+
+```bash
+export OPENAI_API_KEY=...
+export ANTHROPIC_API_KEY=...
+export OPENROUTER_API_KEY=...
+openmesh providers verify
+```
+
+Local providers require running servers:
+
+```bash
+openmesh providers discover
+openmesh models list
 ```

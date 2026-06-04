@@ -1,5 +1,5 @@
 """
-Seeder — Creates the founding guilds and first agents of OpenMeshAI.
+Seeder - Creates the explicit demo guilds and first agents of OpenMeshAI.
 Only runs if the DB is empty (idempotent).
 """
 
@@ -66,10 +66,10 @@ async def seed_initial_data():
         # Check if already seeded
         count = await db.execute(select(func.count(Agent.id)))
         if (count.scalar() or 0) > 0:
-            print("✅ Database already seeded — skipping")
+            print("Database already contains agents; skipping demo seed")
             return
 
-        print("🌱 Seeding founding civilization...")
+        print("Seeding OpenMesh demo data...")
 
         # Create guilds
         guild_map = {}
@@ -134,10 +134,10 @@ async def seed_initial_data():
                 )
                 db.add(event)
 
-                print(f"  ✓ Spawned {name} ({role})")
+                print(f"  Created {name} ({role})")
 
             except Exception as e:
-                print(f"  ✗ Failed to spawn {name}: {e}")
+                print(f"  Failed to create {name}: {e}")
 
         # Founding event
         founding = AgentEvent(
@@ -148,4 +148,4 @@ async def seed_initial_data():
         db.add(founding)
 
         await db.commit()
-        print("🎉 Founding civilization seeded successfully!")
+        print("OpenMesh demo data seeded successfully")

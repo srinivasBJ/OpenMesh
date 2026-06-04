@@ -3,6 +3,11 @@ from sqlalchemy import inspect, text
 import importlib.util
 import os
 
+from ..core.env import load_openmesh_env
+
+
+load_openmesh_env()
+
 
 def resolve_database_url() -> str:
     db_mode = os.getenv("OPENMESH_DB_MODE", "auto").lower()
@@ -62,7 +67,7 @@ async def init_db(*, announce: bool = True):
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_openmesh_trace_columns)
     if announce:
-        print(f"✅ Database tables created ({DATABASE_URL})")
+        print(f"Database tables created ({DATABASE_URL})")
 
 
 def _ensure_openmesh_trace_columns(sync_connection):

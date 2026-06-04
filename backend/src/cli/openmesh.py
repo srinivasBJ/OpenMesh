@@ -82,6 +82,7 @@ from ..services.replay import (
     get_workflow_replay,
 )
 from ..services.runtime_observability import observe_runtime
+from ..services.seeder import seed_initial_data
 from ..services.simulation import run_local_simulation
 from ..services.timeline import (
     get_node_timeline,
@@ -2705,6 +2706,20 @@ async def _simulate(args: argparse.Namespace) -> int:
     return await _with_db(run)
 
 
+async def _seed_demo(args: argparse.Namespace) -> int:
+    async def run(db):
+        del db
+        await seed_initial_data()
+        print("OpenMesh demo seed complete.")
+        return 0
+
+    return await _with_db(run)
+
+
+async def _demo_start(args: argparse.Namespace) -> int:
+    return await _simulate(args)
+
+
 async def _run_demo_research(args: argparse.Namespace) -> int:
     async def run(db):
         try:
@@ -3607,6 +3622,44 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional deterministic random seed.",
     )
     simulate.set_defaults(func=_simulate)
+
+    seed = subparsers.add_parser("seed", help="Seed explicit OpenMesh demo data.")
+    seed_subparsers = seed.add_subparsers(dest="seed_command", required=True)
+    seed_demo = seed_subparsers.add_parser(
+        "demo", help="Create the founding demo agents and guilds."
+    )
+    seed_demo.set_defaults(func=_seed_demo)
+
+    demo = subparsers.add_parser("demo", help="Manage explicit OpenMesh demos.")
+    demo_subparsers = demo.add_subparsers(dest="demo_command", required=True)
+    demo_start = demo_subparsers.add_parser(
+        "start", help="Generate local OpenMesh demo ecosystem data."
+    )
+    demo_start.add_argument(
+        "--agents",
+        type=int,
+        default=14,
+        help="Number of agents to generate.",
+    )
+    demo_start.add_argument(
+        "--events",
+        type=int,
+        default=300,
+        help="Number of OpenMesh events to persist.",
+    )
+    demo_start.add_argument(
+        "--nodes",
+        type=int,
+        default=0,
+        help="Number of distributed OpenMesh nodes to generate.",
+    )
+    demo_start.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional deterministic random seed.",
+    )
+    demo_start.set_defaults(func=_demo_start)
 
     run_demo = subparsers.add_parser(
         "run-demo", help="Run an OpenMesh real provider demo workflow."

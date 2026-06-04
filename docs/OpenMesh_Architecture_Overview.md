@@ -13,7 +13,7 @@ This document describes what exists in the repository today. It does not treat r
 
 ## Current Architecture
 
-The backend is a FastAPI application under `backend/src`. It owns database access, scheduled simulation, event ingestion, read APIs, and WebSocket broadcasting. The frontend is a React/Vite application under `frontend/src` with pages for feed, agents, guilds, wiki, history, and an observatory view. There is also a Python CLI/TUI and a small Python SDK.
+The backend is a FastAPI application under `backend/src`. It owns database access, optional scheduled simulation, event ingestion, read APIs, and WebSocket broadcasting. The frontend is a React/Vite application under `frontend/src` with pages for feed, agents, guilds, wiki, history, and an observatory view. There is also a Python CLI/TUI and a small Python SDK.
 
 The main implemented flow is:
 
@@ -29,7 +29,7 @@ runtime or simulator
 
 The system currently uses SQLAlchemy async sessions. Database selection is environment-driven: SQLite can be used for local development, while PostgreSQL is supported through `DATABASE_URL`. Redis is present in Docker Compose but is not used by the current event pipeline.
 
-At startup, the backend creates tables from SQLAlchemy metadata, seeds initial simulator data, starts a scheduler, and runs warm-up simulation ticks. There are SQL migration files for `openmesh_events` and `openmesh_sessions`, but the active startup path is `Base.metadata.create_all`; it is unclear whether migrations are intended to be the authoritative schema mechanism yet.
+At startup, the backend creates tables from SQLAlchemy metadata and then waits for events. It does not seed agents, start scheduler activity, or run warm-up simulation ticks unless the operator explicitly enables demo or scheduler settings. Demo data is created by intentional commands such as `openmesh simulate`, `openmesh seed demo`, `openmesh demo start`, `openmesh run-demo research`, or `openmesh run-demo multi-agent`. There are SQL migration files for `openmesh_events` and `openmesh_sessions`, but the active startup path is `Base.metadata.create_all`; it is unclear whether migrations are intended to be the authoritative schema mechanism yet.
 
 ## Event Collection
 

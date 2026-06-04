@@ -37,6 +37,11 @@ export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
 export LLM_MODE=offline
 export OPENMESH_SCHEDULER_ENABLED=0
+export OPENMESH_SEED_ENABLED=0
+export OPENMESH_DEMO_MODE=0
+export WARMUP_TICKS=0
+export WARMUP_AGENTS_PER_TICK=0
+export MAX_ACTIVE_AGENTS=0
 ```
 
 ## 3. Bootstrap And Diagnose
@@ -64,6 +69,14 @@ openmesh simulate --agents 20 --events 500
 
 This populates graph, discovery, timeline, ecosystem, feed, guild, and wiki data
 from the existing OpenMesh database and event reducers.
+
+Other explicit demo paths:
+
+```bash
+openmesh seed demo
+openmesh demo start --agents 20 --events 500 --nodes 4
+openmesh run-demo multi-agent
+```
 
 You can also observe a real process:
 
@@ -119,6 +132,10 @@ export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
 export LLM_MODE=offline
 export WARMUP_TICKS=0
+export WARMUP_AGENTS_PER_TICK=0
+export MAX_ACTIVE_AGENTS=0
+export OPENMESH_SEED_ENABLED=0
+export OPENMESH_DEMO_MODE=0
 export OPENMESH_SCHEDULER_ENABLED=0
 PYTHONPATH=backend python -m uvicorn src.main:app --reload --port 8000
 ```
@@ -130,12 +147,13 @@ GET http://localhost:8000/health
 GET http://localhost:8000/health/ready
 ```
 
-Backend startup creates missing tables and seeds the legacy dashboard simulation
-data when the database is empty.
+Backend startup creates missing tables and then waits for events. It does not
+seed agents, posts, traces, workflows, warmup activity, or demo data.
 
-The legacy scheduled simulator is disabled in the first-user path to keep
-startup deterministic. Set `OPENMESH_SCHEDULER_ENABLED=1` only when you want
-periodic background agent ticks.
+The legacy scheduled simulator is disabled by default to keep startup
+deterministic. Set `OPENMESH_SCHEDULER_ENABLED=1` and a positive
+`MAX_ACTIVE_AGENTS` only when you intentionally want periodic background agent
+ticks.
 
 ## 7. Start The Frontend Dashboard
 

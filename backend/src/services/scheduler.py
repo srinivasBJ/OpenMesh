@@ -1,6 +1,6 @@
 """
-Scheduler — Runs agent simulation ticks on a timer.
-Every AGENT_TICK_INTERVAL seconds, a batch of agents "wakes up" and acts.
+Scheduler - Runs agent simulation ticks on a timer.
+Every AGENT_TICK_INTERVAL seconds, a configured batch of agents acts.
 """
 
 import asyncio
@@ -13,11 +13,13 @@ from ..agents.simulator import run_simulation_tick
 
 scheduler = AsyncIOScheduler()
 TICK_INTERVAL = int(os.getenv("AGENT_TICK_INTERVAL", "15"))
-MAX_AGENTS = int(os.getenv("MAX_ACTIVE_AGENTS", "6"))
+MAX_AGENTS = int(os.getenv("MAX_ACTIVE_AGENTS", "0"))
 
 
 async def tick_job():
     """Called by scheduler every N seconds."""
+    if MAX_AGENTS <= 0:
+        return
     try:
         async with AsyncSessionLocal() as db:
             count = await run_simulation_tick(db, MAX_AGENTS)
@@ -30,6 +32,11 @@ async def tick_job():
 
 
 def start_scheduler():
+    if TICK_INTERVAL <= 0 or MAX_AGENTS <= 0:
+        print(
+            "Scheduler not started: MAX_ACTIVE_AGENTS and AGENT_TICK_INTERVAL must be positive"
+        )
+        return
     # Replace the existing job if start_scheduler is called again (e.g. app reload).
     scheduler.add_job(
         tick_job,
@@ -39,10 +46,10 @@ def start_scheduler():
         replace_existing=True,
     )
     if scheduler.running:
-        print("⏰ Scheduler already running")
+        print("Scheduler already running")
         return
     scheduler.start()
-    print(f"⏰ Scheduler started — up to {MAX_AGENTS} agents every {TICK_INTERVAL}s")
+    print(f"Scheduler started: up to {MAX_AGENTS} agents every {TICK_INTERVAL}s")
 
 
 def stop_scheduler():

@@ -4,7 +4,7 @@ The server powering the early agent ecosystem prototype.
 """
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -20,19 +20,41 @@ from .core.security import security_status
 from .shared.openmesh_events import make_openmesh_event
 from .websocket.manager import SYSTEM_NODE
 
-# How many agents to tick per warm-up round and how many rounds to run on startup
-WARMUP_TICKS = int(os.getenv("WARMUP_TICKS", "8"))
-WARMUP_AGENTS_PER_TICK = int(os.getenv("WARMUP_AGENTS_PER_TICK", "6"))
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int = 0) -> int:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+# Startup must be empty by default. Demo seeding and warmup are opt-in.
+WARMUP_TICKS = _env_int("WARMUP_TICKS", 0)
+WARMUP_AGENTS_PER_TICK = _env_int("WARMUP_AGENTS_PER_TICK", 0)
 SCHEDULER_ENABLED = os.getenv("OPENMESH_SCHEDULER_ENABLED", "0").lower() in {
     "1",
     "true",
     "yes",
     "on",
 }
+SEED_ENABLED = _env_bool("OPENMESH_SEED_ENABLED", False)
+DEMO_MODE = _env_bool("OPENMESH_DEMO_MODE", False)
 
 
 async def run_warmup_ticks():
-    """Run several simulation ticks right after startup so the feed has content when users open the app."""
+    """Run optional demo warmup ticks when explicitly enabled."""
+    if WARMUP_TICKS <= 0 or WARMUP_AGENTS_PER_TICK <= 0:
+        return
     await asyncio.sleep(2)  # Let the server accept connections first
     total_acted = 0
     for i in range(WARMUP_TICKS):
@@ -47,32 +69,33 @@ async def run_warmup_ticks():
         await asyncio.sleep(0.4)
     if total_acted > 0:
         print(
-            f"✅ Warmup complete — {total_acted} agent actions (posts, comments, messages, wiki)"
+            f"Warmup complete: {total_acted} agent actions (posts, comments, messages, wiki)"
         )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("🚀 OpenMeshAI starting up...")
+    print("OpenMeshAI starting up")
     await init_db()
-    await seed_initial_data()
+    if SEED_ENABLED or DEMO_MODE:
+        await seed_initial_data()
     if SCHEDULER_ENABLED:
         start_scheduler()
-    else:
-        print("⏸️ Scheduler disabled — set OPENMESH_SCHEDULER_ENABLED=1 to enable")
-    if WARMUP_TICKS > 0:
-        asyncio.create_task(run_warmup_ticks())
-    if WARMUP_TICKS > 0:
-        print(
-            "✅ OpenMeshAI is live — agents are awakening (warm-up ticks running in background)"
-        )
-    else:
-        print("✅ OpenMeshAI is live — ready for CLI, SDK, and dashboard traffic")
-    yield
+    warmup_task = None
+    if WARMUP_TICKS > 0 and WARMUP_AGENTS_PER_TICK > 0:
+        warmup_task = asyncio.create_task(run_warmup_ticks())
+    print("Application startup complete")
+    try:
+        yield
+    finally:
+        if warmup_task:
+            warmup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await warmup_task
     # Shutdown
     stop_scheduler()
-    print("👋 OpenMeshAI shutting down")
+    print("Application shutdown complete")
 
 
 app = FastAPI(

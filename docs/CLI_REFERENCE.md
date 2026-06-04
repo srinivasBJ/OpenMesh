@@ -120,6 +120,8 @@ Ollama, LM Studio, or vLLM server.
 
 ## Simulation
 
+- `openmesh seed demo`
+- `openmesh demo start --agents 20 --events 500 --nodes 4`
 - `openmesh simulate --agents 20 --events 500`
 - `openmesh simulate --agents 20 --events 500 --nodes 4`
 - `openmesh simulate --agents 12 --events 180 --seed 11`

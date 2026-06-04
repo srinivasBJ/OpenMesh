@@ -9,6 +9,13 @@ OpenTelemetry export from one local event store.
 The fastest first run uses SQLite. No API keys, Docker, Postgres, cloud LLMs, or
 external services are required for the local graph demo.
 
+Default backend startup is intentionally empty. Starting the API creates the
+database schema and waits for events; it does not create agents, posts, traces,
+workflows, warmup ticks, or demo ecosystems. Demo data appears only after an
+explicit command such as `openmesh simulate`, `openmesh seed demo`,
+`openmesh demo start`, `openmesh run-demo research`, or
+`openmesh run-demo multi-agent`.
+
 ## Status
 
 OpenMesh v1.0 alpha is release-candidate software. The core architecture works,
@@ -47,6 +54,11 @@ python -m pip install -e .
 export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
 export OPENMESH_SCHEDULER_ENABLED=0
+export OPENMESH_SEED_ENABLED=0
+export OPENMESH_DEMO_MODE=0
+export WARMUP_TICKS=0
+export WARMUP_AGENTS_PER_TICK=0
+export MAX_ACTIVE_AGENTS=0
 
 openmesh doctor
 openmesh simulate --agents 12 --events 180 --nodes 4
@@ -62,10 +74,26 @@ That path should take less than five minutes on a fresh clone.
 
 ## First Workflow
 
-Generate local ecosystem data:
+Start from an empty platform:
+
+```bash
+openmesh doctor
+openmesh graph --details
+```
+
+Generate local ecosystem data only when you want demo data:
 
 ```bash
 openmesh simulate --agents 20 --events 500 --nodes 4
+```
+
+Alternative demo entry points:
+
+```bash
+openmesh seed demo
+openmesh demo start --agents 20 --events 500 --nodes 4
+openmesh run-demo multi-agent
+openmesh run-demo research --provider openai
 ```
 
 Observe a real process:
@@ -98,6 +126,8 @@ export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
 export OPENMESH_SCHEDULER_ENABLED=0
 export WARMUP_TICKS=0
+export WARMUP_AGENTS_PER_TICK=0
+export MAX_ACTIVE_AGENTS=0
 PYTHONPATH=backend python -m uvicorn src.main:app --reload --port 8000
 ```
 
@@ -144,6 +174,8 @@ python examples/langgraph_basic.py
 openmesh doctor
 openmesh health
 openmesh simulate --agents 20 --events 500 --nodes 4
+openmesh seed demo
+openmesh demo start --agents 20 --events 500 --nodes 4
 openmesh run -- <command>
 openmesh run-demo multi-agent
 openmesh providers verify
@@ -229,6 +261,23 @@ python -m venv /tmp/openmesh-wheel-smoke
 /tmp/openmesh-wheel-smoke/bin/python -m pip install dist/openmesh-*.whl
 OPENMESH_DB_MODE=sqlite OPENMESH_SQLITE_PATH=/tmp/openmesh-wheel.db \
   /tmp/openmesh-wheel-smoke/bin/openmesh doctor
+```
+
+Reset local SQLite state:
+
+```bash
+rm -f ./openmesh.db
+OPENMESH_DB_MODE=sqlite OPENMESH_SQLITE_PATH=./openmesh.db openmesh doctor
+```
+
+Provider demos are explicit. Configure one of these before running
+`openmesh run-demo research`:
+
+```bash
+export OPENAI_API_KEY=...
+export ANTHROPIC_API_KEY=...
+export OPENROUTER_API_KEY=...
+export OLLAMA_BASE_URL=http://localhost:11434
 ```
 
 ## Contributing

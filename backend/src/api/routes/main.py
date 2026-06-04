@@ -1265,6 +1265,6 @@ async def manual_tick(
     import os
     from ...agents.simulator import run_simulation_tick
 
-    max_agents = int(os.getenv("MAX_ACTIVE_AGENTS", "6"))
+    max_agents = int(os.getenv("MAX_ACTIVE_AGENTS", "0"))
     count = await run_simulation_tick(db, max_agents=max_agents)
     return {"ticked_agents": count}

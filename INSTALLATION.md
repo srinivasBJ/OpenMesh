@@ -26,6 +26,11 @@ python -m pip install -e .
 export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
 export OPENMESH_SCHEDULER_ENABLED=0
+export OPENMESH_SEED_ENABLED=0
+export OPENMESH_DEMO_MODE=0
+export WARMUP_TICKS=0
+export WARMUP_AGENTS_PER_TICK=0
+export MAX_ACTIVE_AGENTS=0
 ```
 
 Validate:
@@ -36,6 +41,13 @@ openmesh doctor
 
 Expected: `Overall: OK`.
 
+## Empty Startup
+
+OpenMesh starts as an empty observability platform. Starting the backend creates
+database tables and accepts API, CLI, SDK, TUI, and frontend traffic. It does
+not automatically create agents, posts, workflows, traces, warmup ticks, or demo
+ecosystems.
+
 ## Generate First Data
 
 ```bash
@@ -45,6 +57,15 @@ openmesh discover
 openmesh ecosystem
 ```
 
+Other explicit demo commands:
+
+```bash
+openmesh seed demo
+openmesh demo start --agents 20 --events 500 --nodes 4
+openmesh run-demo multi-agent
+openmesh run-demo research --provider openai
+```
+
 ## Backend API
 
 ```bash
@@ -52,6 +73,8 @@ export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
 export OPENMESH_SCHEDULER_ENABLED=0
 export WARMUP_TICKS=0
+export WARMUP_AGENTS_PER_TICK=0
+export MAX_ACTIVE_AGENTS=0
 PYTHONPATH=backend python -m uvicorn src.main:app --reload --port 8000
 ```
 
@@ -82,4 +105,41 @@ directory shadows the PyPI package, run the build from outside the repository:
 ```bash
 cd /tmp
 python -m build --wheel --outdir /tmp/openmesh-dist /path/to/OpenMesh
+```
+
+## Remove Demo Data
+
+SQLite reset:
+
+```bash
+rm -f ./openmesh.db
+export OPENMESH_DB_MODE=sqlite
+export OPENMESH_SQLITE_PATH=./openmesh.db
+openmesh doctor
+```
+
+Postgres reset depends on your deployment policy. For local development, drop
+and recreate the configured database, then run `openmesh doctor`.
+
+## Real Provider Configuration
+
+Cloud providers:
+
+```bash
+export OPENAI_API_KEY=...
+export ANTHROPIC_API_KEY=...
+export OPENROUTER_API_KEY=...
+openmesh providers verify
+openmesh run-demo research --provider openai
+```
+
+Local providers:
+
+```bash
+export OLLAMA_BASE_URL=http://localhost:11434
+export LMSTUDIO_BASE_URL=http://localhost:1234
+export VLLM_BASE_URL=http://localhost:8000
+openmesh providers discover
+openmesh models list
+openmesh run-demo research --provider ollama --model llama3.2
 ```

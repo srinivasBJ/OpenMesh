@@ -1,5 +1,5 @@
 # OpenMesh
-  ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ <img width="472" height="109" alt="a" src="https://github.com/user-attachments/assets/6acd38d6-bed6-48d1-8e2d-9065053be75f" />
+  ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ <img width="472" height="109" alt="a" src="https://github.com/user-attachments/assets/6acd38d6-bed6-48d1-8e2d-9065053be75f" />
 
 OpenMesh is a terminal-first observability layer for AI agent ecosystems.
 

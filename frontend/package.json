@@ -19,7 +19,7 @@
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.21.3",
     "tailwind-merge": "^2.2.0",
-    "zustand": "^4.4.7"
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@types/react": "^19.2.15",

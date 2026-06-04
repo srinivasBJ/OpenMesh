@@ -7,6 +7,7 @@ from ..db.models import OpenMeshEventRecord
 from .node_types import node_type_registry, validate_node
 from .registry_compatibility import registry_versions
 from .relationship_types import (
+    relationship_definition,
     relationship_registry,
     relationship_type_for,
     validate_relationship,
@@ -46,8 +47,17 @@ def _node_from_json(
 
 
 def edge_type_for(
-    event_type: str, target_type: Optional[str], source_type: Optional[str] = None
+    event_type: str,
+    target_type: Optional[str],
+    source_type: Optional[str] = None,
+    payload: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
+    if isinstance(payload, dict):
+        explicit_relationship = payload.get("relationship_type")
+        if isinstance(explicit_relationship, str) and relationship_definition(
+            explicit_relationship
+        ):
+            return explicit_relationship
     return relationship_type_for(
         event_type, source_type=source_type, target_type=target_type
     )
@@ -57,8 +67,9 @@ def _edge_type_for(
     event_type: str,
     target_type: Optional[str],
     source_type: Optional[str] = None,
+    payload: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
-    return edge_type_for(event_type, target_type, source_type)
+    return edge_type_for(event_type, target_type, source_type, payload=payload)
 
 
 def _node_evidence(node: Dict[str, Any]) -> Dict[str, Any]:
@@ -196,7 +207,10 @@ def reduce_graph_state(records: Iterable[OpenMeshEventRecord]) -> Dict[str, Any]
 
         if source and target:
             edge_type = _edge_type_for(
-                record.event_type, target["type"], source["type"]
+                record.event_type,
+                target["type"],
+                source["type"],
+                payload=getattr(record, "payload_json", None),
             )
             if edge_type:
                 trace_id = getattr(record, "trace_id", None)

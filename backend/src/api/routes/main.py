@@ -80,6 +80,7 @@ from ...services.mcp_tool_observability import (
     get_resource_registry,
     get_tool_registry,
 )
+from ...workflows import get_multi_agent_workflow_metrics
 from ...sdk.integrations import list_integrations
 
 router = APIRouter()
@@ -835,6 +836,14 @@ async def get_openmesh_workflows(
     return {"workflows": await list_workflows(db, limit=limit)}
 
 
+@router.get("/openmesh/workflows/metrics")
+async def get_openmesh_workflow_metrics(
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_multi_agent_workflow_metrics(db, limit=limit)
+
+
 @router.get("/openmesh/workflows/{workflow_id}")
 async def inspect_openmesh_workflow(
     workflow_id: str,
@@ -845,6 +854,15 @@ async def inspect_openmesh_workflow(
     if not workflow:
         raise HTTPException(404, "OpenMesh workflow not found")
     return workflow
+
+
+@router.get("/openmesh/workflow/{workflow_id}")
+async def inspect_openmesh_workflow_alias(
+    workflow_id: str,
+    limit: int = Query(5000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    return await inspect_openmesh_workflow(workflow_id, limit=limit, db=db)
 
 
 @router.get("/openmesh/snapshots")

@@ -90,6 +90,7 @@ OpenMeshAI is currently in an early public-contributor preparation phase.
 - Phase 2 local model discovery and tracing for Ollama, LM Studio, and vLLM; see [docs/LOCAL_LLM_INTEGRATION.md](docs/LOCAL_LLM_INTEGRATION.md)
 - Phase 3 coding-agent runtime discovery and observation for Claude Code, Codex CLI, OpenCode, Aider, and Cursor; see [docs/RUNTIME_OBSERVABILITY.md](docs/RUNTIME_OBSERVABILITY.md)
 - Phase 4 MCP and tool ecosystem observability for MCP servers, tools, resources, and tool-call relationships; see [docs/MCP_OBSERVABILITY.md](docs/MCP_OBSERVABILITY.md)
+- Phase 5 multi-agent handoff observability for delegation, messages, workflow containment, review edges, and replay; see [docs/MULTI_AGENT_OBSERVABILITY.md](docs/MULTI_AGENT_OBSERVABILITY.md)
 - Basic write endpoint API-key and rate-limit protection
 - Offline LLM fallback mode for zero-cost local demos
 - Docker Compose setup for PostgreSQL, Redis, backend, and frontend
@@ -335,6 +336,9 @@ openmesh resources
 openmesh simulate --agents 20 --events 500
 openmesh run-demo research --provider openai
 openmesh run-demo research --provider ollama --model hermes3
+openmesh run-demo multi-agent
+openmesh workflow inspect workflow:openmesh:multi-agent-handoff-demo
+openmesh workflow replay workflow:openmesh:multi-agent-handoff-demo
 openmesh run -- <command>
 openmesh events
 openmesh traces
@@ -465,6 +469,8 @@ This repository includes public-project workflow scaffolding:
 - `GET /api/openmesh/federation/peers`
 - `GET /api/openmesh/federation/inspect/{node_id}`
 - `GET /api/openmesh/workflows`
+- `GET /api/openmesh/workflow/{workflow_id}`
+- `GET /api/openmesh/workflows/metrics`
 - `GET /api/openmesh/capabilities`
 - `GET /api/openmesh/mcp`
 - `GET /api/openmesh/tools`

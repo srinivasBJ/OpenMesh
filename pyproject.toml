@@ -76,6 +76,7 @@ packages = [
   "src.services",
   "src.shared",
   "src.websocket",
+  "src.workflows",
 ]
 
 [tool.setuptools.package-dir]

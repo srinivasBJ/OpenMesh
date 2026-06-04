@@ -155,6 +155,10 @@ from src.services.workflow_registry import (
     validate_workflow_entries,
     workflow_node,
 )
+from src.workflows.multi_agent import (
+    build_multi_agent_workflow_metrics,
+    run_multi_agent_demo,
+)
 from src.shared.openmesh_events import agent_node, make_openmesh_event
 from src.cli.openmesh import (
     _print_capabilities,
@@ -1356,6 +1360,8 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("writes", relationship_types)
         self.assertIn("calls", relationship_types)
         self.assertIn("accesses", relationship_types)
+        self.assertIn("contains", relationship_types)
+        self.assertIn("reviews", relationship_types)
         self.assertEqual(
             node_type_definition("federation_node")["display_name"],
             "Federation Node",
@@ -1391,6 +1397,24 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             relationship_type_for(
+                "agent.handoff.started", source_type="agent", target_type="agent"
+            ),
+            "delegates_to",
+        )
+        self.assertEqual(
+            relationship_type_for(
+                "agent.message.sent", source_type="agent", target_type="agent"
+            ),
+            "communicates_with",
+        )
+        self.assertEqual(
+            relationship_type_for(
+                "workflow.started", source_type="workflow", target_type="agent"
+            ),
+            "contains",
+        )
+        self.assertEqual(
+            relationship_type_for(
                 "file.write", source_type="agent", target_type="file"
             ),
             "writes",
@@ -1405,6 +1429,14 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             validate_relationship("accesses", "tool", "database")["status"],
+            "valid",
+        )
+        self.assertEqual(
+            validate_relationship("contains", "workflow", "agent")["status"],
+            "valid",
+        )
+        self.assertEqual(
+            validate_relationship("reviews", "agent", "agent")["status"],
             "valid",
         )
         self.assertEqual(
@@ -1536,12 +1568,16 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         valid = validate_relationship("uses", "agent", "tool")
         mcp_connection = validate_relationship("connects_to", "agent", "mcp_server")
         mcp_capability = validate_relationship("exposes", "mcp_server", "capability")
+        workflow_contains = validate_relationship("contains", "workflow", "agent")
+        review = validate_relationship("reviews", "agent", "agent")
         invalid_type = validate_relationship("unknown", "agent", "tool")
         invalid_pair = validate_relationship("uses", "tool", "service")
 
         self.assertEqual(valid["status"], "valid")
         self.assertEqual(mcp_connection["status"], "valid")
         self.assertEqual(mcp_capability["status"], "valid")
+        self.assertEqual(workflow_contains["status"], "valid")
+        self.assertEqual(review["status"], "valid")
         self.assertEqual(invalid_type["errors"][0]["code"], "invalid_relationship_type")
         self.assertEqual(
             {error["code"] for error in invalid_pair["errors"]},
@@ -1828,6 +1864,69 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(metrics["failed_tool_calls"], 0)
         self.assertEqual(metrics["resource_activity"], 1)
         self.assertEqual(metrics["most_used_tools"][0]["tool"], "read_file")
+
+    async def test_multi_agent_demo_emits_handoffs_messages_and_workflow_graph(self):
+        db = FakeAsyncSession()
+
+        async def fake_complete_session(*args, **kwargs):
+            return None
+
+        with patch(
+            "src.workflows.multi_agent.complete_openmesh_session",
+            fake_complete_session,
+        ):
+            result = await run_multi_agent_demo(
+                db,
+                agents=5,
+                handoffs=22,
+                messages=55,
+                broadcast=False,
+            )
+
+        records = [record for record in db.added if getattr(record, "event_id", None)]
+        event_types = [record.event_type for record in records]
+        self.assertIn("workflow.started", event_types)
+        self.assertIn("workflow.completed", event_types)
+        self.assertIn("agent.handoff.started", event_types)
+        self.assertIn("agent.handoff.completed", event_types)
+        self.assertIn("agent.message.sent", event_types)
+        self.assertIn("agent.message.received", event_types)
+        self.assertGreaterEqual(event_types.count("agent.handoff.started"), 20)
+        self.assertGreaterEqual(event_types.count("agent.message.sent"), 50)
+
+        graph = reduce_graph_state(records)
+        edge_types = {edge["type"] for edge in graph["edges"]}
+        self.assertIn("contains", edge_types)
+        self.assertIn("delegates_to", edge_types)
+        self.assertIn("communicates_with", edge_types)
+        self.assertIn("reviews", edge_types)
+        self.assertTrue(
+            all(edge["validation_status"] == "valid" for edge in graph["edges"])
+        )
+
+        workflow = inspect_graph_workflow(graph, result["workflow_id"])
+        self.assertIsNotNone(workflow)
+        assert workflow is not None
+        self.assertEqual(workflow["status"], "completed")
+        self.assertGreaterEqual(len(workflow["participating_agents"]), 5)
+
+        timeline = build_workflow_timeline(records, [], [], result["workflow_id"])
+        self.assertIsNotNone(timeline)
+        assert timeline is not None
+        timeline_event_types = {
+            item.get("event_type")
+            for item in timeline["timeline"]
+            if item.get("event_type")
+        }
+        self.assertIn("agent.handoff.started", timeline_event_types)
+        replay = build_replay_from_timeline(timeline)
+        self.assertGreater(replay["state"]["frame_count"], 0)
+
+        metrics = build_multi_agent_workflow_metrics(records, [workflow])
+        self.assertEqual(metrics["completed_workflows"], 1)
+        self.assertGreaterEqual(metrics["average_handoffs"], 20)
+        self.assertIsNotNone(metrics["busiest_agent"])
+        self.assertIsNotNone(metrics["handoff_latency_ms"])
 
     def test_mcp_config_providers_parse_json_and_toml_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:

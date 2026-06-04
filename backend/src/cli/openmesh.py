@@ -82,6 +82,7 @@ from ..services.registry_status import build_registry_status
 from ..providers.base import ProviderConfigurationError
 from ..shared.openmesh_events import make_openmesh_event
 from ..sdk.integrations import list_integrations
+from ..workflows import run_multi_agent_demo
 from .tui import run_tui
 
 
@@ -1547,6 +1548,29 @@ def _print_research_demo_result(result: dict[str, Any]) -> None:
     print(_short(result.get("response", ""), 1000))
 
 
+def _print_multi_agent_demo_result(result: dict[str, Any]) -> None:
+    print("OpenMesh Multi-Agent Demo")
+    print()
+    print(f"Workflow: {result['workflow']}")
+    print(f"Workflow ID: {result['workflow_id']}")
+    print(f"Trace: {result['trace_id']}")
+    print(f"Session: {result['session_id']}")
+    print(f"Agents: {', '.join(result.get('agents', []))}")
+    print(f"Handoffs: {result.get('handoffs', 0)}")
+    print(f"Messages: {result.get('messages', 0)}")
+    print(f"Events: {len(result.get('events', []))}")
+    print()
+    print("Workflow Graph")
+    for source, target in zip(result.get("agents", []), result.get("agents", [])[1:]):
+        print(f"{source} -> {target}")
+    if result.get("agents"):
+        print(f"{result['agents'][-1]} -> {result['agents'][0]}")
+    print()
+    print("Next")
+    print(f"openmesh workflow inspect {result['workflow_id']}")
+    print(f"openmesh workflow replay {result['workflow_id']}")
+
+
 def _print_runtime_observation(result: dict[str, Any]) -> None:
     runtime = result["runtime"]
     print("OpenMesh Runtime Observation")
@@ -2150,6 +2174,21 @@ async def _run_demo_research(args: argparse.Namespace) -> int:
             print(str(exc))
             return 1
         _print_research_demo_result(result)
+        return 0
+
+    return await _with_db(run)
+
+
+async def _run_demo_multi_agent(args: argparse.Namespace) -> int:
+    async def run(db):
+        result = await run_multi_agent_demo(
+            db,
+            agents=args.agents,
+            handoffs=args.handoffs,
+            messages=args.messages,
+            broadcast=False,
+        )
+        _print_multi_agent_demo_result(result)
         return 0
 
     return await _with_db(run)
@@ -2873,6 +2912,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum response tokens for the LLM call.",
     )
     research_demo.set_defaults(func=_run_demo_research)
+    multi_agent_demo = run_demo_subparsers.add_parser(
+        "multi-agent", help="Generate a multi-agent handoff workflow through OpenMesh."
+    )
+    multi_agent_demo.add_argument(
+        "--agents",
+        type=int,
+        default=5,
+        help="Number of agents to include, clamped to 4-6.",
+    )
+    multi_agent_demo.add_argument(
+        "--handoffs",
+        type=int,
+        default=24,
+        help="Number of handoffs to generate. Minimum 20.",
+    )
+    multi_agent_demo.add_argument(
+        "--messages",
+        type=int,
+        default=60,
+        help="Number of message exchanges to generate. Minimum 50.",
+    )
+    multi_agent_demo.set_defaults(func=_run_demo_multi_agent)
 
     discover = subparsers.add_parser(
         "discover", help="Show observed OpenMesh ecosystem registry."
@@ -2996,6 +3057,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum events to derive workflow inspection from.",
     )
     workflow_inspect.set_defaults(func=_workflow_inspect)
+    workflow_replay = workflow_subparsers.add_parser(
+        "replay", help="Replay one workflow."
+    )
+    workflow_replay.add_argument(
+        "workflow_id", help="Workflow id, workflow name, or normalized workflow alias."
+    )
+    _add_replay_options(workflow_replay)
+    workflow_replay.add_argument(
+        "--limit",
+        type=int,
+        default=5000,
+        help="Maximum events to derive workflow replay from.",
+    )
+    workflow_replay.set_defaults(func=_replay_workflow)
 
     ecosystem = subparsers.add_parser(
         "ecosystem", help="Show unified OpenMesh ecosystem inventory."

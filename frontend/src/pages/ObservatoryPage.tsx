@@ -40,6 +40,13 @@ type McpMetrics = {
   resource_activity?: number;
   most_used_tools?: Array<{ tool?: string; calls?: number }>;
 };
+type WorkflowMetrics = {
+  active_workflows?: number;
+  completed_workflows?: number;
+  average_handoffs?: number;
+  busiest_agent?: { agent?: string; events?: number } | null;
+  handoff_latency_ms?: number | null;
+};
 
 export default function ObservatoryPage() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: statsApi.get, refetchInterval: 30000 });
@@ -69,6 +76,11 @@ export default function ObservatoryPage() {
     queryFn: () => openmeshApi.mcpMetrics(),
     refetchInterval: 15000,
   });
+  const { data: workflowMetrics = {} } = useQuery<WorkflowMetrics>({
+    queryKey: ["openmesh-workflow-metrics"],
+    queryFn: () => openmeshApi.workflowMetrics(),
+    refetchInterval: 15000,
+  });
   const { events } = useWSStore();
 
   const graphNodes = graph.nodes as GraphNode[];
@@ -85,6 +97,7 @@ export default function ObservatoryPage() {
   const healthState = graphNodes.length > 0 || events.length > 0 ? "operational" : "waiting";
   const relationshipActivity = graphEdges.reduce((count, edge) => count + Number(edge.event_count || 0), 0);
   const topMcpTool = mcpMetrics.most_used_tools?.[0];
+  const busiestAgent = workflowMetrics.busiest_agent;
 
   return (
     <div className="om-page">
@@ -147,6 +160,11 @@ export default function ObservatoryPage() {
                 <MetricCell label="Tool Failed" value={mcpMetrics.failed_tool_calls || 0} />
                 <MetricCell label="Resources" value={mcpMetrics.resource_activity || 0} />
                 <MetricCell label="Top Tool" value={topMcpTool?.tool ? `${topMcpTool.tool} (${topMcpTool.calls || 0})` : "-"} />
+                <MetricCell label="Active WF" value={workflowMetrics.active_workflows || 0} />
+                <MetricCell label="Done WF" value={workflowMetrics.completed_workflows || 0} />
+                <MetricCell label="Avg Handoff" value={formatMetric(workflowMetrics.average_handoffs)} />
+                <MetricCell label="Handoff Lat" value={formatMetric(workflowMetrics.handoff_latency_ms, "ms")} />
+                <MetricCell label="Busy Agent" value={busiestAgent?.agent ? `${busiestAgent.agent} (${busiestAgent.events || 0})` : "-"} />
               </div>
             </div>
           </ControlPanel>

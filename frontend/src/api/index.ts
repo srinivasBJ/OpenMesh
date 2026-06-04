@@ -82,4 +82,5 @@ export const openmeshApi = {
   mcpMetrics: () => api.get("/openmesh/mcp/metrics").then(r => r.data),
   tools: () => api.get("/openmesh/tools").then(r => r.data),
   resources: () => api.get("/openmesh/resources").then(r => r.data),
+  workflowMetrics: () => api.get("/openmesh/workflows/metrics").then(r => r.data),
 };

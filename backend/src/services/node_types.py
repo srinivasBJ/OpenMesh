@@ -29,7 +29,7 @@ NODE_TYPES: dict[str, NodeType] = {
         "Agent",
         "An autonomous or assisted agent.",
         "agents",
-        COMMON_METADATA + ("role",),
+        COMMON_METADATA + ("role", "source"),
     ),
     "tool": NodeType(
         "tool",
@@ -43,7 +43,15 @@ NODE_TYPES: dict[str, NodeType] = {
         "Workflow",
         "A coordinated execution flow.",
         "workflows",
-        COMMON_METADATA + ("graph", "source"),
+        COMMON_METADATA
+        + (
+            "graph",
+            "source",
+            "workflow_type",
+            "agents",
+            "handoff_count",
+            "message_count",
+        ),
     ),
     "process": NodeType(
         "process",

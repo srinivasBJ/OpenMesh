@@ -138,6 +138,20 @@ RELATIONSHIP_TYPES: dict[str, RelationshipType] = {
         source_types=("agent", "workflow"),
         target_types=("agent", "workflow"),
     ),
+    "reviews": RelationshipType(
+        type="reviews",
+        label="reviews",
+        description="One agent reviews the work or output of another agent.",
+        source_types=("agent",),
+        target_types=("agent",),
+    ),
+    "contains": RelationshipType(
+        type="contains",
+        label="contains",
+        description="A workflow contains a participating agent.",
+        source_types=("workflow",),
+        target_types=("agent",),
+    ),
     "transitions_to": RelationshipType(
         type="transitions_to",
         label="transitions_to",
@@ -177,6 +191,10 @@ EVENT_RELATIONSHIPS = {
     "model.request": "uses",
     "model.response": "uses",
     "model.loaded": "served_by",
+    "agent.handoff.started": "delegates_to",
+    "agent.handoff.completed": "delegates_to",
+    "agent.message.sent": "communicates_with",
+    "agent.message.received": "communicates_with",
     "message.sent": "communicates_with",
     "collaboration.created": "collaborates_with",
     "delegation.created": "delegates_to",
@@ -193,6 +211,12 @@ def relationship_type_for(
     source_type: Optional[str] = None,
     target_type: Optional[str] = None,
 ) -> Optional[str]:
+    if (
+        event_type in {"workflow.started", "workflow.completed"}
+        and source_type == "workflow"
+        and target_type == "agent"
+    ):
+        return "contains"
     relationship_type = EVENT_RELATIONSHIPS.get(event_type)
     if relationship_type:
         return relationship_type

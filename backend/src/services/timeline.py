@@ -216,6 +216,39 @@ def build_workflow_timeline(
     )
     if not node_timeline:
         return None
+    linked_records = _workflow_linked_records(record_list, workflow_id)
+    if linked_records:
+        linked_relationship_changes = _relationship_observations(
+            reduce_graph_state(linked_records)
+        )
+        relationship_changes = _sort_entries(
+            [
+                *node_timeline.get("relationship_changes", []),
+                *linked_relationship_changes,
+            ]
+        )
+        timeline = _sort_entries(
+            [*node_timeline.get("timeline", []), *_event_entries(linked_records)]
+        )
+        node_timeline = {
+            **node_timeline,
+            "relationship_changes": relationship_changes,
+            "timeline": timeline,
+            "summary": {
+                **node_timeline.get("summary", {}),
+                "events": len(
+                    {
+                        *[
+                            item.get("event_id")
+                            for item in node_timeline.get("timeline", [])
+                            if item.get("event_id")
+                        ],
+                        *[record.event_id for record in linked_records],
+                    }
+                ),
+                "relationship_changes": len(relationship_changes),
+            },
+        }
     return {
         **node_timeline,
         "scope": "workflow",
@@ -540,6 +573,20 @@ def _event_has_node(event: dict[str, Any], node_id: str) -> bool:
         node and node.get("node_id") == node_id
         for node in (event.get("source"), event.get("target"))
     )
+
+
+def _workflow_linked_records(
+    records: Iterable[OpenMeshEventRecord], workflow_id: str
+) -> list[OpenMeshEventRecord]:
+    linked = []
+    for record in records:
+        event = record_to_event(record)
+        if _event_has_node(event, workflow_id):
+            continue
+        payload = record.payload_json or {}
+        if payload.get("workflow_id") == workflow_id:
+            linked.append(record)
+    return linked
 
 
 def _filter_relationship_changes(

@@ -181,7 +181,10 @@ def graph_edges_for_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not source or not target:
             continue
         edge_type = edge_type_for(
-            event["event_type"], target.get("node_type"), source.get("node_type")
+            event["event_type"],
+            target.get("node_type"),
+            source.get("node_type"),
+            payload=event.get("payload"),
         )
         if not edge_type:
             continue

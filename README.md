@@ -26,7 +26,7 @@ explicit command such as `openmesh simulate`, `openmesh seed demo`,
 
 ## Status
 
-OpenMesh v1.0 alpha is release-candidate software. The core architecture works,
+OpenMesh v1.0.0  is release-candidate software. The core architecture works,
 the CLI/TUI/API/frontend can read the same SQLite event store, and the project is
 being hardened for public launch and contributor onboarding.
 

@@ -10,7 +10,7 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: pip install -r requirements.txt
@@ -22,7 +22,7 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - run: npm ci
@@ -36,7 +36,7 @@ jobs:
       OPENMESH_DB_MODE: sqlite
       OPENMESH_SQLITE_PATH: /tmp/openmesh-release-validation.db
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - name: Install package editable

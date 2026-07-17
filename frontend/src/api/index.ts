@@ -76,6 +76,7 @@ export interface LiveStatus {
   runner: { running: boolean; paused?: boolean; tick_count: number; last_error: string | null };
   events_per_second: number;
   websocket_clients: number;
+  tui_command?: string;
 }
 
 export const settingsApi = {

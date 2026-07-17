@@ -12,7 +12,6 @@ import {
   Check,
   Clipboard,
   Crosshair,
-  Download,
   Filter,
   GitBranch,
   Info,
@@ -25,7 +24,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { openmeshApi } from "@/api";
+import { controlApi, openmeshApi } from "@/api";
 import { cn } from "@/lib/utils";
 import RotatingOrb from "@/components/shared/RotatingOrb";
 import FirstLaunchPanel from "@/components/onboarding/FirstLaunchPanel";
@@ -66,20 +65,6 @@ const NODE_STYLES: Record<string, { fill: string; stroke: string; text: string }
 };
 
 const DEFAULT_NODE_STYLE = { fill: "#2f3437", stroke: "#858b91", text: "#d5d7da" };
-
-const ONBOARDING_SCRIPT = `#!/usr/bin/env bash
-set -euo pipefail
-
-export OPENMESH_DB_MODE=sqlite
-export OPENMESH_SQLITE_PATH="\${OPENMESH_SQLITE_PATH:-./openmesh.db}"
-export LLM_MODE=offline
-
-openmesh doctor
-openmesh simulate --agents 20 --events 500
-openmesh discover
-openmesh graph --details
-openmesh timeline
-`;
 
 export default function GraphPage() {
   const [search, setSearch] = useState("");
@@ -863,21 +848,16 @@ function TimelineRows({ timeline }: { timeline?: OpenMeshTimeline }) {
 
 function EmptyGraphOnboarding() {
   const [copiedTui, setCopiedTui] = useState(false);
+  const { data: liveStatus } = useQuery({
+    queryKey: ["live-status"],
+    queryFn: controlApi.liveStatus,
+    retry: false,
+  });
 
-  const downloadSnippet = () => {
-    const blob = new Blob([ONBOARDING_SCRIPT], { type: "text/x-shellscript" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "openmesh-graph-demo.sh";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  };
-
+  // The backend reports the exact command (absolute paths, DB env) for THIS
+  // instance, so pasting it into any terminal just runs — no cd, no venv.
   const copyTuiCommand = async () => {
-    await copyText("openmesh tui");
+    await copyText(liveStatus?.tui_command ?? "openmesh tui");
     setCopiedTui(true);
     window.setTimeout(() => setCopiedTui(false), 1800);
   };
@@ -898,22 +878,17 @@ function EmptyGraphOnboarding() {
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[6px] border border-[color:var(--om-border)] bg-black/35 px-4 py-2.5 text-left">
             <div className="flex items-center gap-2 text-xs text-[color:var(--om-muted)]">
               <Terminal size={13} className="text-[color:var(--om-rust-400)]" />
-              Prefer the terminal? Open the Control Room TUI or run the demo snippet from the repo root.
+              Prefer the terminal? Copy the Control Room TUI command and paste it into any terminal — same live data, no browser needed.
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                className="flex items-center gap-2 rounded-[4px] border border-[color:var(--om-border)] bg-black/45 px-2.5 py-1.5 font-mono text-xs text-[color:var(--om-rust-300)] hover:border-[color:var(--om-border-strong)]"
-                title="Copy command"
-                onClick={() => void copyTuiCommand()}
-              >
-                openmesh tui
-                {copiedTui ? <Check size={12} /> : <Clipboard size={12} />}
-              </button>
-              <button type="button" className="om-button-ghost h-8 px-3 text-xs" onClick={downloadSnippet}>
-                <Download size={13} /> Download Snippet
-              </button>
-            </div>
+            <button
+              type="button"
+              className="flex shrink-0 items-center gap-2 rounded-[4px] border border-[color:var(--om-border)] bg-black/45 px-2.5 py-1.5 font-mono text-xs text-[color:var(--om-rust-300)] hover:border-[color:var(--om-border-strong)]"
+              title="Copies the exact ready-to-run command for this OpenMesh instance"
+              onClick={() => void copyTuiCommand()}
+            >
+              openmesh tui
+              {copiedTui ? <Check size={12} /> : <Clipboard size={12} />}
+            </button>
           </div>
         </div>
       </div>

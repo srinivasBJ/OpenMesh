@@ -14,7 +14,9 @@ with a fresh heartbeat.
 
 from __future__ import annotations
 
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.security import protect_write
 from ...db.models import Agent, AgentRole, AgentStatus
-from ...db.session import get_db
+from ...db.session import DATABASE_URL, get_db
 from ...providers.registry import configured_provider
 from ...providers.runtime_settings import (
     effective_llm_mode,
@@ -46,6 +48,21 @@ router = APIRouter()
 NO_AGENTS_MESSAGE = (
     "No active agents detected. Connect Claude Code, SDK, MCP, or start a session."
 )
+
+_BACKEND_DIR = Path(__file__).resolve().parents[3]
+
+
+def tui_command() -> str:
+    """Exact paste-and-run command to open the Control Room TUI against the
+    SAME database this backend is serving — absolute paths, no venv
+    activation or cd required (POSIX shells)."""
+    parts = []
+    if DATABASE_URL.startswith("sqlite:///"):
+        db_path = DATABASE_URL[len("sqlite:///") :]
+        parts.append(f'OPENMESH_DB_MODE=sqlite OPENMESH_SQLITE_PATH="{db_path}"')
+    parts.append(f'PYTHONPATH="{_BACKEND_DIR}"')
+    parts.append(f'"{sys.executable}" -m src.cli.openmesh tui')
+    return " ".join(parts)
 
 # Real-agent statuses a heartbeat may report.
 REPORTABLE_STATUSES = {
@@ -208,4 +225,5 @@ async def live_status(db: AsyncSession = Depends(get_db)):
         "demo": await demo_status(),
         "events_per_second": manager.events_per_second(),
         "websocket_clients": len(manager.active_connections),
+        "tui_command": tui_command(),
     }

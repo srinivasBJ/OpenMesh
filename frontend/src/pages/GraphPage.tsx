@@ -862,6 +862,8 @@ function TimelineRows({ timeline }: { timeline?: OpenMeshTimeline }) {
 }
 
 function EmptyGraphOnboarding() {
+  const [copiedTui, setCopiedTui] = useState(false);
+
   const downloadSnippet = () => {
     const blob = new Blob([ONBOARDING_SCRIPT], { type: "text/x-shellscript" });
     const url = URL.createObjectURL(blob);
@@ -874,27 +876,44 @@ function EmptyGraphOnboarding() {
     URL.revokeObjectURL(url);
   };
 
-  // Fully covers the graph canvas (solid background, above the map chrome)
-  // and scrolls internally so the panel never collides with the Network Map.
+  const copyTuiCommand = async () => {
+    await copyText("openmesh tui");
+    setCopiedTui(true);
+    window.setTimeout(() => setCopiedTui(false), 1800);
+  };
+
+  // Fully covers the graph canvas (solid background, above the map chrome),
+  // centered in the viewport, and scrolls internally on short screens.
   return (
-    <div className="absolute inset-0 z-20 overflow-y-auto bg-[color:var(--om-iron-980)] p-4">
-      <div className="flex min-h-full items-start justify-center">
-        <div className="om-empty w-full max-w-3xl !p-5">
-          <RotatingOrb size={56} className="mx-auto drop-shadow-[0_0_16px_rgba(190,92,36,.32)]" />
-          <div className="om-kicker mt-3">First Launch</div>
-          <h2 className="mt-1 text-xl font-bold text-stone-50">Start observing your AI systems</h2>
-          <p className="mx-auto mt-1 max-w-xl text-sm leading-5 text-[color:var(--om-muted)]">
+    <div className="absolute inset-0 z-20 overflow-y-auto bg-[color:var(--om-iron-980)] p-6">
+      <div className="flex min-h-full items-center justify-center">
+        <div className="om-empty w-full max-w-5xl">
+          <RotatingOrb size={72} className="mx-auto drop-shadow-[0_0_16px_rgba(190,92,36,.32)]" />
+          <div className="om-kicker mt-4">First Launch</div>
+          <h2 className="mt-2 text-2xl font-bold text-stone-50">Start observing your AI systems</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-[color:var(--om-muted)]">
             Pick a path below and the graph will populate with agents, processes, tools, and provenance.
           </p>
           <FirstLaunchPanel />
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-[6px] border border-[color:var(--om-border)] bg-black/35 px-3 py-2 text-left">
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[6px] border border-[color:var(--om-border)] bg-black/35 px-4 py-2.5 text-left">
             <div className="flex items-center gap-2 text-xs text-[color:var(--om-muted)]">
               <Terminal size={13} className="text-[color:var(--om-rust-400)]" />
-              Prefer the terminal? Download the demo snippet and run it from the repo root.
+              Prefer the terminal? Open the Control Room TUI or run the demo snippet from the repo root.
             </div>
-            <button type="button" className="om-button-ghost h-8 shrink-0 px-3 text-xs" onClick={downloadSnippet}>
-              <Download size={13} /> Download Snippet
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-[4px] border border-[color:var(--om-border)] bg-black/45 px-2.5 py-1.5 font-mono text-xs text-[color:var(--om-rust-300)] hover:border-[color:var(--om-border-strong)]"
+                title="Copy command"
+                onClick={() => void copyTuiCommand()}
+              >
+                openmesh tui
+                {copiedTui ? <Check size={12} /> : <Clipboard size={12} />}
+              </button>
+              <button type="button" className="om-button-ghost h-8 px-3 text-xs" onClick={downloadSnippet}>
+                <Download size={13} /> Download Snippet
+              </button>
+            </div>
           </div>
         </div>
       </div>

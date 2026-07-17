@@ -59,8 +59,8 @@ export default function FirstLaunchPanel() {
   };
 
   return (
-    <div className="mt-5 text-left">
-      <div className="grid gap-3 md:grid-cols-2">
+    <div className="mt-6 text-left">
+      <div className="grid gap-4 md:grid-cols-2">
         <OptionCard
           icon={<Play size={16} />}
           title="Run Demo Environment"
@@ -137,12 +137,12 @@ function OptionCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-[6px] border border-[color:var(--om-border)] bg-black/45 p-4">
+    <div className="flex flex-col rounded-[6px] border border-[color:var(--om-border)] bg-black/45 p-5">
       <div className="flex items-center gap-2 text-[color:var(--om-rust-300)]">
         {icon}
         <span className="text-sm font-bold uppercase tracking-[.1em]">{title}</span>
       </div>
-      <p className="mt-2 text-sm leading-5 text-[color:var(--om-muted)]">{description}</p>
+      <p className="mt-2 flex-1 text-sm leading-6 text-[color:var(--om-muted)]">{description}</p>
       {children}
     </div>
   );

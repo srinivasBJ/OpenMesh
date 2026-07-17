@@ -33,7 +33,11 @@ export default function TopBar() {
   const invalidate = () => refreshAppState(qc);
   const start = useMutation({
     mutationFn: () => sessionApi.start(activeWorkspaceId ?? undefined),
-    onSuccess: () => toast.success("Agent session started."),
+    onSuccess: (result: { driven_agents?: number; message?: string }) => {
+      // An API key alone creates no agents — surface the real reason.
+      if (result?.driven_agents === 0 && result?.message) toast(result.message);
+      else toast.success("Agent session started.");
+    },
     onError: (error) => toast.error(apiErrorMessage(error, "Starting the session failed")),
     onSettled: invalidate,
   });
@@ -92,8 +96,11 @@ export default function TopBar() {
 
       <Stat label="Agents" icon={<Users size={13} />}>
         <span className="font-mono text-[color:var(--om-text)]">{status?.agents.active ?? 0}</span>
-        <span className={cn("text-xs", running ? (paused ? "text-[color:var(--om-rust-300)]" : "text-[color:var(--om-green-500)]") : "text-[color:var(--om-dim)]")}>
-          {running ? (paused ? "paused" : "running") : "idle"}
+        <span
+          className={cn("text-xs", running ? (paused ? "text-[color:var(--om-rust-300)]" : "text-[color:var(--om-green-500)]") : "text-[color:var(--om-dim)]")}
+          title={status?.agents.message ?? undefined}
+        >
+          {(status?.agents.active ?? 0) === 0 ? "none detected" : running ? (paused ? "paused" : "running") : "idle"}
         </span>
       </Stat>
 

@@ -36,10 +36,30 @@ class AgentRole(str, enum.Enum):
 
 
 class AgentStatus(str, enum.Enum):
+    # Legacy simulation states (kept for existing rows)
     ACTIVE = "active"
     IDLE = "idle"
     SLEEPING = "sleeping"
     BUSY = "busy"
+    # Real lifecycle states — an API key can never produce these on its own
+    STARTING = "starting"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TERMINATED = "terminated"
+    DISCONNECTED = "disconnected"
+
+
+class AgentSource(str, enum.Enum):
+    """Where an agent comes from. A provider API key does NOT create agents;
+    only the demo simulation or a real integration reporting itself does."""
+
+    SIMULATION = "simulation"
+    SDK = "sdk"
+    MCP = "mcp"
+    CLAUDE_CODE = "claude_code"
+    OPENAI_AGENT = "openai_agent"
+    CUSTOM = "custom"
 
 
 class PostType(str, enum.Enum):
@@ -90,6 +110,7 @@ class Agent(Base):
     name = Column(String(100), nullable=False, unique=True)
     role = Column(SAEnum(AgentRole), nullable=False)
     status = Column(SAEnum(AgentStatus), default=AgentStatus.ACTIVE)
+    source = Column(String(30), nullable=False, default="simulation", server_default="simulation")
     workspace_id = Column(String, nullable=True, index=True)
     project_id = Column(String, nullable=True, index=True)
     personality = Column(JSON, nullable=False)
@@ -240,6 +261,8 @@ class OpenMeshEventRecord(Base):
     event_type = Column(String(100), nullable=False, index=True)
     timestamp = Column(DateTime, nullable=False, index=True)
     workspace_id = Column(String(100), nullable=True, index=True)
+    project_id = Column(String(100), nullable=True, index=True)
+    agent_source = Column(String(30), nullable=True, index=True)
     trace_id = Column(String(100), nullable=False, index=True)
     session_id = Column(String(100), nullable=False, index=True)
     span_id = Column(String(100), nullable=True, index=True)

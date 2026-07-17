@@ -332,17 +332,43 @@ async def delete_demo(_: None = Depends(protect_write)):
 
 
 # ── Agent sessions ────────────────────────────────────────────────────────
+#
+# Sessions only drive SIMULATION agents that already exist. Starting a
+# session never creates agents: with a fresh install and a connected API
+# key, agents stay at 0 until the demo is run or a real agent registers.
+
+
+async def _set_simulation_status(
+    db: AsyncSession, status: str, workspace_id: str | None
+) -> int:
+    query = select(Agent).where(Agent.source == "simulation")
+    if workspace_id:
+        query = query.where(Agent.workspace_id == workspace_id)
+    agents = (await db.execute(query)).scalars().all()
+    for agent in agents:
+        agent.status = status
+    await db.commit()
+    return len(agents)
 
 
 @router.post("/agents/session/start")
 async def session_start(
     req: SessionStartRequest,
+    db: AsyncSession = Depends(get_db),
     _: None = Depends(protect_write),
 ):
-    return await runner.start(
-        workspace_id=req.workspace_id,
-        ensure_default=req.workspace_id is None,
-    )
+    driven = await _set_simulation_status(db, "running", req.workspace_id)
+    if driven == 0:
+        return {
+            **runner.status(),
+            "driven_agents": 0,
+            "message": (
+                "No active agents detected. "
+                "Connect Claude Code, SDK, MCP, or run the demo environment."
+            ),
+        }
+    status = await runner.start(workspace_id=req.workspace_id)
+    return {**status, "driven_agents": driven}
 
 
 @router.post("/agents/session/pause")
@@ -356,5 +382,28 @@ async def session_resume(_: None = Depends(protect_write)):
 
 
 @router.post("/agents/session/terminate")
-async def session_terminate(_: None = Depends(protect_write)):
-    return await runner.stop()
+async def session_terminate(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(protect_write),
+):
+    scope = runner.workspace_id
+    status = await runner.stop()
+    terminated = await _set_simulation_status(db, "terminated", scope)
+    return {**status, "terminated_agents": terminated, "message": "No active agents."}
+
+
+@router.post("/agents/session/delete")
+async def session_delete(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(protect_write),
+):
+    """Terminate and clear session counters (tick history)."""
+    scope = runner.workspace_id
+    await runner.stop()
+    terminated = await _set_simulation_status(db, "terminated", scope)
+    runner.started_at = None
+    runner.tick_count = 0
+    runner.last_tick_at = None
+    runner.last_tick_agents = 0
+    runner.last_error = None
+    return {**runner.status(), "terminated_agents": terminated, "deleted": True}

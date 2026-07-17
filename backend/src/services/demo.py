@@ -95,11 +95,14 @@ async def start_demo() -> dict:
             if agent:
                 if agent.workspace_id != workspace.id:
                     agent.workspace_id = workspace.id
+                agent.status = "running"
                 continue
             profile = await generate_agent_profile(name, role)
             agent = Agent(
                 name=name,
                 role=role,
+                source="simulation",
+                status="running",
                 workspace_id=workspace.id,
                 bio=profile.get("bio", ""),
                 personality=profile.get("personality", {}),
@@ -140,7 +143,7 @@ async def start_demo() -> dict:
             )
         workspace_id = workspace.id
 
-    status = await runner.start(workspace_id=workspace_id, ensure_default=False)
+    status = await runner.start(workspace_id=workspace_id)
     return {"demo": await demo_status(), "runner": status}
 
 

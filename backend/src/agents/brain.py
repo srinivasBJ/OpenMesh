@@ -95,6 +95,15 @@ def _memory_snippet(agent_data: dict) -> str:
     return _clip("\n".join(lines), AGENT_MEMORY_CONTEXT_CHARS)
 
 
+def active_provider_info() -> dict:
+    """(provider, model) actually in use, or Nones when offline/unconfigured.
+    Used to attribute simulator events honestly."""
+    provider = _active_provider()
+    if provider is None:
+        return {"provider": None, "model": None}
+    return {"provider": provider.provider_id, "model": provider.model}
+
+
 async def _call_llm(
     system: Optional[str], user_prompt: str, max_tokens: int, tag: str
 ) -> Optional[str]:

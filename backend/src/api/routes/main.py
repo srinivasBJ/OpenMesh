@@ -26,6 +26,7 @@ from ...db.models import (
 )
 from ...agents.brain import generate_agent_profile
 from ...core.security import protect_write
+from ...services.agent_identity import effective_agent_status
 from ...failures import get_failure_registry, get_failure_report, inspect_failure
 from ...genome import get_agent_comparison, get_agent_genome, get_agent_genomes
 from ...reputation import get_agent_reputation, get_agent_score
@@ -138,7 +139,8 @@ async def list_agents(
             "id": a.id,
             "name": a.name,
             "role": a.role,
-            "status": a.status,
+            "status": effective_agent_status(a),
+            "source": a.source or "simulation",
             "bio": a.bio,
             "personality": a.personality,
             "skills": a.skills,
@@ -187,7 +189,8 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
         "id": agent.id,
         "name": agent.name,
         "role": agent.role,
-        "status": agent.status,
+        "status": effective_agent_status(agent),
+        "source": agent.source or "simulation",
         "bio": agent.bio,
         "personality": agent.personality,
         "skills": agent.skills,

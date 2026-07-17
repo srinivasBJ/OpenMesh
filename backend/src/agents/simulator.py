@@ -27,6 +27,7 @@ from ..db.models import (
     PostType,
 )
 from ..agents.brain import (
+    active_provider_info,
     generate_post,
     generate_comment,
     generate_message,
@@ -208,14 +209,21 @@ def _build_openmesh_event(action: str, event_data: dict) -> dict:
         agent.get("name", "Unknown Agent"),
         agent.get("role"),
     )
+    payload = {
+        "action": action,
+        "agent_source": "simulation",
+        "legacy_type": event_data.get("type"),
+        "legacy": event_data,
+    }
+    # Attribute the provider/model only when an LLM was actually reachable;
+    # local-fallback content must never claim model usage.
+    provider_info = active_provider_info()
+    if provider_info.get("provider"):
+        payload.update(provider_info)
     return make_openmesh_event(
         _openmesh_event_type(action, event_data),
         source,
-        {
-            "action": action,
-            "legacy_type": event_data.get("type"),
-            "legacy": event_data,
-        },
+        payload,
         target=_target_node_for_legacy_event(event_data),
     )
 
@@ -499,7 +507,10 @@ async def run_simulation_tick(
     query = (
         select(Agent)
         .options(selectinload(Agent.guild))
-        .where(Agent.status == AgentStatus.ACTIVE)
+        .where(Agent.status.in_([AgentStatus.ACTIVE, AgentStatus.RUNNING]))
+        # The simulator must NEVER generate activity for real agents —
+        # only simulation-source agents (demo) are ever ticked.
+        .where(Agent.source == "simulation")
     )
     if workspace_id:
         query = query.where(Agent.workspace_id == workspace_id)

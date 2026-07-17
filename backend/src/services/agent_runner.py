@@ -1,31 +1,21 @@
 """
-AgentRunner — browser-controlled agent loop.
+AgentRunner — browser-controlled tick loop for SIMULATION agents only.
 
-POST /api/agents/start spawns the default OpenMesh agent (if the ecosystem is
-empty) and starts a background tick loop, so users never need the terminal to
-see agents come alive. Unlike the legacy env-gated scheduler, this runner is
-controlled entirely at runtime through the API.
+The runner never creates agents: a provider API key does not mean an agent
+exists, and starting a session only drives simulation-source agents that
+already exist (created explicitly by the demo environment). Real agents
+appear exclusively through the SDK/MCP/collector register + heartbeat path.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
-import random
 from contextlib import suppress
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
-
-from ..agents.brain import generate_agent_profile
 from ..agents.simulator import run_simulation_tick
-from ..db.models import Agent, AgentEvent, AgentStatus
 from ..db.session import AsyncSessionLocal
-from ..shared.openmesh_events import agent_node, make_openmesh_event
-from .openmesh_collector import collector
-
-DEFAULT_AGENT_NAME = os.getenv("OPENMESH_DEFAULT_AGENT_NAME", "Pioneer")
-DEFAULT_AGENT_ROLE = os.getenv("OPENMESH_DEFAULT_AGENT_ROLE", "explorer")
 
 
 def _env_int(name: str, default: int) -> int:
@@ -59,12 +49,8 @@ class AgentRunner:
         self,
         *,
         workspace_id: str | None = None,
-        ensure_default: bool = True,
     ) -> dict:
         async with self._lock:
-            spawned = False
-            if ensure_default:
-                spawned = await self._ensure_default_agent()
             if not self.running:
                 self.workspace_id = workspace_id
                 self.paused = False
@@ -77,7 +63,7 @@ class AgentRunner:
                     f"every {self.interval_seconds}s"
                     + (f" (workspace {workspace_id})" if workspace_id else "")
                 )
-            return {**self.status(), "spawned_default_agent": spawned}
+            return self.status()
 
     async def stop(self) -> dict:
         async with self._lock:
@@ -135,75 +121,5 @@ class AgentRunner:
                 self.last_error = str(e)
                 print(f"[AgentRunner] Tick error: {e}")
             await asyncio.sleep(self.interval_seconds)
-
-    async def _ensure_default_agent(self) -> bool:
-        """Spawn the default OpenMesh agent when the ecosystem is empty."""
-        async with AsyncSessionLocal() as db:
-            active = (
-                await db.execute(
-                    select(func.count(Agent.id)).where(
-                        Agent.status == AgentStatus.ACTIVE
-                    )
-                )
-            ).scalar() or 0
-            if active > 0:
-                return False
-
-            profile = await generate_agent_profile(
-                DEFAULT_AGENT_NAME, DEFAULT_AGENT_ROLE
-            )
-            agent = Agent(
-                name=DEFAULT_AGENT_NAME,
-                role=DEFAULT_AGENT_ROLE,
-                bio=profile.get("bio", ""),
-                personality=profile.get("personality", {}),
-                skills=profile.get("skills", []),
-                goals=profile.get("goals", []),
-                avatar_seed=DEFAULT_AGENT_NAME.lower(),
-                memory=[],
-                reputation=random.uniform(40, 60),
-                knowledge=random.uniform(5, 20),
-                energy=100.0,
-                happiness=random.uniform(60, 80),
-            )
-            db.add(agent)
-            db.add(
-                AgentEvent(
-                    event_type="birth",
-                    title=f"{DEFAULT_AGENT_NAME} joined OpenMeshAI",
-                    description=f"The default {DEFAULT_AGENT_ROLE} has emerged. {profile.get('bio', '')}",
-                    agent_ids=[],
-                )
-            )
-            await db.commit()
-            await db.refresh(agent)
-
-            await collector.accept(
-                db,
-                make_openmesh_event(
-                    "agent.started",
-                    agent_node(
-                        agent.id,
-                        agent.name,
-                        agent.role.value
-                        if hasattr(agent.role, "value")
-                        else str(agent.role),
-                    ),
-                    {
-                        "legacy_type": "agent_born",
-                        "legacy": {
-                            "type": "agent_born",
-                            "agent": {
-                                "id": agent.id,
-                                "name": agent.name,
-                                "role": str(agent.role),
-                                "bio": agent.bio,
-                            },
-                        },
-                    },
-                ),
-            )
-            return True
-
 
 runner = AgentRunner()

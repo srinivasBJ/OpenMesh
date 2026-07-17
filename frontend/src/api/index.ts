@@ -72,8 +72,8 @@ export interface ProviderTestResult {
 export interface LiveStatus {
   backend: string;
   provider: { configured: boolean; provider: string | null; name: string | null; model: string | null; mode: string };
-  agents: { active: number; running: boolean };
-  runner: { running: boolean; tick_count: number; last_error: string | null };
+  agents: { active: number; real?: number; total?: number; running: boolean; message?: string | null };
+  runner: { running: boolean; paused?: boolean; tick_count: number; last_error: string | null };
   events_per_second: number;
   websocket_clients: number;
 }

@@ -86,16 +86,24 @@ def _ensure_openmesh_trace_columns(sync_connection):
 
 
 def _ensure_workspace_columns(sync_connection):
-    """Workspace layering added after the alpha schema; upgrade in place."""
+    """Workspace + identity layering added after the alpha schema."""
     _ensure_columns(
         sync_connection,
         "agents",
-        {"workspace_id": "VARCHAR", "project_id": "VARCHAR"},
+        {
+            "workspace_id": "VARCHAR",
+            "project_id": "VARCHAR",
+            "source": "VARCHAR(30) DEFAULT 'simulation'",
+        },
     )
     _ensure_columns(
         sync_connection,
         "openmesh_events",
-        {"workspace_id": "VARCHAR(100)"},
+        {
+            "workspace_id": "VARCHAR(100)",
+            "project_id": "VARCHAR(100)",
+            "agent_source": "VARCHAR(30)",
+        },
     )
 
 

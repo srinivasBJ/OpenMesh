@@ -93,8 +93,8 @@ export default function AgentsPage() {
         <OpenMeshLoading label="Loading agent registry" />
       ) : agents.length === 0 ? (
         <OpenMeshEmptyState
-          title="No agents are registered yet"
-          description="Run an SDK example or spawn a simulation agent to begin mapping agent identities and relationships."
+          title="No active agents detected"
+          description="A provider API key alone does not create agents. Connect Claude Code, an SDK agent, or MCP — or run the demo environment for simulated agents."
         >
           <div className="inline-flex items-center gap-2 rounded-[4px] border border-[color:var(--om-border)] bg-black/45 px-3 py-2 text-xs text-[color:var(--om-steel-300)]">
             <Terminal size={13} /> python examples/python_basic_agent.py
@@ -118,12 +118,15 @@ export default function AgentsPage() {
                   </div>
                   <div className="flex items-center gap-1 mt-1">
                     <span className={cn("om-status-dot", {
-                      "om-status-active": agent.status === "active" || agent.status === "busy",
-                      "om-status-idle": agent.status === "idle" || agent.status === "sleeping",
-                      "om-status-failed": agent.status === "failed",
+                      "om-status-active": ["active", "busy", "running", "starting"].includes(agent.status),
+                      "om-status-idle": ["idle", "sleeping", "completed"].includes(agent.status),
+                      "om-status-failed": ["failed", "terminated", "disconnected"].includes(agent.status),
                       "bg-[color:var(--om-steel-700)]": !agent.status,
                     })} />
                     <span className="text-xs text-[color:var(--om-muted)] capitalize">{agent.status || "unknown"}</span>
+                    <span className="ml-1 rounded-[3px] border border-[color:var(--om-border)] px-1.5 py-px text-[10px] uppercase tracking-wide text-[color:var(--om-dim)]">
+                      {agent.source === "simulation" || !agent.source ? "simulation" : agent.source.replace("_", " ")}
+                    </span>
                   </div>
                 </div>
               </div>

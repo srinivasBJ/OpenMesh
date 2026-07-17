@@ -136,6 +136,13 @@ async def discover_provider_models(provider_id: str):
     try:
         models = await provider.list_models()
     except Exception as error:
+        message = str(error)
+        if "401" in message or "403" in message:
+            raise HTTPException(
+                401,
+                f"{provider.display_name} rejected the stored API key. "
+                "Reconnect with a valid key.",
+            )
         raise HTTPException(
             502, f"Model discovery failed for {provider.display_name}: {error}"
         )

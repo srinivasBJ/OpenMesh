@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 interface ModalProps {
@@ -20,6 +21,10 @@ interface ModalProps {
  * - X button closes
  * - Callers close programmatically after a successful action
  * The UI can never be left in a locked state that needs a refresh.
+ *
+ * Rendered through a portal on document.body: ancestors with transform /
+ * filter / backdrop-filter (graph canvas, empty-state overlays) hijack
+ * position:fixed and would otherwise clip the dialog off-screen.
  */
 export default function Modal({
   onClose,
@@ -58,9 +63,9 @@ export default function Modal({
     [onClose],
   );
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
@@ -83,6 +88,7 @@ export default function Modal({
         ) : null}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -67,25 +67,6 @@ const NODE_STYLES: Record<string, { fill: string; stroke: string; text: string }
 
 const DEFAULT_NODE_STYLE = { fill: "#2f3437", stroke: "#858b91", text: "#d5d7da" };
 
-const ONBOARDING_COMMANDS = [
-  {
-    label: "Generate a local demo ecosystem",
-    command: "openmesh simulate --agents 20 --events 500",
-  },
-  {
-    label: "Run the basic Python SDK agent",
-    command: "python examples/python_basic_agent.py",
-  },
-  {
-    label: "Run the async Python SDK agent",
-    command: "python examples/python_async_agent.py",
-  },
-  {
-    label: "Run the LangGraph reference workflow",
-    command: "python examples/langgraph_basic.py",
-  },
-];
-
 const ONBOARDING_SCRIPT = `#!/usr/bin/env bash
 set -euo pipefail
 
@@ -881,14 +862,6 @@ function TimelineRows({ timeline }: { timeline?: OpenMeshTimeline }) {
 }
 
 function EmptyGraphOnboarding() {
-  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
-
-  const copyCommand = async (command: string) => {
-    await copyText(command);
-    setCopiedCommand(command);
-    window.setTimeout(() => setCopiedCommand((current) => (current === command ? null : current)), 1800);
-  };
-
   const downloadSnippet = () => {
     const blob = new Blob([ONBOARDING_SCRIPT], { type: "text/x-shellscript" });
     const url = URL.createObjectURL(blob);
@@ -901,51 +874,28 @@ function EmptyGraphOnboarding() {
     URL.revokeObjectURL(url);
   };
 
+  // Fully covers the graph canvas (solid background, above the map chrome)
+  // and scrolls internally so the panel never collides with the Network Map.
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color:var(--om-iron-980)]/95 p-6">
-      <div className="om-empty w-full max-w-3xl">
-        <RotatingOrb size={80} className="mx-auto drop-shadow-[0_0_16px_rgba(190,92,36,.32)]" />
-        <div className="om-kicker mt-6">First Launch</div>
-        <h2 className="mt-2 text-2xl font-bold text-stone-50">Start observing your AI systems</h2>
-        <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[color:var(--om-muted)]">
-          OpenMesh becomes useful when events create relationships. Pick a path below and the graph will populate with agents, processes, tools, and provenance.
-        </p>
-        <FirstLaunchPanel />
-        <div className="mt-5 grid gap-3 text-left md:grid-cols-2">
-          {ONBOARDING_COMMANDS.map((item) => (
-            <div key={item.command} className="rounded-[6px] border border-[color:var(--om-border)] bg-black/45 p-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-[11px] font-semibold uppercase tracking-[.14em] text-[color:var(--om-rust-300)]">{item.label}</span>
-                <button type="button" className="om-button-ghost h-8 px-2 text-[11px]" onClick={() => void copyCommand(item.command)}>
-                  {copiedCommand === item.command ? <Check size={13} /> : <Clipboard size={13} />}
-                  {copiedCommand === item.command ? "Copied" : "Copy"}
-                </button>
-              </div>
-              <code className="block overflow-x-auto whitespace-nowrap font-mono text-xs text-[color:var(--om-steel-200)]">{item.command}</code>
+    <div className="absolute inset-0 z-20 overflow-y-auto bg-[color:var(--om-iron-980)] p-4">
+      <div className="flex min-h-full items-start justify-center">
+        <div className="om-empty w-full max-w-3xl !p-5">
+          <RotatingOrb size={56} className="mx-auto drop-shadow-[0_0_16px_rgba(190,92,36,.32)]" />
+          <div className="om-kicker mt-3">First Launch</div>
+          <h2 className="mt-1 text-xl font-bold text-stone-50">Start observing your AI systems</h2>
+          <p className="mx-auto mt-1 max-w-xl text-sm leading-5 text-[color:var(--om-muted)]">
+            Pick a path below and the graph will populate with agents, processes, tools, and provenance.
+          </p>
+          <FirstLaunchPanel />
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-[6px] border border-[color:var(--om-border)] bg-black/35 px-3 py-2 text-left">
+            <div className="flex items-center gap-2 text-xs text-[color:var(--om-muted)]">
+              <Terminal size={13} className="text-[color:var(--om-rust-400)]" />
+              Prefer the terminal? Download the demo snippet and run it from the repo root.
             </div>
-          ))}
-        </div>
-        <div className="mt-5 rounded-[6px] border border-[color:var(--om-border)] bg-black/35 p-4 text-left">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--om-text)]">
-                <Terminal size={15} className="text-[color:var(--om-rust-400)]" /> Run in Terminal
-              </div>
-              <p className="mt-1 text-xs leading-5 text-[color:var(--om-muted)]">
-                Browsers cannot safely execute local shell commands. Copy a command, or download the snippet and run it from the repository root.
-              </p>
-            </div>
-            <button type="button" className="om-button shrink-0" onClick={downloadSnippet}>
-              <Download size={14} /> Download Snippet
+            <button type="button" className="om-button-ghost h-8 shrink-0 px-3 text-xs" onClick={downloadSnippet}>
+              <Download size={13} /> Download Snippet
             </button>
           </div>
-          <div className="mt-3 grid gap-2 text-xs text-[color:var(--om-steel-300)] md:grid-cols-2">
-            <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-2">macOS/Linux: source .venv/bin/activate</code>
-            <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-2">Windows: .venv\Scripts\activate</code>
-          </div>
-        </div>
-        <div className="mt-4 text-sm text-[color:var(--om-muted)]">
-          Example entities will appear as agents, tools, workflows, processes, services, MCP servers, and capabilities.
         </div>
       </div>
     </div>

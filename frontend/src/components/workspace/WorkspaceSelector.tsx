@@ -21,7 +21,14 @@ export default function WorkspaceSelector({ onCreate }: { onCreate: () => void }
         className="om-select h-9 min-w-0 flex-1 text-sm"
         aria-label="Active workspace"
         value={activeWorkspaceId ?? ""}
-        onChange={(event) => setActiveWorkspace(event.target.value || null)}
+        onChange={(event) => {
+          if (event.target.value === "__create__") {
+            event.target.value = activeWorkspaceId ?? "";
+            onCreate();
+            return;
+          }
+          setActiveWorkspace(event.target.value || null);
+        }}
       >
         <option value="">All workspaces</option>
         {workspaces.map((workspace) => (
@@ -29,6 +36,7 @@ export default function WorkspaceSelector({ onCreate }: { onCreate: () => void }
             {workspace.kind === "demo" ? "◦ " : ""}{workspace.name} ({workspace.agent_count})
           </option>
         ))}
+        <option value="__create__">＋ Create Workspace…</option>
       </select>
       <button
         type="button"

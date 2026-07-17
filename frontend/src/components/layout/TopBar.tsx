@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, Cpu, Loader2, Pause, Play, Square, Users } from "lucide-react";
+import { Activity, AlertTriangle, Cpu, Loader2, Pause, Play, Square, Users } from "lucide-react";
 import { controlApi, sessionApi } from "@/api";
 import { useWSStore } from "@/store/wsStore";
 import { useWorkspaceStore } from "@/store/workspaceStore";
 import ProviderManagerModal from "@/components/providers/ProviderManagerModal";
+import Modal from "@/components/shared/Modal";
+import { apiErrorMessage, refreshAppState } from "@/lib/appState";
 import { cn } from "@/lib/utils";
+import toast from "react-hot-toast";
 
 /**
  * Live status bar: backend link, active provider/model, events per second,
@@ -17,6 +20,7 @@ export default function TopBar() {
   const { connected } = useWSStore();
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const [providersOpen, setProvidersOpen] = useState(false);
+  const [confirmTerminate, setConfirmTerminate] = useState(false);
 
   const { data: status } = useQuery({
     queryKey: ["live-status"],
@@ -25,17 +29,33 @@ export default function TopBar() {
     retry: false,
   });
 
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["live-status"] });
-    qc.invalidateQueries({ queryKey: ["demo-status"] });
-  };
+  // Every session action refreshes all live views — no browser refresh.
+  const invalidate = () => refreshAppState(qc);
   const start = useMutation({
     mutationFn: () => sessionApi.start(activeWorkspaceId ?? undefined),
+    onSuccess: () => toast.success("Agent session started."),
+    onError: (error) => toast.error(apiErrorMessage(error, "Starting the session failed")),
     onSettled: invalidate,
   });
-  const pause = useMutation({ mutationFn: sessionApi.pause, onSettled: invalidate });
-  const resume = useMutation({ mutationFn: sessionApi.resume, onSettled: invalidate });
-  const terminate = useMutation({ mutationFn: sessionApi.terminate, onSettled: invalidate });
+  const pause = useMutation({
+    mutationFn: sessionApi.pause,
+    onError: (error) => toast.error(apiErrorMessage(error, "Pausing failed")),
+    onSettled: invalidate,
+  });
+  const resume = useMutation({
+    mutationFn: sessionApi.resume,
+    onError: (error) => toast.error(apiErrorMessage(error, "Resuming failed")),
+    onSettled: invalidate,
+  });
+  const terminate = useMutation({
+    mutationFn: sessionApi.terminate,
+    onSuccess: () => {
+      setConfirmTerminate(false);
+      toast.success("Session terminated. No active agents.");
+    },
+    onError: (error) => toast.error(apiErrorMessage(error, "Terminating failed")),
+    onSettled: invalidate,
+  });
 
   const backendUp = connected || Boolean(status);
   const provider = status?.provider;
@@ -94,8 +114,8 @@ export default function TopBar() {
                 <Pause size={14} /> Pause
               </button>
             )}
-            <button type="button" className="om-button-ghost h-9 px-3 text-sm" disabled={busy} onClick={() => terminate.mutate()}>
-              {terminate.isPending ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+            <button type="button" className="om-button-ghost h-9 px-3 text-sm" disabled={busy} onClick={() => setConfirmTerminate(true)}>
+              <Square size={14} />
               Terminate
             </button>
           </>
@@ -103,6 +123,26 @@ export default function TopBar() {
       </div>
 
       {providersOpen ? <ProviderManagerModal onClose={() => setProvidersOpen(false)} /> : null}
+      {confirmTerminate ? (
+        <Modal onClose={() => setConfirmTerminate(false)} maxWidth="max-w-md" showClose={false} aria-label="Confirm session termination">
+          <div className="text-center">
+            <AlertTriangle size={26} className="mx-auto text-[color:var(--om-rust-300)]" />
+            <h2 className="mt-3 text-xl font-bold text-[color:var(--om-text)]">Terminate this agent session?</h2>
+            <p className="mt-2 text-sm text-[color:var(--om-muted)]">
+              The tick loop stops and you return to the normal workspace view. Agents and their history are kept.
+            </p>
+            <div className="mt-5 flex justify-center gap-3">
+              <button type="button" className="om-button-ghost px-5" disabled={terminate.isPending} onClick={() => setConfirmTerminate(false)}>
+                Cancel
+              </button>
+              <button type="button" className="om-button px-5" disabled={terminate.isPending} onClick={() => terminate.mutate()}>
+                {terminate.isPending ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                Terminate
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </header>
   );
 }

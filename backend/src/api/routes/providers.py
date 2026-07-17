@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from ...core.security import protect_write
 from ...providers.base import ProviderModel
+from ...providers.model_catalog import curate_models, rank_models
 from ...providers.registry import get_provider, list_providers
 from ...providers.runtime_settings import (
     SUPPORTED_PROVIDERS,
@@ -111,12 +112,14 @@ async def connect_provider(
     except Exception:
         models = []
     save_runtime_provider_config(provider_id, req.api_key, model=req.model)
+    model_dicts = [_model_to_dict(model) for model in models]
     return {
         "provider": provider_id,
         "name": status.name,
         "connected": True,
         "message": status.message,
-        "models": [_model_to_dict(model) for model in models],
+        "models": rank_models(model_dicts),
+        "curated": curate_models(model_dicts),
         "selected": {"provider": provider_id, "model": req.model},
     }
 
@@ -136,7 +139,12 @@ async def discover_provider_models(provider_id: str):
         raise HTTPException(
             502, f"Model discovery failed for {provider.display_name}: {error}"
         )
-    return {"provider": provider.provider_id, "models": [_model_to_dict(m) for m in models]}
+    model_dicts = [_model_to_dict(m) for m in models]
+    return {
+        "provider": provider.provider_id,
+        "models": rank_models(model_dicts),
+        "curated": curate_models(model_dicts),
+    }
 
 
 @router.post("/providers/select")

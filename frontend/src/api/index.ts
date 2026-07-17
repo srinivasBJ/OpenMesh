@@ -118,6 +118,23 @@ export interface DiscoveredModel {
   provider: string;
   model: string;
   metadata?: Record<string, unknown>;
+  category?: "coding" | "reasoning" | "fast" | "general";
+  score?: number;
+  context_length?: number;
+}
+
+export interface ModelDiscovery {
+  provider: string;
+  models: DiscoveredModel[];
+  curated: DiscoveredModel[];
+}
+
+export interface FilesystemListing {
+  path: string;
+  parent: string | null;
+  home: string;
+  directories: { name: string; path: string }[];
+  truncated: boolean;
 }
 
 export interface DemoStatus {
@@ -152,9 +169,11 @@ export const providersApi = {
       .get<{ providers: ProviderStatusEntry[]; selected: { provider: string; model: string | null } | null }>("/providers")
       .then(r => r.data),
   connect: (provider: string, data: { api_key: string; model?: string }) =>
-    api.post<{ connected: boolean; models: DiscoveredModel[] }>(`/providers/${provider}/connect`, data).then(r => r.data),
+    api
+      .post<{ connected: boolean; models: DiscoveredModel[]; curated: DiscoveredModel[] }>(`/providers/${provider}/connect`, data)
+      .then(r => r.data),
   models: (provider: string) =>
-    api.get<{ models: DiscoveredModel[] }>(`/providers/${provider}/models`).then(r => r.data.models),
+    api.get<ModelDiscovery>(`/providers/${provider}/models`).then(r => r.data),
   select: (data: { provider: string; model?: string }) =>
     api.post("/providers/select", data).then(r => r.data),
   disconnect: (provider: string) => api.delete(`/providers/${provider}`).then(r => r.data),
@@ -165,6 +184,11 @@ export const demoApi = {
   start: () => api.post("/demo/start").then(r => r.data),
   stop: () => api.post("/demo/stop").then(r => r.data),
   terminate: () => api.delete("/demo").then(r => r.data),
+};
+
+export const filesystemApi = {
+  browse: (path?: string) =>
+    api.get<FilesystemListing>("/filesystem/browse", { params: { path } }).then(r => r.data),
 };
 
 export const sessionApi = {

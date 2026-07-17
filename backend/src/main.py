@@ -16,6 +16,7 @@ from .api.routes.settings import router as settings_router
 from .api.routes.control import router as control_router
 from .api.routes.providers import router as providers_router
 from .api.routes.workspaces import router as workspaces_router
+from .api.routes.filesystem import router as filesystem_router
 from .websocket.manager import manager
 from .services.agent_runner import runner
 from .services.scheduler import start_scheduler, stop_scheduler, scheduler_status
@@ -126,6 +127,7 @@ app.include_router(settings_router, prefix="/api")
 app.include_router(control_router, prefix="/api")
 app.include_router(providers_router, prefix="/api")
 app.include_router(workspaces_router, prefix="/api")
+app.include_router(filesystem_router, prefix="/api")
 app.include_router(router, prefix="/api")
 
 

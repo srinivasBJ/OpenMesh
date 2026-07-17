@@ -8,11 +8,13 @@ import {
   Plug,
   Radar,
   TerminalSquare,
-  X,
 } from "lucide-react";
 import { demoApi } from "@/api";
 import ProviderManagerModal from "@/components/providers/ProviderManagerModal";
+import Modal from "@/components/shared/Modal";
 import RotatingOrb from "@/components/shared/RotatingOrb";
+import { apiErrorMessage, refreshAppState } from "@/lib/appState";
+import toast from "react-hot-toast";
 
 const SDK_COMMANDS = [
   { label: "Run the basic Python SDK agent", command: "python examples/python_basic_agent.py" },
@@ -41,7 +43,9 @@ export default function FirstLaunchPanel() {
 
   const startDemo = useMutation({
     mutationFn: demoApi.start,
-    onSettled: () => qc.invalidateQueries(),
+    onSuccess: () => toast.success("Demo environment running — Pioneer, Explorer, and Scientist are live."),
+    onError: (error) => toast.error(apiErrorMessage(error, "Starting the demo failed")),
+    onSettled: () => refreshAppState(qc),
   });
 
   const copy = async (command: string) => {
@@ -154,19 +158,13 @@ function ConnectAgentModal({
   copied: string | null;
 }) {
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm">
-      <div className="om-card max-h-[90vh] w-full max-w-xl overflow-y-auto p-7">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <RotatingOrb size={48} />
-            <div>
-              <div className="om-kicker">OpenMesh Collector</div>
-              <h1 className="text-xl font-black text-[color:var(--om-text)]">Connect Existing Agent</h1>
-            </div>
+    <Modal onClose={onClose} maxWidth="max-w-xl" aria-label="Connect existing agent">
+        <div className="flex items-center gap-4 pr-10">
+          <RotatingOrb size={48} />
+          <div>
+            <div className="om-kicker">OpenMesh Collector</div>
+            <h1 className="text-xl font-black text-[color:var(--om-text)]">Connect Existing Agent</h1>
           </div>
-          <button type="button" className="om-button-ghost h-9 w-9 p-0" aria-label="Close" onClick={onClose}>
-            <X size={16} />
-          </button>
         </div>
         <p className="mt-3 text-sm text-[color:var(--om-muted)]">
           OpenMesh observes agents you already run — lifecycle, tool calls, file changes, commands, model and
@@ -187,7 +185,6 @@ function ConnectAgentModal({
           Events use the OpenMesh spec (workspace, agent, event, trace) and can be posted to
           <code className="font-mono"> POST /api/openmesh/events</code>.
         </p>
-      </div>
-    </div>
+    </Modal>
   );
 }

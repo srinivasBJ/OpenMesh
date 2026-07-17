@@ -2,7 +2,10 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Play, Square, Trash2 } from "lucide-react";
 import { demoApi } from "@/api";
+import Modal from "@/components/shared/Modal";
+import { apiErrorMessage, refreshAppState } from "@/lib/appState";
 import { useWorkspaceStore } from "@/store/workspaceStore";
+import toast from "react-hot-toast";
 
 /**
  * "Simulation Mode" banner shown while the temporary demo workspace exists.
@@ -21,12 +24,18 @@ export default function DemoBanner() {
     retry: false,
   });
 
-  const invalidateAll = () => {
-    qc.invalidateQueries();
-  };
+  const invalidateAll = () => refreshAppState(qc);
 
-  const stop = useMutation({ mutationFn: demoApi.stop, onSettled: invalidateAll });
-  const resume = useMutation({ mutationFn: demoApi.start, onSettled: invalidateAll });
+  const stop = useMutation({
+    mutationFn: demoApi.stop,
+    onSettled: invalidateAll,
+    onError: (error) => toast.error(apiErrorMessage(error, "Stopping the demo failed")),
+  });
+  const resume = useMutation({
+    mutationFn: demoApi.start,
+    onSettled: invalidateAll,
+    onError: (error) => toast.error(apiErrorMessage(error, "Resuming the demo failed")),
+  });
   const terminate = useMutation({
     mutationFn: demoApi.terminate,
     onSuccess: () => {
@@ -35,7 +44,9 @@ export default function DemoBanner() {
         setActiveWorkspace(null);
       }
       invalidateAll();
+      toast.success("Demo terminated — all demo data removed.");
     },
+    onError: (error) => toast.error(apiErrorMessage(error, "Terminating the demo failed")),
   });
 
   if (!demo?.active) return null;
@@ -67,8 +78,8 @@ export default function DemoBanner() {
       </div>
 
       {confirming ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm">
-          <div className="om-card w-full max-w-md p-7 text-center">
+        <Modal onClose={() => setConfirming(false)} maxWidth="max-w-md" showClose={false} aria-label="Confirm demo termination">
+          <div className="text-center">
             <AlertTriangle size={28} className="mx-auto text-[color:var(--om-rust-300)]" />
             <h2 className="mt-3 text-xl font-bold text-[color:var(--om-text)]">
               Delete demo traces, events and agents?
@@ -86,7 +97,7 @@ export default function DemoBanner() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       ) : null}
     </>
   );

@@ -69,8 +69,10 @@ def trace_summary(trace_id: str, records: list[OpenMeshEventRecord]) -> Dict[str
     }
 
 
-async def get_events(db: AsyncSession, limit: int = 100) -> list[dict]:
-    records = await list_openmesh_events(db, limit=limit)
+async def get_events(
+    db: AsyncSession, limit: int = 100, workspace_id: str | None = None
+) -> list[dict]:
+    records = await list_openmesh_events(db, limit=limit, workspace_id=workspace_id)
     return records_to_events(records)
 
 
@@ -103,8 +105,10 @@ async def get_trace(db: AsyncSession, trace_id: str) -> dict | None:
     }
 
 
-async def get_graph(db: AsyncSession, limit: int = 1000) -> dict:
-    records = await list_openmesh_events(db, limit=limit)
+async def get_graph(
+    db: AsyncSession, limit: int = 1000, workspace_id: str | None = None
+) -> dict:
+    records = await list_openmesh_events(db, limit=limit, workspace_id=workspace_id)
     return reduce_graph_state(records)
 
 

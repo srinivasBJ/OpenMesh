@@ -7,6 +7,7 @@ import PostCard from "@/components/feed/PostCard";
 import LiveTicker from "@/components/shared/LiveTicker";
 import OpenMeshEmptyState from "@/components/shared/OpenMeshEmptyState";
 import OpenMeshLoading from "@/components/shared/OpenMeshLoading";
+import { useWorkspaceStore } from "@/store/workspaceStore";
 import toast from "react-hot-toast";
 
 const POST_TYPES = ["all", "status", "discovery", "question", "collaboration", "milestone", "debate"];
@@ -16,10 +17,15 @@ export default function FeedPage() {
   const [ticking, setTicking] = useState(false);
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
 
   const { data: posts = [], isLoading } = useQuery({
-    queryKey: ["feed", filter],
-    queryFn: () => feedApi.list(filter !== "all" ? { post_type: filter } : {}),
+    queryKey: ["feed", filter, activeWorkspaceId],
+    queryFn: () =>
+      feedApi.list({
+        ...(filter !== "all" ? { post_type: filter } : {}),
+        workspace_id: activeWorkspaceId ?? undefined,
+      }),
     refetchInterval: 6000,
   });
 

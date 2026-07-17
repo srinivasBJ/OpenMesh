@@ -43,6 +43,8 @@ class AgentRunner:
         self._lock = asyncio.Lock()
         self.interval_seconds = _env_int("OPENMESH_RUNNER_INTERVAL_SECONDS", 10)
         self.agents_per_tick = _env_int("OPENMESH_RUNNER_AGENTS_PER_TICK", 3)
+        self.workspace_id: str | None = None
+        self.paused = False
         self.started_at: str | None = None
         self.tick_count = 0
         self.last_tick_at: str | None = None
@@ -53,10 +55,19 @@ class AgentRunner:
     def running(self) -> bool:
         return self._task is not None and not self._task.done()
 
-    async def start(self) -> dict:
+    async def start(
+        self,
+        *,
+        workspace_id: str | None = None,
+        ensure_default: bool = True,
+    ) -> dict:
         async with self._lock:
-            spawned = await self._ensure_default_agent()
+            spawned = False
+            if ensure_default:
+                spawned = await self._ensure_default_agent()
             if not self.running:
+                self.workspace_id = workspace_id
+                self.paused = False
                 self.started_at = datetime.now(timezone.utc).isoformat()
                 self.tick_count = 0
                 self.last_error = None
@@ -64,6 +75,7 @@ class AgentRunner:
                 print(
                     f"[AgentRunner] Started: up to {self.agents_per_tick} agents "
                     f"every {self.interval_seconds}s"
+                    + (f" (workspace {workspace_id})" if workspace_id else "")
                 )
             return {**self.status(), "spawned_default_agent": spawned}
 
@@ -75,11 +87,24 @@ class AgentRunner:
                     await self._task
                 self._task = None
                 print("[AgentRunner] Stopped")
+            self.paused = False
+            self.workspace_id = None
             return self.status()
+
+    def pause(self) -> dict:
+        if self.running:
+            self.paused = True
+        return self.status()
+
+    def resume(self) -> dict:
+        self.paused = False
+        return self.status()
 
     def status(self) -> dict:
         return {
             "running": self.running,
+            "paused": self.paused,
+            "workspace_id": self.workspace_id,
             "interval_seconds": self.interval_seconds,
             "agents_per_tick": self.agents_per_tick,
             "started_at": self.started_at,
@@ -93,14 +118,17 @@ class AgentRunner:
         # First tick fires immediately so the graph starts moving right away.
         while True:
             try:
-                async with AsyncSessionLocal() as db:
-                    count = await run_simulation_tick(
-                        db, max_agents=self.agents_per_tick
-                    )
-                self.tick_count += 1
-                self.last_tick_at = datetime.now(timezone.utc).isoformat()
-                self.last_tick_agents = count
-                self.last_error = None
+                if not self.paused:
+                    async with AsyncSessionLocal() as db:
+                        count = await run_simulation_tick(
+                            db,
+                            max_agents=self.agents_per_tick,
+                            workspace_id=self.workspace_id,
+                        )
+                    self.tick_count += 1
+                    self.last_tick_at = datetime.now(timezone.utc).isoformat()
+                    self.last_tick_agents = count
+                    self.last_error = None
             except asyncio.CancelledError:
                 raise
             except Exception as e:

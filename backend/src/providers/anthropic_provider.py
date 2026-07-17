@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from .base import LLMProvider, LLMResponse
+from .base import LLMProvider, LLMResponse, ProviderModel
 
 
 class AnthropicProvider(LLMProvider):
@@ -34,6 +34,28 @@ class AnthropicProvider(LLMProvider):
             return self.connected_status("models endpoint reachable")
         except Exception as exc:  # pragma: no cover - exercised through tests by shape
             return self.failed_status(exc)
+
+    async def list_models(self) -> list[ProviderModel]:
+        """Live model discovery from the Anthropic models endpoint."""
+        self.ensure_configured()
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{self.base_url}/models",
+                headers=self._headers(),
+                params={"limit": 100},
+            )
+            response.raise_for_status()
+            data = response.json()
+        return [
+            ProviderModel(
+                provider=self.provider_id,
+                provider_name=self.display_name,
+                model=str(item.get("id")),
+                metadata={"display_name": item.get("display_name")},
+            )
+            for item in data.get("data") or []
+            if item.get("id")
+        ]
 
     async def complete(
         self,

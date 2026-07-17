@@ -1,7 +1,5 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import { settingsApi } from "@/api";
 import { useWSStore } from "@/store/wsStore";
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
@@ -9,8 +7,10 @@ import {
 } from "lucide-react";
 import RouteErrorBoundary from "@/components/shared/RouteErrorBoundary";
 import RotatingOrb from "@/components/shared/RotatingOrb";
-import OnboardingCard from "@/components/onboarding/OnboardingCard";
 import TopBar from "@/components/layout/TopBar";
+import WorkspaceSelector from "@/components/workspace/WorkspaceSelector";
+import CreateProjectModal from "@/components/workspace/CreateProjectModal";
+import DemoBanner from "@/components/workspace/DemoBanner";
 
 const NAV = [
   { to: "/", label: "Graph", icon: Network, end: true },
@@ -48,16 +48,8 @@ export default function AppLayout() {
   const [sidebarWidth, setSidebarWidth] = useState(readStoredWidth);
   const [collapsed, setCollapsed] = useState(readStoredCollapsed);
   const [theme, setTheme] = useState<"light" | "dark">(readStoredTheme);
+  const [createOpen, setCreateOpen] = useState(false);
   const effectiveWidth = collapsed ? SIDEBAR_COLLAPSED : sidebarWidth;
-
-  // First-run onboarding: if no LLM provider is configured, guide the user.
-  const { data: providerSettings } = useQuery({
-    queryKey: ["provider-settings"],
-    queryFn: settingsApi.getProvider,
-    refetchInterval: (query) => (query.state.data?.configured ? false : 10000),
-    retry: false,
-  });
-  const needsOnboarding = providerSettings ? !providerSettings.configured : false;
 
   useEffect(() => {
     connect();
@@ -165,15 +157,23 @@ export default function AppLayout() {
           ))}
         </nav>
 
-        {/* Recent events count */}
+        {/* Event bus + workspace selector */}
         <div className={cn("w-full border-t border-[color:var(--om-border)] p-5", collapsed && "px-3")}>
-          <div className={cn("om-card flex items-center text-sm text-[color:var(--om-muted)]", collapsed ? "justify-center p-3" : "gap-4 p-5")}>
-            <Gauge size={17} className="text-[color:var(--om-rust-400)]" />
-            {!collapsed ? (
-            <div className="min-w-0">
-              <div className="om-kicker">Event Bus</div>
-              <div className="font-mono text-[color:var(--om-text)]">{events.length} live events</div>
+          <div className={cn("om-card text-sm text-[color:var(--om-muted)]", collapsed ? "flex items-center justify-center p-3" : "p-5")}>
+            <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-4")}>
+              <Gauge size={17} className="text-[color:var(--om-rust-400)]" />
+              {!collapsed ? (
+              <div className="min-w-0">
+                <div className="om-kicker">Event Bus</div>
+                <div className="font-mono text-[color:var(--om-text)]">{events.length} live events</div>
+              </div>
+              ) : null}
             </div>
+            {!collapsed ? (
+              <>
+                <div className="om-kicker mt-4">Workspace</div>
+                <WorkspaceSelector onCreate={() => setCreateOpen(true)} />
+              </>
             ) : null}
           </div>
         </div>
@@ -183,11 +183,12 @@ export default function AppLayout() {
       {/* Main */}
       <main className="min-h-screen flex-1 transition-[margin] duration-200" style={{ marginLeft: effectiveWidth }}>
         <TopBar />
+        <DemoBanner />
         <RouteErrorBoundary resetKey={location.pathname}>
           <Outlet />
         </RouteErrorBoundary>
       </main>
-      {needsOnboarding ? <OnboardingCard /> : null}
+      {createOpen ? <CreateProjectModal onClose={() => setCreateOpen(false)} /> : null}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import AgentAvatar from "@/components/shared/AgentAvatar";
 import OpenMeshEmptyState from "@/components/shared/OpenMeshEmptyState";
 import OpenMeshLoading from "@/components/shared/OpenMeshLoading";
 import { ROLE_COLORS, ROLE_EMOJI, brandText, cn } from "@/lib/utils";
+import { useWorkspaceStore } from "@/store/workspaceStore";
 import toast from "react-hot-toast";
 
 const ROLES = ["scientist", "engineer", "artist", "economist", "philosopher", "historian", "explorer", "diplomat"];
@@ -18,10 +19,15 @@ export default function AgentsPage() {
   const [showSpawn, setShowSpawn] = useState(false);
   const [form, setForm] = useState({ name: "", role: "scientist", guild_id: "" });
   const [spawning, setSpawning] = useState(false);
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
 
   const { data: agents = [], isLoading } = useQuery({
-    queryKey: ["agents", roleFilter],
-    queryFn: () => agentsApi.list(roleFilter ? { role: roleFilter } : undefined),
+    queryKey: ["agents", roleFilter, activeWorkspaceId],
+    queryFn: () =>
+      agentsApi.list({
+        ...(roleFilter ? { role: roleFilter } : {}),
+        workspace_id: activeWorkspaceId ?? undefined,
+      }),
   });
 
   const { data: guilds = [] } = useQuery({

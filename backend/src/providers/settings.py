@@ -3,7 +3,11 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, replace
 
-from .runtime_settings import load_runtime_provider_config
+from .runtime_settings import (
+    list_runtime_provider_configs,
+    selected_model,
+    selected_provider_id,
+)
 
 
 @dataclass(frozen=True)
@@ -47,26 +51,36 @@ def _env_provider_settings() -> ProviderSettings:
 
 
 def _apply_runtime_config(settings: ProviderSettings) -> ProviderSettings:
-    """Overlay the key saved via the web UI; it wins over environment variables."""
-    config = load_runtime_provider_config()
-    if config is None:
-        return settings
-    if config.provider == "anthropic":
-        return replace(
-            settings,
-            anthropic_api_key=config.api_key,
-            anthropic_model=config.model or settings.anthropic_model,
-        )
-    if config.provider == "openai":
-        return replace(
-            settings,
-            openai_api_key=config.api_key,
-            openai_model=config.model or settings.openai_model,
-        )
-    if config.provider == "openrouter":
-        return replace(
-            settings,
-            openrouter_api_key=config.api_key,
-            openrouter_model=config.model or settings.openrouter_model,
-        )
+    """Overlay keys saved via the web UI; they win over environment variables.
+
+    Every stored provider's key is applied, and the selected model (if any)
+    overrides the default model of the selected provider.
+    """
+    for provider, config in list_runtime_provider_configs().items():
+        if provider == "anthropic":
+            settings = replace(
+                settings,
+                anthropic_api_key=config.api_key,
+                anthropic_model=config.model or settings.anthropic_model,
+            )
+        elif provider == "openai":
+            settings = replace(
+                settings,
+                openai_api_key=config.api_key,
+                openai_model=config.model or settings.openai_model,
+            )
+        elif provider == "openrouter":
+            settings = replace(
+                settings,
+                openrouter_api_key=config.api_key,
+                openrouter_model=config.model or settings.openrouter_model,
+            )
+    active_model = selected_model()
+    active_provider = selected_provider_id()
+    if active_model and active_provider == "anthropic":
+        settings = replace(settings, anthropic_model=active_model)
+    elif active_model and active_provider == "openai":
+        settings = replace(settings, openai_model=active_model)
+    elif active_model and active_provider == "openrouter":
+        settings = replace(settings, openrouter_model=active_model)
     return settings

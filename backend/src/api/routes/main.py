@@ -118,6 +118,7 @@ class OpenMeshFederatedEventsRequest(BaseModel):
 async def list_agents(
     role: Optional[str] = None,
     guild_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
     limit: int = Query(50, le=100),
     db: AsyncSession = Depends(get_db),
 ):
@@ -126,6 +127,8 @@ async def list_agents(
         q = q.where(Agent.role == role)
     if guild_id:
         q = q.where(Agent.guild_id == guild_id)
+    if workspace_id:
+        q = q.where(Agent.workspace_id == workspace_id)
     q = q.order_by(desc(Agent.reputation)).limit(limit)
     result = await db.execute(q)
     agents = result.scalars().all()
@@ -326,6 +329,7 @@ async def get_feed(
     offset: int = 0,
     post_type: Optional[str] = None,
     agent_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     q = select(Post, Agent).join(Agent, Post.author_id == Agent.id)
@@ -333,6 +337,8 @@ async def get_feed(
         q = q.where(Post.post_type == post_type)
     if agent_id:
         q = q.where(Post.author_id == agent_id)
+    if workspace_id:
+        q = q.where(Agent.workspace_id == workspace_id)
     q = q.order_by(desc(Post.created_at)).offset(offset).limit(limit)
 
     result = await db.execute(q)
@@ -570,12 +576,22 @@ async def get_wiki_page(slug: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/events")
 async def get_events(
-    limit: int = Query(50, le=200), db: AsyncSession = Depends(get_db)
+    limit: int = Query(50, le=200),
+    workspace_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
         select(AgentEvent).order_by(desc(AgentEvent.occurred_at)).limit(limit)
     )
     events = result.scalars().all()
+    if workspace_id:
+        member_rows = await db.execute(
+            select(Agent.id).where(Agent.workspace_id == workspace_id)
+        )
+        members = {row[0] for row in member_rows.all()}
+        events = [
+            e for e in events if members & set(e.agent_ids or []) or not e.agent_ids
+        ]
     return [
         {
             "id": e.id,
@@ -605,9 +621,10 @@ async def ingest_openmesh_event(
 @router.get("/openmesh/events")
 async def get_openmesh_events(
     limit: int = Query(100, le=500),
+    workspace_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_openmesh_event_list(db, limit=limit)
+    return await get_openmesh_event_list(db, limit=limit, workspace_id=workspace_id)
 
 
 @router.get("/openmesh/traces")
@@ -629,9 +646,10 @@ async def get_openmesh_trace(trace_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/openmesh/graph")
 async def get_openmesh_graph(
     limit: int = Query(1000, le=5000),
+    workspace_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_graph(db, limit=limit)
+    return await get_graph(db, limit=limit, workspace_id=workspace_id)
 
 
 @router.get("/openmesh/graph/search")

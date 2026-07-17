@@ -55,13 +55,13 @@ class RuntimeSettingsStoreTests(unittest.TestCase):
 
     def test_key_is_not_stored_in_plaintext(self):
         runtime_settings.save_runtime_provider_config("openai", "sk-super-secret")
-        config_path = Path(self._tmp.name) / runtime_settings.CONFIG_FILE_NAME
+        config_path = Path(self._tmp.name) / runtime_settings.STORE_FILE_NAME
         raw = config_path.read_text("utf-8")
         self.assertNotIn("sk-super-secret", raw)
 
     def test_config_file_permissions_are_private(self):
         runtime_settings.save_runtime_provider_config("openai", "sk-secret")
-        config_path = Path(self._tmp.name) / runtime_settings.CONFIG_FILE_NAME
+        config_path = Path(self._tmp.name) / runtime_settings.STORE_FILE_NAME
         mode = config_path.stat().st_mode & 0o777
         self.assertEqual(mode, 0o600)
 

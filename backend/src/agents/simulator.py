@@ -491,15 +491,19 @@ async def tick_agent(agent: Agent, db: AsyncSession):
         return None
 
 
-async def run_simulation_tick(db: AsyncSession, max_agents: int = 5):
-    """Run one tick of the simulation — activate up to max_agents agents."""
-    result = await db.execute(
+async def run_simulation_tick(
+    db: AsyncSession, max_agents: int = 5, workspace_id: str | None = None
+):
+    """Run one tick of the simulation — activate up to max_agents agents,
+    optionally restricted to a single workspace."""
+    query = (
         select(Agent)
         .options(selectinload(Agent.guild))
         .where(Agent.status == AgentStatus.ACTIVE)
-        .order_by(func.random())
-        .limit(max_agents)
     )
+    if workspace_id:
+        query = query.where(Agent.workspace_id == workspace_id)
+    result = await db.execute(query.order_by(func.random()).limit(max_agents))
     agents = result.scalars().all()
 
     for agent in agents:

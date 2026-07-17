@@ -21,6 +21,7 @@ from ...providers.runtime_settings import (
     load_runtime_provider_config,
 )
 from ...services.agent_runner import runner
+from ...services.demo import demo_status
 from ...websocket.manager import manager
 
 router = APIRouter()
@@ -59,6 +60,7 @@ async def live_status(db: AsyncSession = Depends(get_db)):
             "running": runner.running,
         },
         "runner": runner.status(),
+        "demo": await demo_status(),
         "events_per_second": manager.events_per_second(),
         "websocket_clients": len(manager.active_connections),
     }

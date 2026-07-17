@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, Baby, BookOpen, Clock, GitBranch, Layers, Pause, Play, Radio, SkipBack, SkipForward, Star, Users, Zap } from "lucide-react";
 import { eventsApi, openmeshApi } from "@/api";
+import { useWorkspaceStore } from "@/store/workspaceStore";
 import OpenMeshEmptyState from "@/components/shared/OpenMeshEmptyState";
 import OpenMeshLoading from "@/components/shared/OpenMeshLoading";
 import { brandText, cn, timeAgo } from "@/lib/utils";
@@ -27,14 +28,15 @@ export default function HistoryPage() {
   const [replayControl, setReplayControl] = useState<"start" | "pause" | "step" | "previous" | "stop">("pause");
   const [replayPosition, setReplayPosition] = useState(0);
   const [replaySpeed, setReplaySpeed] = useState(1);
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const {
     data: events = [],
     isLoading: eventsLoading,
     isError: eventsError,
     refetch: refetchEvents,
   } = useQuery({
-    queryKey: ["events"],
-    queryFn: () => eventsApi.list(100),
+    queryKey: ["events", activeWorkspaceId],
+    queryFn: () => eventsApi.list(100, activeWorkspaceId ?? undefined),
     refetchInterval: 15000,
   });
   const {

@@ -15,12 +15,38 @@ def parse_event_timestamp(value: str) -> datetime:
     return parsed.replace(tzinfo=None)
 
 
+async def resolve_event_workspace(
+    db: AsyncSession, event: Dict[str, Any]
+) -> Optional[str]:
+    """Workspace for an event: explicit payload tag, else the source agent's
+    workspace. Lets collectors tag events and keeps simulator events scoped."""
+    payload = event.get("payload") or {}
+    explicit = payload.get("workspace_id") or payload.get("workspace")
+    if explicit:
+        return str(explicit)
+    source = event.get("source") or {}
+    if source.get("node_type") == "agent" and source.get("node_id"):
+        from .models import Agent
+
+        try:
+            result = await db.execute(
+                select(Agent.workspace_id).where(Agent.id == source["node_id"])
+            )
+            return result.scalar_one_or_none()
+        except Exception:
+            # Tagging is best-effort: exporters and tests may pass session
+            # shims that cannot run queries.
+            return None
+    return None
+
+
 async def create_openmesh_event(
     db: AsyncSession,
     event: Dict[str, Any],
 ) -> OpenMeshEventRecord:
     record = OpenMeshEventRecord(
         event_id=event["event_id"],
+        workspace_id=await resolve_event_workspace(db, event),
         event_type=event["event_type"],
         timestamp=parse_event_timestamp(event["timestamp"]),
         trace_id=event["trace_id"],
@@ -47,12 +73,15 @@ async def list_openmesh_events(
     limit: int = 100,
     trace_id: Optional[str] = None,
     session_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
 ) -> list[OpenMeshEventRecord]:
     query = select(OpenMeshEventRecord)
     if trace_id:
         query = query.where(OpenMeshEventRecord.trace_id == trace_id)
     if session_id:
         query = query.where(OpenMeshEventRecord.session_id == session_id)
+    if workspace_id:
+        query = query.where(OpenMeshEventRecord.workspace_id == workspace_id)
     query = query.order_by(desc(OpenMeshEventRecord.timestamp)).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())

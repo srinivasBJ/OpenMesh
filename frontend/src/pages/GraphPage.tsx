@@ -28,6 +28,8 @@ import {
 import { openmeshApi } from "@/api";
 import { cn } from "@/lib/utils";
 import RotatingOrb from "@/components/shared/RotatingOrb";
+import FirstLaunchPanel from "@/components/onboarding/FirstLaunchPanel";
+import { useWorkspaceStore } from "@/store/workspaceStore";
 import type {
   OpenMeshGraph,
   OpenMeshGraphEdge,
@@ -113,9 +115,11 @@ export default function GraphPage() {
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
   const dragRef = useRef<DragState | null>(null);
 
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const { data: graph = { nodes: [], edges: [] } } = useQuery({
-    queryKey: ["openmesh-graph-view"],
-    queryFn: () => openmeshApi.graph({ limit: 5000 }),
+    queryKey: ["openmesh-graph-view", activeWorkspaceId],
+    queryFn: () =>
+      openmeshApi.graph({ limit: 5000, workspace_id: activeWorkspaceId ?? undefined }),
     refetchInterval: 15000,
   });
   const { data: traces = [] } = useQuery({
@@ -901,11 +905,12 @@ function EmptyGraphOnboarding() {
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color:var(--om-iron-980)]/95 p-6">
       <div className="om-empty w-full max-w-3xl">
         <RotatingOrb size={80} className="mx-auto drop-shadow-[0_0_16px_rgba(190,92,36,.32)]" />
-        <div className="om-kicker mt-6">No graph data yet</div>
-        <h2 className="mt-2 text-2xl font-bold text-stone-50">Start observing an agent or process</h2>
+        <div className="om-kicker mt-6">First Launch</div>
+        <h2 className="mt-2 text-2xl font-bold text-stone-50">Start observing your AI systems</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[color:var(--om-muted)]">
-          OpenMesh becomes useful when events create relationships. Run one command and the graph will populate with nodes, traces, and provenance.
+          OpenMesh becomes useful when events create relationships. Pick a path below and the graph will populate with agents, processes, tools, and provenance.
         </p>
+        <FirstLaunchPanel />
         <div className="mt-5 grid gap-3 text-left md:grid-cols-2">
           {ONBOARDING_COMMANDS.map((item) => (
             <div key={item.command} className="rounded-[6px] border border-[color:var(--om-border)] bg-black/45 p-3">

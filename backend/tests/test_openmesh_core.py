@@ -430,9 +430,12 @@ class OpenMeshCoreTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_provider_settings_read_llm_api_keys(self):
-        with patch.dict(
+        # Isolate from any developer-machine runtime provider store
+        # (~/.openmesh), which deliberately overrides environment variables.
+        with tempfile.TemporaryDirectory() as isolated_config_dir, patch.dict(
             os.environ,
             {
+                "OPENMESH_CONFIG_DIR": isolated_config_dir,
                 "OPENAI_API_KEY": "openai-key",
                 "ANTHROPIC_API_KEY": "anthropic-key",
                 "OPENROUTER_API_KEY": "openrouter-key",

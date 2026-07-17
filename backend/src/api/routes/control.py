@@ -14,6 +14,7 @@ with a fresh heartbeat.
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -54,12 +55,34 @@ _BACKEND_DIR = Path(__file__).resolve().parents[3]
 
 def tui_command() -> str:
     """Exact paste-and-run command to open the Control Room TUI against the
-    SAME database this backend is serving — absolute paths, no venv
-    activation or cd required (POSIX shells)."""
+    SAME database this backend is serving.
+
+    Built at request time from this instance's own runtime — sys.executable,
+    the backend directory, and the active database path — so every install
+    gets its own correct command with no cd or venv activation. Emits
+    PowerShell syntax on Windows. Postgres URLs are never embedded (they can
+    carry credentials); those installs inherit DATABASE_URL from the shell.
+    """
+    sqlite_path = (
+        DATABASE_URL[len("sqlite:///") :]
+        if DATABASE_URL.startswith("sqlite:///")
+        else None
+    )
+    if os.name == "nt":
+        parts = []
+        if sqlite_path:
+            parts.append('$env:OPENMESH_DB_MODE="sqlite"')
+            parts.append(f'$env:OPENMESH_SQLITE_PATH="{sqlite_path}"')
+        else:
+            parts.append('$env:OPENMESH_DB_MODE="postgres"')
+        parts.append(f'$env:PYTHONPATH="{_BACKEND_DIR}"')
+        parts.append(f'& "{sys.executable}" -m src.cli.openmesh tui')
+        return "; ".join(parts)
     parts = []
-    if DATABASE_URL.startswith("sqlite:///"):
-        db_path = DATABASE_URL[len("sqlite:///") :]
-        parts.append(f'OPENMESH_DB_MODE=sqlite OPENMESH_SQLITE_PATH="{db_path}"')
+    if sqlite_path:
+        parts.append(f'OPENMESH_DB_MODE=sqlite OPENMESH_SQLITE_PATH="{sqlite_path}"')
+    else:
+        parts.append("OPENMESH_DB_MODE=postgres")
     parts.append(f'PYTHONPATH="{_BACKEND_DIR}"')
     parts.append(f'"{sys.executable}" -m src.cli.openmesh tui')
     return " ".join(parts)

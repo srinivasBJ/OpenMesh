@@ -109,6 +109,26 @@ class FilesystemBrowseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status_code, 404)
 
 
+class TuiCommandTests(unittest.TestCase):
+    def test_command_is_derived_from_this_runtime(self):
+        """The copyable TUI command must be machine-specific, never
+        hardcoded: it embeds this process's interpreter and backend dir."""
+        from src.api.routes.control import _BACKEND_DIR, tui_command
+
+        command = tui_command()
+        self.assertIn(sys.executable, command)
+        self.assertIn(str(_BACKEND_DIR), command)
+        self.assertIn("-m src.cli.openmesh tui", command)
+
+    def test_command_never_embeds_database_credentials(self):
+        from src.api.routes.control import tui_command
+
+        command = tui_command()
+        # Postgres URLs carry credentials and must never reach the browser.
+        self.assertNotIn("postgresql://", command)
+        self.assertNotIn("DATABASE_URL", command)
+
+
 class SessionStateTests(unittest.IsolatedAsyncioTestCase):
     async def test_terminate_clears_workspace_and_pause_state(self):
         runner = AgentRunner()

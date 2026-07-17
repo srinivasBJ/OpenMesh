@@ -50,6 +50,48 @@ export const simulationApi = {
   tick: () => api.post("/simulation/tick").then(r => r.data),
 };
 
+export interface ProviderSettingsState {
+  configured: boolean;
+  provider: string | null;
+  provider_name?: string;
+  model?: string;
+  mode?: string;
+  masked_key?: string | null;
+  source?: "settings" | "environment";
+}
+
+export interface ProviderTestResult {
+  provider: string;
+  provider_name: string;
+  connected: boolean;
+  status: string;
+  message: string;
+}
+
+export interface LiveStatus {
+  backend: string;
+  provider: { configured: boolean; provider: string | null; name: string | null; model: string | null; mode: string };
+  agents: { active: number; running: boolean };
+  runner: { running: boolean; tick_count: number; last_error: string | null };
+  events_per_second: number;
+  websocket_clients: number;
+}
+
+export const settingsApi = {
+  getProvider: () => api.get<ProviderSettingsState>("/settings/provider").then(r => r.data),
+  saveProvider: (data: { provider: string; api_key: string; model?: string }) =>
+    api.post("/settings/provider", data).then(r => r.data),
+  testProvider: (data: { provider: string; api_key: string; model?: string }) =>
+    api.post<ProviderTestResult>("/settings/provider/test", data).then(r => r.data),
+  clearProvider: () => api.delete("/settings/provider").then(r => r.data),
+};
+
+export const controlApi = {
+  startAgents: () => api.post("/agents/start").then(r => r.data),
+  stopAgents: () => api.post("/agents/stop").then(r => r.data),
+  liveStatus: () => api.get<LiveStatus>("/status/live").then(r => r.data),
+};
+
 export const openmeshApi = {
   events: (limit?: number) => api.get("/openmesh/events", { params: { limit } }).then(r => r.data),
   traces: (limit?: number) =>

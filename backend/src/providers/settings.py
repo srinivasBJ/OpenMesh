@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+from .runtime_settings import load_runtime_provider_config
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,11 @@ class ProviderSettings:
 
 
 def load_provider_settings() -> ProviderSettings:
+    settings = _env_provider_settings()
+    return _apply_runtime_config(settings)
+
+
+def _env_provider_settings() -> ProviderSettings:
     return ProviderSettings(
         openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", "").strip(),
@@ -37,3 +44,29 @@ def load_provider_settings() -> ProviderSettings:
         lmstudio_model=os.getenv("LMSTUDIO_MODEL", "local-model").strip(),
         vllm_model=os.getenv("VLLM_MODEL", "local-model").strip(),
     )
+
+
+def _apply_runtime_config(settings: ProviderSettings) -> ProviderSettings:
+    """Overlay the key saved via the web UI; it wins over environment variables."""
+    config = load_runtime_provider_config()
+    if config is None:
+        return settings
+    if config.provider == "anthropic":
+        return replace(
+            settings,
+            anthropic_api_key=config.api_key,
+            anthropic_model=config.model or settings.anthropic_model,
+        )
+    if config.provider == "openai":
+        return replace(
+            settings,
+            openai_api_key=config.api_key,
+            openai_model=config.model or settings.openai_model,
+        )
+    if config.provider == "openrouter":
+        return replace(
+            settings,
+            openrouter_api_key=config.api_key,
+            openrouter_model=config.model or settings.openrouter_model,
+        )
+    return settings

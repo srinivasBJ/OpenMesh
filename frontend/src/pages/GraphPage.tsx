@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { openmeshApi } from "@/api";
 import { cn } from "@/lib/utils";
+import RotatingOrb from "@/components/shared/RotatingOrb";
 import type {
   OpenMeshGraph,
   OpenMeshGraphEdge,
@@ -899,7 +900,7 @@ function EmptyGraphOnboarding() {
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color:var(--om-iron-980)]/95 p-6">
       <div className="om-empty w-full max-w-3xl">
-        <img src="/brand/openmesh-wheel-clean.png" alt="OpenMesh wheel" className="mx-auto h-20 w-20 object-contain drop-shadow-[0_0_16px_rgba(190,92,36,.32)]" />
+        <RotatingOrb size={80} className="mx-auto drop-shadow-[0_0_16px_rgba(190,92,36,.32)]" />
         <div className="om-kicker mt-6">No graph data yet</div>
         <h2 className="mt-2 text-2xl font-bold text-stone-50">Start observing an agent or process</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[color:var(--om-muted)]">

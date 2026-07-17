@@ -1,11 +1,16 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { settingsApi } from "@/api";
 import { useWSStore } from "@/store/wsStore";
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   Radio, Users, BookOpen, Layers, Clock, BarChart2, Network, Gauge, PanelLeftClose, PanelLeftOpen, Moon, Sun
 } from "lucide-react";
 import RouteErrorBoundary from "@/components/shared/RouteErrorBoundary";
+import RotatingOrb from "@/components/shared/RotatingOrb";
+import OnboardingCard from "@/components/onboarding/OnboardingCard";
+import TopBar from "@/components/layout/TopBar";
 
 const NAV = [
   { to: "/", label: "Graph", icon: Network, end: true },
@@ -44,6 +49,15 @@ export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(readStoredCollapsed);
   const [theme, setTheme] = useState<"light" | "dark">(readStoredTheme);
   const effectiveWidth = collapsed ? SIDEBAR_COLLAPSED : sidebarWidth;
+
+  // First-run onboarding: if no LLM provider is configured, guide the user.
+  const { data: providerSettings } = useQuery({
+    queryKey: ["provider-settings"],
+    queryFn: settingsApi.getProvider,
+    refetchInterval: (query) => (query.state.data?.configured ? false : 10000),
+    retry: false,
+  });
+  const needsOnboarding = providerSettings ? !providerSettings.configured : false;
 
   useEffect(() => {
     connect();
@@ -89,7 +103,7 @@ export default function AppLayout() {
         {/* Logo */}
         <div className={cn("w-full border-b border-[color:var(--om-border)] p-5", collapsed ? "px-3" : "p-6")}>
           <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-4")}>
-            <img src="/brand/openmesh-wheel-clean.png" alt="" className="h-16 w-16 object-contain drop-shadow-[0_0_14px_rgba(190,92,36,.32)]" />
+            <RotatingOrb size={64} className="drop-shadow-[0_0_14px_rgba(190,92,36,.32)]" />
             {!collapsed ? (
             <div className="min-w-0">
               <div className="om-kicker">Control Room</div>
@@ -168,10 +182,12 @@ export default function AppLayout() {
 
       {/* Main */}
       <main className="min-h-screen flex-1 transition-[margin] duration-200" style={{ marginLeft: effectiveWidth }}>
+        <TopBar />
         <RouteErrorBoundary resetKey={location.pathname}>
           <Outlet />
         </RouteErrorBoundary>
       </main>
+      {needsOnboarding ? <OnboardingCard /> : null}
     </div>
   );
 }

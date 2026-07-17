@@ -1,21 +1,23 @@
 """
-AgentBrain — The Claude-powered intelligence behind every agent.
-Each agent call to Claude generates authentic, personality-driven behavior.
+AgentBrain — The LLM-powered intelligence behind every agent.
+Each call generates authentic, personality-driven behavior via whichever
+provider is currently configured (env vars or the web UI settings store).
+
+Provider settings are resolved at call time, so saving an API key through
+POST /api/settings/provider takes effect immediately — no restart needed.
 """
 
-import anthropic
 import json
 import random
 import os
 from typing import Optional
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
-LLM_MODE = os.getenv("LLM_MODE", "auto").strip().lower()  # online | auto | offline
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514").strip()
+from ..providers.registry import configured_provider
+from ..providers.runtime_settings import effective_llm_mode, selected_provider_id
+
 AGENT_MEMORY_CONTEXT_ITEMS = int(os.getenv("AGENT_MEMORY_CONTEXT_ITEMS", "5"))
 AGENT_MEMORY_CONTEXT_CHARS = int(os.getenv("AGENT_MEMORY_CONTEXT_CHARS", "500"))
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 _missing_key_warned = False
 
 ROLE_TRAITS = {
@@ -54,20 +56,22 @@ ROLE_TRAITS = {
 }
 
 
-def _llm_enabled() -> bool:
+def _active_provider():
+    """Resolve the currently configured LLM provider, honoring the LLM mode."""
     global _missing_key_warned
-    if LLM_MODE == "offline":
-        return False
-    if LLM_MODE not in {"online", "auto", "offline"}:
-        return bool(client)
-    if not client:
-        if LLM_MODE == "online" and not _missing_key_warned:
+    mode = effective_llm_mode()
+    if mode == "offline":
+        return None
+    provider = configured_provider(selected_provider_id())
+    if provider is None:
+        if mode == "online" and not _missing_key_warned:
             print(
-                "[AgentBrain] LLM_MODE=online but ANTHROPIC_API_KEY is missing; using local fallbacks."
+                "[AgentBrain] LLM mode is online but no provider API key is configured; using local fallbacks."
             )
             _missing_key_warned = True
-        return False
-    return True
+        return None
+    _missing_key_warned = False
+    return provider
 
 
 def _clip(text: str, limit: int) -> str:
@@ -91,25 +95,19 @@ def _memory_snippet(agent_data: dict) -> str:
     return _clip("\n".join(lines), AGENT_MEMORY_CONTEXT_CHARS)
 
 
-def _call_claude(
+async def _call_llm(
     system: Optional[str], user_prompt: str, max_tokens: int, tag: str
 ) -> Optional[str]:
-    if not _llm_enabled():
+    provider = _active_provider()
+    if provider is None:
         return None
     try:
-        params = {
-            "model": CLAUDE_MODEL,
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": user_prompt}],
-        }
-        if system:
-            params["system"] = system
-        response = client.messages.create(**params)
-        if not response.content:
-            return None
-        return response.content[0].text
+        response = await provider.complete(
+            prompt=user_prompt, system=system, max_tokens=max_tokens
+        )
+        return response.content or None
     except Exception as e:
-        print(f"[AgentBrain] {tag} fallback: {e}")
+        print(f"[AgentBrain] {tag} fallback ({provider.provider_id}): {e}")
         return None
 
 
@@ -173,7 +171,7 @@ Respond with JSON only:
   "tags": ["#tag1", "#tag2"],
   "emoji_reaction_seed": "one emoji that represents the mood"
 }}"""
-    text = _call_claude(system, prompt, max_tokens=300, tag="generate_post")
+    text = await _call_llm(system, prompt, max_tokens=300, tag="generate_post")
     if text:
         try:
             data = json.loads(text.replace("```json", "").replace("```", "").strip())
@@ -207,7 +205,7 @@ async def generate_comment(
 
 Write a short, authentic comment (1-2 sentences). React genuinely as {commenter["name"]} with your personality.
 Return plain text only — no quotes, no JSON."""
-    text = _call_claude(system, prompt, max_tokens=150, tag="generate_comment")
+    text = await _call_llm(system, prompt, max_tokens=150, tag="generate_comment")
     if text:
         return text.strip()[:300]
 
@@ -232,7 +230,7 @@ async def generate_message(
         type_prompts.get(message_type, type_prompts["chat"])
         + "\n\nReturn plain text only."
     )
-    text = _call_claude(system, prompt, max_tokens=200, tag="generate_message")
+    text = await _call_llm(system, prompt, max_tokens=200, tag="generate_message")
     if text:
         return text.strip()[:400]
 
@@ -266,7 +264,7 @@ Focus on aspects relevant to your expertise: {", ".join(agent.get("skills", []))
 Write the opening section (2-3 paragraphs) from your perspective as a {agent["role"]}.
 This is the civilization's shared knowledge base — make it insightful and accurate."""
 
-    text = _call_claude(
+    text = await _call_llm(
         system,
         prompt
         + '\n\nRespond with JSON: {"content": "...", "summary": "one sentence summary", "tags": [...]}',
@@ -321,7 +319,7 @@ Return JSON only:
   "skills": ["skill1", "skill2", "skill3", "skill4"],
   "goals": ["goal1", "goal2", "goal3"]
 }}"""
-    text = _call_claude(None, prompt, max_tokens=400, tag="generate_agent_profile")
+    text = await _call_llm(None, prompt, max_tokens=400, tag="generate_agent_profile")
     if text:
         return json.loads(text.replace("```json", "").replace("```", "").strip())
 

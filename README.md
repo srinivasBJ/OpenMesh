@@ -9,57 +9,79 @@
 <a href="INSTALLATION.md"><img alt="PostgreSQL supported" src="https://img.shields.io/badge/PostgreSQL-supported-4169E1?logo=postgresql&logoColor=white"></a>
 <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"></a>
 
-OpenMesh is an observability layer for AI agent ecosystems — think
-OpenTelemetry for AI agents. It observes agents, tools, models, runtimes,
-MCP servers, workflows, traces, relationships, failures, reputation, genome
-profiles, snapshots, replay, and OpenTelemetry export from one local event
-store, consumed by a CLI, a Textual TUI (Control Room), an HTTP API, and a
-browser dashboard.
+**OpenMesh is open-source observability for AI agents — think OpenTelemetry, but for agent ecosystems.**
 
-The fastest first run uses SQLite. No API keys, Docker, Postgres, cloud LLMs, or
-external services are required for the local graph demo.
+It watches the agents you already run — Claude Code, LangChain, CrewAI, MCP servers,
+or your own SDK code — and turns their activity into a live graph of agents, tools,
+models, workflows, traces, and relationships. Everything lands in one local event
+store and is served four ways: a browser dashboard, a Control Room terminal UI,
+a CLI, and an HTTP API.
 
-**Identity principle:** a provider API key never creates agents. Agents exist
-only when the temporary demo simulation creates them (`source: simulation`) or
-when a real integration reports itself — the Python SDK, an MCP connection, or
-a collector observing a running process (`source: sdk | mcp | claude_code |
-openai_agent | custom`). Real agents keep a heartbeat; stale ones report as
-`disconnected`. Every event carries its workspace, project, session, agent,
-and source, so demo activity can never leak into real workspaces.
+- [Why OpenMesh](#why-openmesh)
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Demo mode (temporary, fully erasable)](#demo-mode-temporary-fully-erasable)
+- [Connecting real agents](#connecting-real-agents)
+- [The web dashboard](#the-web-dashboard)
+- [The Control Room TUI](#the-control-room-tui)
+- [The CLI](#the-cli)
+- [HTTP API](#http-api)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Documentation](#documentation)
+- [Contributing & license](#contributing--license)
 
-Default backend startup is intentionally empty. Starting the API creates the
-database schema and waits for events; it does not create agents, posts, traces,
-workflows, warmup ticks, or demo ecosystems. Demo data appears only after an
-explicit action — the dashboard's **Run Demo Environment** button or a command
-such as `openmesh simulate`, `openmesh seed demo`, `openmesh demo start`,
-`openmesh run-demo research`, or `openmesh run-demo multi-agent` — and
-**Terminate Demo** deletes every trace of it again.
+## Why OpenMesh
 
-## Status
+Modern AI systems are fleets of agents calling tools, editing files, running
+commands, and talking to each other — and almost none of that is visible.
+OpenMesh gives you the missing control room:
 
-OpenMesh v1.0.0  is release-candidate software. The core architecture works,
-the CLI/TUI/API/frontend can read the same SQLite event store, and the project is
-being hardened for public launch and contributor onboarding.
+- **See the ecosystem** — a live network map of agents, processes, tools,
+  MCP servers, workflows, and how they relate.
+- **Trace the work** — every event carries a trace, session, workspace, and
+  provenance, so you can replay exactly what happened and why.
+- **Trust what you see** — OpenMesh never fabricates activity. A provider API
+  key connects a *provider*; it does not create agents. Agents appear only when
+  something real reports itself, or when you explicitly run the clearly-labeled
+  demo simulation.
+- **Own your data** — everything is local (SQLite by default, Postgres
+  optional). No cloud services required.
 
-Known alpha limits:
+## How it works
 
-- Optional framework packages such as LangGraph, CrewAI, AutoGen, and OpenHands
-  are not installed by default.
-- Real LLM demos require configured provider keys or local model servers.
-- Large graph, timeline, replay, and genome payloads are not paginated yet.
-- The browser dashboard is a visualization layer; the CLI and TUI are the
-  primary OpenMesh consumers.
+```text
+your agents (Claude Code, SDK, MCP, collectors)
+        │  OpenMesh events (spec 0.1)
+        ▼
+   collector ──► event store (SQLite / Postgres)
+        │
+        ▼
+ graph · traces · timeline · discovery · replay · diagnostics
+        │
+        ▼
+ dashboard (React) · Control Room TUI · CLI · HTTP API · OTel export
+```
 
-## Quick Start
+The identity model is strict about what is real:
 
-Prerequisites:
+| Source | Meaning | How it appears |
+|---|---|---|
+| `sdk`, `mcp`, `claude_code`, `openai_agent`, `custom` | **Real agents** | Register themselves via API/SDK and send heartbeats. Stale heartbeat → shown as `disconnected`. |
+| `simulation` | **Demo agents** | Created only by "Run Demo Environment". Always labeled, isolated in the demo workspace, deleted on terminate. |
 
-- Python 3.11, 3.12, or 3.13
-- Node.js 20+ only if you want the browser dashboard
-- Docker only if you want Postgres instead of SQLite
+Agent lifecycle statuses: `starting → running → idle → completed / failed /
+terminated / disconnected`.
 
-Python 3.14 is not supported in this alpha because pinned database wheels do not
-install reliably there yet.
+Work is organized as **Provider → Workspace → Project → Agent Session →
+Events & Traces**. The workspace selector scopes every page — a "Smart Glasses"
+workspace shows only smart-glasses activity, the demo workspace shows only demo
+activity, never mixed.
+
+## Quick start
+
+Prerequisites: Python 3.11–3.13, Node.js 20+ for the dashboard.
+(Python 3.14 is not yet supported — pinned database wheels don't install there.)
 
 ```bash
 git clone https://github.com/srinivasBJ/OpenMesh.git
@@ -70,294 +92,226 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e .
 
+openmesh doctor          # verifies install + bootstraps local SQLite
+```
+
+Start the backend and the dashboard:
+
+```bash
+# terminal 1 — API on :8000
 export OPENMESH_DB_MODE=sqlite
 export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
-export OPENMESH_SCHEDULER_ENABLED=0
-export OPENMESH_SEED_ENABLED=0
-export OPENMESH_DEMO_MODE=0
-export WARMUP_TICKS=0
-export WARMUP_AGENTS_PER_TICK=0
-export MAX_ACTIVE_AGENTS=0
-
-openmesh doctor
-openmesh simulate --agents 12 --events 180 --nodes 4
-openmesh graph --details
-openmesh discover
-openmesh ecosystem
-openmesh timeline
-openmesh replay ecosystem --control step
-openmesh tui --once
-```
-
-That path should take less than five minutes on a fresh clone.
-
-## First Workflow
-
-Start from an empty platform:
-
-```bash
-openmesh doctor
-openmesh graph --details
-```
-
-Generate local ecosystem data only when you want demo data:
-
-```bash
-openmesh simulate --agents 20 --events 500 --nodes 4
-```
-
-Alternative demo entry points:
-
-```bash
-openmesh seed demo
-openmesh demo start --agents 20 --events 500 --nodes 4
-openmesh run-demo multi-agent
-openmesh run-demo research --provider openai
-```
-
-Observe a real process:
-
-```bash
-openmesh run -- python -c "print('hello openmesh')"
-```
-
-Inspect the resulting ecosystem:
-
-```bash
-openmesh events
-openmesh traces
-openmesh graph --details
-openmesh nodes
-openmesh inspect "Research Agent"
-openmesh workflows
-openmesh workflow inspect workflow:openmesh:multi-agent-handoff-demo
-openmesh snapshot create
-openmesh timeline
-openmesh query --limit 1000 agents using web_search
-```
-
-## Browser Dashboard
-
-The dashboard uses the same API and event store. Start the backend first:
-
-```bash
-export OPENMESH_DB_MODE=sqlite
-export OPENMESH_SQLITE_PATH="$(pwd)/openmesh.db"
-export OPENMESH_SCHEDULER_ENABLED=0
-export WARMUP_TICKS=0
-export WARMUP_AGENTS_PER_TICK=0
-export MAX_ACTIVE_AGENTS=0
 PYTHONPATH=backend python -m uvicorn src.main:app --reload --port 8000
+
+# terminal 2 — dashboard on :5173
+cd frontend && npm install && npm run dev
 ```
 
-Then start the frontend:
+Open `http://localhost:5173`. A fresh install shows **0 agents** and a
+first-launch panel with four paths:
+
+1. **Run Demo Environment** — explore with temporary simulated agents.
+2. **Connect AI Provider** — Anthropic, OpenAI, or OpenRouter. Keys are
+   validated against the provider's live API, stored encrypted on your machine
+   (`~/.openmesh/`, Fernet, 0600), and hot-reloaded — no `.env`, no restart.
+   Models are discovered from the provider (never hardcoded), with a curated
+   top-25 view, categories, and search.
+3. **Connect Existing Agent** — point Claude Code, LangChain, CrewAI, MCP, or
+   your SDK code at the collector.
+4. **Run SDK Example** — `python examples/python_basic_agent.py` and watch it
+   appear in the graph.
+
+## Demo mode (temporary, fully erasable)
+
+Demo agents exist **only for exploring the product**. When you click
+*Run Demo Environment*, OpenMesh creates a dedicated demo workspace
+("OpenMesh Demo Network") with three simulated agents — Pioneer, Explorer,
+and Scientist — clearly labeled `simulation` everywhere they appear.
+
+While the demo runs, a **Simulation Mode** banner stays visible with two
+controls:
+
+- **Stop Demo** — pauses the simulation, keeps the data for inspection.
+- **Terminate Demo** — asks for confirmation, then **deletes everything the
+  demo produced**: agents, posts, events, traces, and the demo workspace
+  itself. You are back to a clean install, exactly as before the demo.
+
+Demo activity is confined to the demo workspace and can never leak into your
+real workspaces. The simulator is structurally incapable of generating
+activity for real agents.
+
+## Connecting real agents
+
+Real agents report themselves and stay alive with heartbeats:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+# an agent announces itself (SDK, MCP bridge, or collector do this for you)
+curl -X POST localhost:8000/api/agents/register \
+  -H 'content-type: application/json' \
+  -d '{"name": "Claude Code", "source": "claude_code", "model": "claude-opus"}'
+
+# keep-alive + status reporting (stale for 90s → shown as disconnected)
+curl -X POST localhost:8000/api/agents/<id>/heartbeat \
+  -H 'content-type: application/json' -d '{"status": "running"}'
 ```
 
-Open `http://localhost:5173`.
-
-Routes currently expected to render:
-
-- `/`
-- `/graph`
-- `/feed`
-- `/agents`
-- `/guilds`
-- `/wiki`
-- `/history`
-- `/observatory`
-
-### Browser-first onboarding
-
-On a fresh install the graph shows a first-launch panel with four paths — no
-terminal or `.env` editing required:
-
-- **Run Demo Environment** — spawns Pioneer, Explorer, and Scientist in a
-  temporary demo workspace. A "Simulation Mode" banner offers Stop and
-  Terminate; terminating deletes all demo agents, posts, events, and traces
-  and returns to the clean first-launch state.
-- **Connect AI Provider** — Anthropic, OpenAI, or OpenRouter. Keys are
-  validated against the provider's live API, stored Fernet-encrypted under
-  `~/.openmesh/` (0600), and hot-reloaded without a backend restart. Models
-  are discovered from the provider (never hardcoded), with a curated top-25
-  view (Coding / Reasoning / Fast-Cheap), search, and "Show all models".
-- **Connect Existing Agent** — observe agents already running in Claude Code,
-  LangChain, CrewAI, MCP, or your own SDK code via the collector endpoints.
-- **Run SDK Example** — copyable commands for the bundled Python examples.
-
-### Workspaces, projects, and sessions
-
-Work is organized as Provider → Workspace → Project → Agent Session →
-Events/Traces. The workspace selector in the Event Bus card rescopes Graph,
-Feed, Agents, and History; project creation supports a repository path picker
-(server-side, home-directory-restricted) and can spawn a typed agent
-(research / coding / observer). The top bar provides Start Session, Pause,
-Resume, and Terminate (with confirmation).
-
-### HTTP API highlights
-
-```text
-GET/POST/DELETE /api/settings/provider      legacy single-provider settings
-GET             /api/providers              provider + model status
-POST            /api/providers/{id}/connect validate key, discover models
-POST            /api/providers/select       choose active (provider, model)
-GET/POST/DELETE /api/workspaces, /api/projects
-GET/POST/DELETE /api/demo/*                 demo lifecycle
-POST            /api/agents/register        real agent reports itself
-POST            /api/agents/{id}/heartbeat  liveness; stale => disconnected
-POST            /api/agents/session/*       start | pause | resume | terminate
-GET             /api/status/live            top-bar status snapshot
-GET             /api/filesystem/browse      repo path picker (home-restricted)
-```
-
-## SDK Examples
-
-Core SDK examples run without optional framework packages:
+Or use the higher-level paths:
 
 ```bash
-python examples/python_basic_agent.py
+python examples/python_basic_agent.py       # OpenMesh Python SDK
 python examples/python_async_agent.py
+openmesh run -- <command>                   # observe any real process
+openmesh mcp discover                       # discover MCP servers
 ```
 
-Optional integration examples require their framework package or local runtime:
+Every event they emit is tagged with its workspace, project, session, agent,
+and source, and flows into the graph in real time over WebSocket.
+
+## The web dashboard
+
+Same rust-industrial Control Room aesthetic across eight pages:
+
+| Page | What it shows |
+|---|---|
+| **Graph** | Live network map: agents, processes, tools, workflows, MCP servers, relationships, provenance. |
+| **Feed** | Activity stream (simulation content stays in the demo workspace). |
+| **Agents** | Every agent with source chip, lifecycle status, and profile. |
+| **Guilds / Agentpedia** | Simulation-world organization and knowledge base. |
+| **History** | Event timeline, traces, and step-through replay. |
+| **Observatory** | Ecosystem metrics and diagnostics. |
+
+The top bar shows backend link, active provider · model, events/sec, agent
+count, and session controls (Start / Pause / Resume / Terminate — terminate
+always confirms and returns you to a clean workspace view). The Event Bus card
+holds the workspace selector and project creation, including a built-in
+repository folder picker.
+
+## The Control Room TUI
+
+Everything the dashboard shows, in your terminal — reading the same live
+database. If OpenMesh is installed:
 
 ```bash
-python -m pip install langgraph
-python examples/langgraph_basic.py
-```
-
-## Major Commands
-
-```bash
-openmesh doctor
-openmesh health
-openmesh simulate --agents 20 --events 500 --nodes 4
-openmesh seed demo
-openmesh demo start --agents 20 --events 500 --nodes 4
-openmesh run -- <command>
-openmesh run-demo multi-agent
-openmesh providers verify
-openmesh providers discover
-openmesh models list
-openmesh runtimes discover
-openmesh mcp discover
-openmesh discover
-openmesh ecosystem
-openmesh graph --details
-openmesh inspect <node>
-openmesh workflows
-openmesh workflow inspect <workflow_id>
-openmesh timeline
-openmesh replay ecosystem --control step
-openmesh snapshot create
-openmesh snapshot list
-openmesh query --saved
-openmesh failures
-openmesh rankings
-openmesh genome <agent>
-openmesh export otel --summary
-openmesh export prometheus --summary
 openmesh tui
 ```
 
-Full command inventory: [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md).
+Don't want to figure out paths or environments? The dashboard's first-launch
+panel has a **copy button that produces the exact ready-to-run command for
+your machine** — absolute paths included, generated by your own backend at
+request time. Paste it into any terminal and the Control Room opens.
 
-## Terminal UI (Control Room)
+| Keys | Action |
+|---|---|
+| `Tab` / `Shift+Tab`, `1`–`4` | Cycle / jump between panels |
+| Arrows, `PgUp/PgDn`, `Home/End`, `j/k` | Scroll tables, detail view, event stream |
+| `Enter` / click | Inspect the selected row (trace, node, relationship) |
+| `/` | Live global search across agents, traces, relationships, events |
+| `z` / `Ctrl+L` | Pause / clear the event stream (auto-scroll holds when you scroll up) |
+| `v` | Cycle sort column on the focused table |
+| `E` | Export events / traces / graph to JSON + CSV |
+| `5`–`0`, `w e s d l r y` | Integrations, discovery, registry, MCP, workflows, ecosystem, snapshots, diff, timeline, replay, queries |
+| `?` | Full keyboard reference · `q` quit |
 
-`openmesh tui` opens the Textual Control Room: agents/processes, traces,
-network relationships, and a live event stream with smart auto-scroll.
-Highlights: `?` keyboard reference, `/` global search, `Tab` panel cycling,
-`z` pause / `Ctrl+L` clear the event stream, `v` sort tables, `E` export
-events/traces/graph to JSON + CSV. Tables only re-render when data changes
-and keep cursor and scroll position across refreshes. `openmesh tui --once`
-prints a one-shot snapshot.
+Tables re-render only when data changes and keep cursor and scroll position
+across refreshes. `openmesh tui --once` prints a one-shot snapshot for scripts.
+
+## The CLI
+
+```bash
+openmesh doctor                     # health + install diagnostics
+openmesh run -- <command>           # observe a real process
+openmesh graph --details            # the ecosystem graph, in text
+openmesh discover                   # frameworks, agents, tools, capabilities
+openmesh timeline                   # historical evolution
+openmesh replay ecosystem --control step
+openmesh snapshot create            # point-in-time snapshots + diffs
+openmesh query --saved              # saved analytical queries
+openmesh export otel --summary      # OpenTelemetry / Prometheus export
+```
+
+Demo data from the terminal is equally explicit — nothing is generated unless
+you ask: `openmesh simulate`, `openmesh seed demo`, `openmesh demo start`,
+`openmesh run-demo multi-agent`. Full inventory:
+[docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md).
+
+## HTTP API
+
+```text
+GET             /api/status/live            live snapshot (provider, agents, evt/s, tui command)
+GET             /api/providers              provider + model status
+POST            /api/providers/{id}/connect validate key, discover + curate models
+POST            /api/providers/select       choose active (provider, model)
+GET/POST/DELETE /api/workspaces             workspace CRUD
+POST            /api/projects               project creation (can spawn a typed agent)
+GET/POST/DELETE /api/demo/*                 demo lifecycle (terminate = full erase)
+POST            /api/agents/register        real agent reports itself
+POST            /api/agents/{id}/heartbeat  liveness; stale => disconnected
+POST            /api/agents/session/*       start | pause | resume | terminate | delete
+POST            /api/openmesh/events        ingest OpenMesh events (spec 0.1)
+GET             /api/openmesh/graph|traces|timeline|replay|...   query surface
+GET             /api/filesystem/browse      repo path picker (home-restricted, read-only)
+```
+
+Workspace filtering (`?workspace_id=`) is available on agents, feed, events,
+and graph queries. WebSocket streaming lives at `/ws`.
 
 ## Architecture
 
-OpenMesh follows one event path:
+One event path, many consumers:
 
 ```text
-observe
-  -> OpenMesh event
-  -> collector
-  -> persistence
-  -> graph, discovery, timeline, replay, diagnostics
-  -> CLI, TUI, API, frontend, export
+observe -> OpenMesh event -> collector -> persistence
+        -> graph, discovery, timeline, replay, diagnostics
+        -> dashboard, TUI, CLI, API, OTel export
 ```
 
-Core persisted tables:
+Core tables: `openmesh_events` (with workspace/project/source provenance),
+`openmesh_sessions`, `openmesh_snapshots`, `workspaces`, `projects`, plus the
+simulation-world tables (agents, posts, guilds, wiki). Schema upgrades run
+in place at startup — no manual migrations for local installs.
 
-- `openmesh_events`
-- `openmesh_sessions`
-- `openmesh_snapshots`
-- legacy dashboard tables for feed, agents, guilds, wiki, and simulation state
+Security notes: provider keys are encrypted at rest and never echoed back
+(masked only); write endpoints share a rate-limit/auth layer; the filesystem
+browser is read-only and confined to your home directory; Postgres connection
+strings are never exposed to the frontend.
 
-Subsystem inventory: [docs/SYSTEM_ARCHITECTURE.md](docs/SYSTEM_ARCHITECTURE.md).
+Deep dives: [ARCHITECTURE.md](ARCHITECTURE.md) ·
+[docs/SYSTEM_ARCHITECTURE.md](docs/SYSTEM_ARCHITECTURE.md)
 
-## Documentation
-
-- [INSTALLATION.md](INSTALLATION.md)
-- [QUICKSTART.md](QUICKSTART.md)
-- [FEATURES.md](FEATURES.md)
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [FAQ.md](FAQ.md)
-- [docs/INTEGRATION_AUDIT.md](docs/INTEGRATION_AUDIT.md)
-- [docs/CI_AUDIT.md](docs/CI_AUDIT.md)
-- [docs/REPOSITORY_AUDIT.md](docs/REPOSITORY_AUDIT.md)
-- [docs/FIRST_RUN_AUDIT.md](docs/FIRST_RUN_AUDIT.md)
-- [docs/OPENMESH_V1_ALPHA_REPORT.md](docs/OPENMESH_V1_ALPHA_REPORT.md)
-
-## Validation
-
-Recommended local release checks:
+## Development
 
 ```bash
-ruff check .
-ruff format --check .
-python -m compileall backend/src
+# backend — 200+ tests (identity lifecycle, demo erasure, TUI regression,
+# provider store, workspace isolation)
 python -m unittest discover -s backend/tests
-cd frontend && npm run build
+
+# frontend — vitest + testing-library (modal lifecycle, state refresh)
+cd frontend && npm test && npm run build
+
+# lint / release checks
+ruff check .
+python -m compileall backend/src
 ```
 
-Wheel smoke:
-
-```bash
-python -m pip install build
-python -m build --wheel
-python -m venv /tmp/openmesh-wheel-smoke
-/tmp/openmesh-wheel-smoke/bin/python -m pip install dist/openmesh-*.whl
-OPENMESH_DB_MODE=sqlite OPENMESH_SQLITE_PATH=/tmp/openmesh-wheel.db \
-  /tmp/openmesh-wheel-smoke/bin/openmesh doctor
-```
-
-Reset local SQLite state:
+Reset local state completely:
 
 ```bash
 rm -f ./openmesh.db
-OPENMESH_DB_MODE=sqlite OPENMESH_SQLITE_PATH=./openmesh.db openmesh doctor
+openmesh doctor
 ```
 
-Provider demos are explicit. Configure one of these before running
-`openmesh run-demo research`:
+## Documentation
 
-```bash
-export OPENAI_API_KEY=...
-export ANTHROPIC_API_KEY=...
-export OPENROUTER_API_KEY=...
-export OLLAMA_BASE_URL=http://localhost:11434
-```
+[INSTALLATION.md](INSTALLATION.md) · [QUICKSTART.md](QUICKSTART.md) ·
+[STARTUP_GUIDE.md](STARTUP_GUIDE.md) · [FEATURES.md](FEATURES.md) ·
+[FAQ.md](FAQ.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) ·
+[ROADMAP.md](ROADMAP.md) · [docs/](docs/)
 
-## Contributing
+## Contributing & license
 
-OpenMesh welcomes focused contributions that make the existing product easier to
-install, validate, observe, and understand. Start with
-[CONTRIBUTING.md](CONTRIBUTING.md).
+OpenMesh welcomes focused contributions that make the platform easier to
+install, validate, observe, and understand — start with
+[CONTRIBUTING.md](CONTRIBUTING.md) and
+[GOOD_FIRST_ISSUES.md](GOOD_FIRST_ISSUES.md).
 
-## License
-
-MIT. See [LICENSE](LICENSE).
+MIT licensed. See [LICENSE](LICENSE).

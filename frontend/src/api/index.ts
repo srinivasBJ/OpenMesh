@@ -11,7 +11,7 @@ import type {
 const api = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || "/api", timeout: 30000 });
 
 export const agentsApi = {
-  list: (params?: Record<string, string>) => api.get("/agents", { params }).then(r => r.data),
+  list: (params?: Record<string, string | undefined>) => api.get("/agents", { params }).then(r => r.data),
   get: (id: string) => api.get(`/agents/${id}`).then(r => r.data),
   spawn: (data: { name: string; role: string; guild_id?: string }) =>
     api.post("/agents/spawn", data).then(r => r.data),
@@ -21,7 +21,7 @@ export const agentsApi = {
 };
 
 export const feedApi = {
-  list: (params?: Record<string, string | number>) => api.get("/feed", { params }).then(r => r.data),
+  list: (params?: Record<string, string | number | undefined>) => api.get("/feed", { params }).then(r => r.data),
   getComments: (postId: string) => api.get(`/feed/${postId}/comments`).then(r => r.data),
   react: (postId: string, emoji: string) =>
     api.post(`/feed/${postId}/react`, null, { params: { emoji } }).then(r => r.data),
@@ -39,7 +39,8 @@ export const wikiApi = {
 };
 
 export const eventsApi = {
-  list: (limit?: number) => api.get("/events", { params: { limit } }).then(r => r.data),
+  list: (limit?: number, workspaceId?: string) =>
+    api.get("/events", { params: { limit, workspace_id: workspaceId } }).then(r => r.data),
 };
 
 export const statsApi = {
@@ -50,13 +51,162 @@ export const simulationApi = {
   tick: () => api.post("/simulation/tick").then(r => r.data),
 };
 
+export interface ProviderSettingsState {
+  configured: boolean;
+  provider: string | null;
+  provider_name?: string;
+  model?: string;
+  mode?: string;
+  masked_key?: string | null;
+  source?: "settings" | "environment";
+}
+
+export interface ProviderTestResult {
+  provider: string;
+  provider_name: string;
+  connected: boolean;
+  status: string;
+  message: string;
+}
+
+export interface LiveStatus {
+  backend: string;
+  provider: { configured: boolean; provider: string | null; name: string | null; model: string | null; mode: string };
+  agents: { active: number; real?: number; total?: number; running: boolean; message?: string | null };
+  runner: { running: boolean; paused?: boolean; tick_count: number; last_error: string | null };
+  events_per_second: number;
+  websocket_clients: number;
+  tui_command?: string;
+}
+
+export const settingsApi = {
+  getProvider: () => api.get<ProviderSettingsState>("/settings/provider").then(r => r.data),
+  saveProvider: (data: { provider: string; api_key: string; model?: string }) =>
+    api.post("/settings/provider", data).then(r => r.data),
+  testProvider: (data: { provider: string; api_key: string; model?: string }) =>
+    api.post<ProviderTestResult>("/settings/provider/test", data).then(r => r.data),
+  clearProvider: () => api.delete("/settings/provider").then(r => r.data),
+};
+
+export const controlApi = {
+  startAgents: () => api.post("/agents/start").then(r => r.data),
+  stopAgents: () => api.post("/agents/stop").then(r => r.data),
+  liveStatus: () => api.get<LiveStatus>("/status/live").then(r => r.data),
+};
+
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  kind: "standard" | "demo";
+  description?: string | null;
+  project_count: number;
+  agent_count: number;
+}
+
+export interface ProviderStatusEntry {
+  provider: string;
+  name: string;
+  is_local: boolean;
+  configured: boolean;
+  selected: boolean;
+  default_model?: string;
+  model?: string | null;
+  source?: "settings" | "environment";
+  masked_key?: string;
+}
+
+export interface DiscoveredModel {
+  provider: string;
+  model: string;
+  metadata?: Record<string, unknown>;
+  category?: "coding" | "reasoning" | "fast" | "general";
+  score?: number;
+  context_length?: number;
+}
+
+export interface ModelDiscovery {
+  provider: string;
+  models: DiscoveredModel[];
+  curated: DiscoveredModel[];
+}
+
+export interface FilesystemListing {
+  path: string;
+  parent: string | null;
+  home: string;
+  directories: { name: string; path: string }[];
+  truncated: boolean;
+}
+
+export interface DemoStatus {
+  active: boolean;
+  running: boolean;
+  paused: boolean;
+  workspace: { id: string; name: string; kind: string } | null;
+  agents: { id: string; name: string }[];
+}
+
+export const workspacesApi = {
+  list: () => api.get<{ workspaces: WorkspaceSummary[] }>("/workspaces").then(r => r.data.workspaces),
+  get: (id: string) => api.get(`/workspaces/${id}`).then(r => r.data),
+  create: (data: { name: string; description?: string }) =>
+    api.post("/workspaces", data).then(r => r.data),
+  remove: (id: string) => api.delete(`/workspaces/${id}`).then(r => r.data),
+  createProject: (data: {
+    workspace_id?: string;
+    workspace_name?: string;
+    name: string;
+    repository_path?: string;
+    github_url?: string;
+    provider?: string;
+    model?: string;
+    agent_type?: string;
+  }) => api.post("/projects", data).then(r => r.data),
+};
+
+export const providersApi = {
+  list: () =>
+    api
+      .get<{ providers: ProviderStatusEntry[]; selected: { provider: string; model: string | null } | null }>("/providers")
+      .then(r => r.data),
+  connect: (provider: string, data: { api_key: string; model?: string }) =>
+    api
+      .post<{ connected: boolean; models: DiscoveredModel[]; curated: DiscoveredModel[] }>(`/providers/${provider}/connect`, data)
+      .then(r => r.data),
+  models: (provider: string) =>
+    api.get<ModelDiscovery>(`/providers/${provider}/models`).then(r => r.data),
+  select: (data: { provider: string; model?: string }) =>
+    api.post("/providers/select", data).then(r => r.data),
+  disconnect: (provider: string) => api.delete(`/providers/${provider}`).then(r => r.data),
+};
+
+export const demoApi = {
+  status: () => api.get<DemoStatus>("/demo/status").then(r => r.data),
+  start: () => api.post("/demo/start").then(r => r.data),
+  stop: () => api.post("/demo/stop").then(r => r.data),
+  terminate: () => api.delete("/demo").then(r => r.data),
+};
+
+export const filesystemApi = {
+  browse: (path?: string) =>
+    api.get<FilesystemListing>("/filesystem/browse", { params: { path } }).then(r => r.data),
+};
+
+export const sessionApi = {
+  start: (workspaceId?: string) =>
+    api.post("/agents/session/start", { workspace_id: workspaceId }).then(r => r.data),
+  pause: () => api.post("/agents/session/pause").then(r => r.data),
+  resume: () => api.post("/agents/session/resume").then(r => r.data),
+  terminate: () => api.post("/agents/session/terminate").then(r => r.data),
+};
+
 export const openmeshApi = {
   events: (limit?: number) => api.get("/openmesh/events", { params: { limit } }).then(r => r.data),
   traces: (limit?: number) =>
     api.get<OpenMeshTraceSummary[]>("/openmesh/traces", { params: { limit } }).then(r => r.data),
   trace: (traceId: string) =>
     api.get<OpenMeshTraceDetail>(`/openmesh/traces/${encodeURIComponent(traceId)}`).then(r => r.data),
-  graph: (params?: { limit?: number }) =>
+  graph: (params?: { limit?: number; workspace_id?: string }) =>
     api.get<OpenMeshGraph>("/openmesh/graph", { params }).then(r => r.data),
   graphSearch: (params: { q: string; node_type?: string; relationship_type?: string; limit?: number }) =>
     api.get("/openmesh/graph/search", { params }).then(r => r.data),

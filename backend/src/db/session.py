@@ -66,24 +66,53 @@ async def init_db(*, announce: bool = True):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_openmesh_trace_columns)
+        await conn.run_sync(_ensure_workspace_columns)
     if announce:
         print(f"Database tables created ({DATABASE_URL})")
 
 
 def _ensure_openmesh_trace_columns(sync_connection):
+    _ensure_columns(
+        sync_connection,
+        "openmesh_events",
+        {
+            "span_id": "VARCHAR(100)",
+            "parent_span_id": "VARCHAR(100)",
+            "parent_event_id": "VARCHAR(100)",
+            "root_event_id": "VARCHAR(100)",
+            "links_json": "JSON",
+        },
+    )
+
+
+def _ensure_workspace_columns(sync_connection):
+    """Workspace + identity layering added after the alpha schema."""
+    _ensure_columns(
+        sync_connection,
+        "agents",
+        {
+            "workspace_id": "VARCHAR",
+            "project_id": "VARCHAR",
+            "source": "VARCHAR(30) DEFAULT 'simulation'",
+        },
+    )
+    _ensure_columns(
+        sync_connection,
+        "openmesh_events",
+        {
+            "workspace_id": "VARCHAR(100)",
+            "project_id": "VARCHAR(100)",
+            "agent_source": "VARCHAR(30)",
+        },
+    )
+
+
+def _ensure_columns(sync_connection, table: str, required: dict[str, str]):
     columns = {
-        column["name"]
-        for column in inspect(sync_connection).get_columns("openmesh_events")
-    }
-    required = {
-        "span_id": "VARCHAR(100)",
-        "parent_span_id": "VARCHAR(100)",
-        "parent_event_id": "VARCHAR(100)",
-        "root_event_id": "VARCHAR(100)",
-        "links_json": "JSON",
+        column["name"] for column in inspect(sync_connection).get_columns(table)
     }
     for name, column_type in required.items():
         if name not in columns:
             sync_connection.execute(
-                text(f"ALTER TABLE openmesh_events ADD COLUMN {name} {column_type}")
+                text(f"ALTER TABLE {table} ADD COLUMN {name} {column_type}")
             )

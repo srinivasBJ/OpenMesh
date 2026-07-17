@@ -12,7 +12,6 @@ import {
   Check,
   Clipboard,
   Crosshair,
-  Download,
   Filter,
   GitBranch,
   Info,
@@ -25,8 +24,11 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { openmeshApi } from "@/api";
+import { controlApi, openmeshApi } from "@/api";
 import { cn } from "@/lib/utils";
+import RotatingOrb from "@/components/shared/RotatingOrb";
+import FirstLaunchPanel from "@/components/onboarding/FirstLaunchPanel";
+import { useWorkspaceStore } from "@/store/workspaceStore";
 import type {
   OpenMeshGraph,
   OpenMeshGraphEdge,
@@ -64,39 +66,6 @@ const NODE_STYLES: Record<string, { fill: string; stroke: string; text: string }
 
 const DEFAULT_NODE_STYLE = { fill: "#2f3437", stroke: "#858b91", text: "#d5d7da" };
 
-const ONBOARDING_COMMANDS = [
-  {
-    label: "Generate a local demo ecosystem",
-    command: "openmesh simulate --agents 20 --events 500",
-  },
-  {
-    label: "Run the basic Python SDK agent",
-    command: "python examples/python_basic_agent.py",
-  },
-  {
-    label: "Run the async Python SDK agent",
-    command: "python examples/python_async_agent.py",
-  },
-  {
-    label: "Run the LangGraph reference workflow",
-    command: "python examples/langgraph_basic.py",
-  },
-];
-
-const ONBOARDING_SCRIPT = `#!/usr/bin/env bash
-set -euo pipefail
-
-export OPENMESH_DB_MODE=sqlite
-export OPENMESH_SQLITE_PATH="\${OPENMESH_SQLITE_PATH:-./openmesh.db}"
-export LLM_MODE=offline
-
-openmesh doctor
-openmesh simulate --agents 20 --events 500
-openmesh discover
-openmesh graph --details
-openmesh timeline
-`;
-
 export default function GraphPage() {
   const [search, setSearch] = useState("");
   const [nodeType, setNodeType] = useState("all");
@@ -112,9 +81,11 @@ export default function GraphPage() {
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
   const dragRef = useRef<DragState | null>(null);
 
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const { data: graph = { nodes: [], edges: [] } } = useQuery({
-    queryKey: ["openmesh-graph-view"],
-    queryFn: () => openmeshApi.graph({ limit: 5000 }),
+    queryKey: ["openmesh-graph-view", activeWorkspaceId],
+    queryFn: () =>
+      openmeshApi.graph({ limit: 5000, workspace_id: activeWorkspaceId ?? undefined }),
     refetchInterval: 15000,
   });
   const { data: traces = [] } = useQuery({
@@ -876,70 +847,49 @@ function TimelineRows({ timeline }: { timeline?: OpenMeshTimeline }) {
 }
 
 function EmptyGraphOnboarding() {
-  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+  const [copiedTui, setCopiedTui] = useState(false);
+  const { data: liveStatus } = useQuery({
+    queryKey: ["live-status"],
+    queryFn: controlApi.liveStatus,
+    retry: false,
+  });
 
-  const copyCommand = async (command: string) => {
-    await copyText(command);
-    setCopiedCommand(command);
-    window.setTimeout(() => setCopiedCommand((current) => (current === command ? null : current)), 1800);
+  // The backend reports the exact command (absolute paths, DB env) for THIS
+  // instance, so pasting it into any terminal just runs — no cd, no venv.
+  const copyTuiCommand = async () => {
+    await copyText(liveStatus?.tui_command ?? "openmesh tui");
+    setCopiedTui(true);
+    window.setTimeout(() => setCopiedTui(false), 1800);
   };
 
-  const downloadSnippet = () => {
-    const blob = new Blob([ONBOARDING_SCRIPT], { type: "text/x-shellscript" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "openmesh-graph-demo.sh";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  };
-
+  // Fully covers the graph canvas (solid background, above the map chrome),
+  // centered in the viewport, and scrolls internally on short screens.
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color:var(--om-iron-980)]/95 p-6">
-      <div className="om-empty w-full max-w-3xl">
-        <img src="/brand/openmesh-wheel-clean.png" alt="OpenMesh wheel" className="mx-auto h-20 w-20 object-contain drop-shadow-[0_0_16px_rgba(190,92,36,.32)]" />
-        <div className="om-kicker mt-6">No graph data yet</div>
-        <h2 className="mt-2 text-2xl font-bold text-stone-50">Start observing an agent or process</h2>
-        <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[color:var(--om-muted)]">
-          OpenMesh becomes useful when events create relationships. Run one command and the graph will populate with nodes, traces, and provenance.
-        </p>
-        <div className="mt-5 grid gap-3 text-left md:grid-cols-2">
-          {ONBOARDING_COMMANDS.map((item) => (
-            <div key={item.command} className="rounded-[6px] border border-[color:var(--om-border)] bg-black/45 p-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-[11px] font-semibold uppercase tracking-[.14em] text-[color:var(--om-rust-300)]">{item.label}</span>
-                <button type="button" className="om-button-ghost h-8 px-2 text-[11px]" onClick={() => void copyCommand(item.command)}>
-                  {copiedCommand === item.command ? <Check size={13} /> : <Clipboard size={13} />}
-                  {copiedCommand === item.command ? "Copied" : "Copy"}
-                </button>
-              </div>
-              <code className="block overflow-x-auto whitespace-nowrap font-mono text-xs text-[color:var(--om-steel-200)]">{item.command}</code>
+    <div className="absolute inset-0 z-20 overflow-y-auto bg-[color:var(--om-iron-980)] p-6">
+      <div className="flex min-h-full items-center justify-center">
+        <div className="om-empty w-full max-w-5xl">
+          <RotatingOrb size={72} className="mx-auto drop-shadow-[0_0_16px_rgba(190,92,36,.32)]" />
+          <div className="om-kicker mt-4">First Launch</div>
+          <h2 className="mt-2 text-2xl font-bold text-stone-50">Start observing your AI systems</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-[color:var(--om-muted)]">
+            Pick a path below and the graph will populate with agents, processes, tools, and provenance.
+          </p>
+          <FirstLaunchPanel />
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[6px] border border-[color:var(--om-border)] bg-black/35 px-4 py-2.5 text-left">
+            <div className="flex items-center gap-2 text-xs text-[color:var(--om-muted)]">
+              <Terminal size={13} className="text-[color:var(--om-rust-400)]" />
+              Prefer the terminal? Copy the Control Room TUI command and paste it into any terminal — same live data, no browser needed.
             </div>
-          ))}
-        </div>
-        <div className="mt-5 rounded-[6px] border border-[color:var(--om-border)] bg-black/35 p-4 text-left">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--om-text)]">
-                <Terminal size={15} className="text-[color:var(--om-rust-400)]" /> Run in Terminal
-              </div>
-              <p className="mt-1 text-xs leading-5 text-[color:var(--om-muted)]">
-                Browsers cannot safely execute local shell commands. Copy a command, or download the snippet and run it from the repository root.
-              </p>
-            </div>
-            <button type="button" className="om-button shrink-0" onClick={downloadSnippet}>
-              <Download size={14} /> Download Snippet
+            <button
+              type="button"
+              className="flex shrink-0 items-center gap-2 rounded-[4px] border border-[color:var(--om-border)] bg-black/45 px-2.5 py-1.5 font-mono text-xs text-[color:var(--om-rust-300)] hover:border-[color:var(--om-border-strong)]"
+              title="Copies the exact ready-to-run command for this OpenMesh instance"
+              onClick={() => void copyTuiCommand()}
+            >
+              openmesh tui
+              {copiedTui ? <Check size={12} /> : <Clipboard size={12} />}
             </button>
           </div>
-          <div className="mt-3 grid gap-2 text-xs text-[color:var(--om-steel-300)] md:grid-cols-2">
-            <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-2">macOS/Linux: source .venv/bin/activate</code>
-            <code className="rounded-[4px] border border-[color:var(--om-border)] bg-black/45 p-2">Windows: .venv\Scripts\activate</code>
-          </div>
-        </div>
-        <div className="mt-4 text-sm text-[color:var(--om-muted)]">
-          Example entities will appear as agents, tools, workflows, processes, services, MCP servers, and capabilities.
         </div>
       </div>
     </div>

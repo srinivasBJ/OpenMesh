@@ -9,20 +9,31 @@
 <a href="INSTALLATION.md"><img alt="PostgreSQL supported" src="https://img.shields.io/badge/PostgreSQL-supported-4169E1?logo=postgresql&logoColor=white"></a>
 <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"></a>
 
-OpenMesh is a terminal-first observability layer for AI agent ecosystems.
-It observes agents, tools, models, runtimes, MCP servers, workflows, traces,
-relationships, failures, reputation, genome profiles, snapshots, replay, and
-OpenTelemetry export from one local event store.
+OpenMesh is an observability layer for AI agent ecosystems — think
+OpenTelemetry for AI agents. It observes agents, tools, models, runtimes,
+MCP servers, workflows, traces, relationships, failures, reputation, genome
+profiles, snapshots, replay, and OpenTelemetry export from one local event
+store, consumed by a CLI, a Textual TUI (Control Room), an HTTP API, and a
+browser dashboard.
 
 The fastest first run uses SQLite. No API keys, Docker, Postgres, cloud LLMs, or
 external services are required for the local graph demo.
 
+**Identity principle:** a provider API key never creates agents. Agents exist
+only when the temporary demo simulation creates them (`source: simulation`) or
+when a real integration reports itself — the Python SDK, an MCP connection, or
+a collector observing a running process (`source: sdk | mcp | claude_code |
+openai_agent | custom`). Real agents keep a heartbeat; stale ones report as
+`disconnected`. Every event carries its workspace, project, session, agent,
+and source, so demo activity can never leak into real workspaces.
+
 Default backend startup is intentionally empty. Starting the API creates the
 database schema and waits for events; it does not create agents, posts, traces,
 workflows, warmup ticks, or demo ecosystems. Demo data appears only after an
-explicit command such as `openmesh simulate`, `openmesh seed demo`,
-`openmesh demo start`, `openmesh run-demo research`, or
-`openmesh run-demo multi-agent`.
+explicit action — the dashboard's **Run Demo Environment** button or a command
+such as `openmesh simulate`, `openmesh seed demo`, `openmesh demo start`,
+`openmesh run-demo research`, or `openmesh run-demo multi-agent` — and
+**Terminate Demo** deletes every trace of it again.
 
 ## Status
 
@@ -160,6 +171,49 @@ Routes currently expected to render:
 - `/history`
 - `/observatory`
 
+### Browser-first onboarding
+
+On a fresh install the graph shows a first-launch panel with four paths — no
+terminal or `.env` editing required:
+
+- **Run Demo Environment** — spawns Pioneer, Explorer, and Scientist in a
+  temporary demo workspace. A "Simulation Mode" banner offers Stop and
+  Terminate; terminating deletes all demo agents, posts, events, and traces
+  and returns to the clean first-launch state.
+- **Connect AI Provider** — Anthropic, OpenAI, or OpenRouter. Keys are
+  validated against the provider's live API, stored Fernet-encrypted under
+  `~/.openmesh/` (0600), and hot-reloaded without a backend restart. Models
+  are discovered from the provider (never hardcoded), with a curated top-25
+  view (Coding / Reasoning / Fast-Cheap), search, and "Show all models".
+- **Connect Existing Agent** — observe agents already running in Claude Code,
+  LangChain, CrewAI, MCP, or your own SDK code via the collector endpoints.
+- **Run SDK Example** — copyable commands for the bundled Python examples.
+
+### Workspaces, projects, and sessions
+
+Work is organized as Provider → Workspace → Project → Agent Session →
+Events/Traces. The workspace selector in the Event Bus card rescopes Graph,
+Feed, Agents, and History; project creation supports a repository path picker
+(server-side, home-directory-restricted) and can spawn a typed agent
+(research / coding / observer). The top bar provides Start Session, Pause,
+Resume, and Terminate (with confirmation).
+
+### HTTP API highlights
+
+```text
+GET/POST/DELETE /api/settings/provider      legacy single-provider settings
+GET             /api/providers              provider + model status
+POST            /api/providers/{id}/connect validate key, discover models
+POST            /api/providers/select       choose active (provider, model)
+GET/POST/DELETE /api/workspaces, /api/projects
+GET/POST/DELETE /api/demo/*                 demo lifecycle
+POST            /api/agents/register        real agent reports itself
+POST            /api/agents/{id}/heartbeat  liveness; stale => disconnected
+POST            /api/agents/session/*       start | pause | resume | terminate
+GET             /api/status/live            top-bar status snapshot
+GET             /api/filesystem/browse      repo path picker (home-restricted)
+```
+
 ## SDK Examples
 
 Core SDK examples run without optional framework packages:
@@ -211,6 +265,16 @@ openmesh tui
 ```
 
 Full command inventory: [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md).
+
+## Terminal UI (Control Room)
+
+`openmesh tui` opens the Textual Control Room: agents/processes, traces,
+network relationships, and a live event stream with smart auto-scroll.
+Highlights: `?` keyboard reference, `/` global search, `Tab` panel cycling,
+`z` pause / `Ctrl+L` clear the event stream, `v` sort tables, `E` export
+events/traces/graph to JSON + CSV. Tables only re-render when data changes
+and keep cursor and scroll position across refreshes. `openmesh tui --once`
+prints a one-shot snapshot.
 
 ## Architecture
 

@@ -15,12 +15,57 @@ def parse_event_timestamp(value: str) -> datetime:
     return parsed.replace(tzinfo=None)
 
 
+async def resolve_event_provenance(
+    db: AsyncSession, event: Dict[str, Any]
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """(workspace_id, project_id, agent_source) for an event: explicit
+    payload tags win, else resolved from the source agent. Keeps demo events
+    scoped to the demo workspace and marks every event with its origin
+    (simulation vs a real integration)."""
+    payload = event.get("payload") or {}
+    workspace_id = payload.get("workspace_id") or payload.get("workspace")
+    project_id = payload.get("project_id")
+    agent_source = payload.get("agent_source") or payload.get("source_kind")
+    if workspace_id and agent_source:
+        return str(workspace_id), project_id and str(project_id), str(agent_source)
+    source = event.get("source") or {}
+    if source.get("node_type") == "agent" and source.get("node_id"):
+        from .models import Agent
+
+        try:
+            result = await db.execute(
+                select(Agent.workspace_id, Agent.project_id, Agent.source).where(
+                    Agent.id == source["node_id"]
+                )
+            )
+            row = result.first()
+            if row:
+                return (
+                    str(workspace_id) if workspace_id else row[0],
+                    str(project_id) if project_id else row[1],
+                    str(agent_source) if agent_source else row[2],
+                )
+        except Exception:
+            # Tagging is best-effort: exporters and tests may pass session
+            # shims that cannot run queries.
+            pass
+    return (
+        str(workspace_id) if workspace_id else None,
+        str(project_id) if project_id else None,
+        str(agent_source) if agent_source else None,
+    )
+
+
 async def create_openmesh_event(
     db: AsyncSession,
     event: Dict[str, Any],
 ) -> OpenMeshEventRecord:
+    workspace_id, project_id, agent_source = await resolve_event_provenance(db, event)
     record = OpenMeshEventRecord(
         event_id=event["event_id"],
+        workspace_id=workspace_id,
+        project_id=project_id,
+        agent_source=agent_source,
         event_type=event["event_type"],
         timestamp=parse_event_timestamp(event["timestamp"]),
         trace_id=event["trace_id"],
@@ -47,12 +92,15 @@ async def list_openmesh_events(
     limit: int = 100,
     trace_id: Optional[str] = None,
     session_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
 ) -> list[OpenMeshEventRecord]:
     query = select(OpenMeshEventRecord)
     if trace_id:
         query = query.where(OpenMeshEventRecord.trace_id == trace_id)
     if session_id:
         query = query.where(OpenMeshEventRecord.session_id == session_id)
+    if workspace_id:
+        query = query.where(OpenMeshEventRecord.workspace_id == workspace_id)
     query = query.order_by(desc(OpenMeshEventRecord.timestamp)).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())
@@ -61,6 +109,9 @@ async def list_openmesh_events(
 def record_to_event(record: OpenMeshEventRecord) -> Dict[str, Any]:
     event: Dict[str, Any] = {
         "spec_version": "0.1",
+        "workspace_id": getattr(record, "workspace_id", None),
+        "project_id": getattr(record, "project_id", None),
+        "agent_source": getattr(record, "agent_source", None),
         "event_id": record.event_id,
         "event_type": record.event_type,
         "timestamp": record.timestamp.isoformat() + "Z",

@@ -47,6 +47,7 @@ dependencies = [
   "greenlet==3.0.3",
   "aiosqlite==0.20.0",
   "textual==8.2.7",
+  "cryptography>=42.0",
 ]
 
 [project.urls]

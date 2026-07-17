@@ -5,7 +5,12 @@ from typing import Any
 
 import httpx
 
-from .base import LLMProvider, LLMResponse, response_text_from_openai_shape
+from .base import (
+    LLMProvider,
+    LLMResponse,
+    ProviderModel,
+    response_text_from_openai_shape,
+)
 
 
 class OpenRouterProvider(LLMProvider):
@@ -25,15 +30,48 @@ class OpenRouterProvider(LLMProvider):
     async def verify(self):
         if not self.configured:
             return self.missing_status()
+        # /models is public on OpenRouter, so it cannot validate a key.
+        # /key (fallback /auth/key) requires authentication and 401s on bad keys.
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
-                    f"{self.base_url}/models", headers=self._headers()
+                    f"{self.base_url}/key", headers=self._headers()
                 )
+                if response.status_code == 404:
+                    response = await client.get(
+                        f"{self.base_url}/auth/key", headers=self._headers()
+                    )
                 response.raise_for_status()
-            return self.connected_status("models endpoint reachable")
+            return self.connected_status("key endpoint reachable")
         except Exception as exc:  # pragma: no cover - exercised through tests by shape
             return self.failed_status(exc)
+
+    async def list_models(self) -> list[ProviderModel]:
+        """Live model discovery from the OpenRouter catalog."""
+        self.ensure_configured()
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                f"{self.base_url}/models", headers=self._headers()
+            )
+            response.raise_for_status()
+            data = response.json()
+        models = []
+        for item in data.get("data") or []:
+            model_id = str(item.get("id") or "")
+            if not model_id:
+                continue
+            models.append(
+                ProviderModel(
+                    provider=self.provider_id,
+                    provider_name=self.display_name,
+                    model=model_id,
+                    metadata={
+                        "name": item.get("name"),
+                        "context_length": item.get("context_length"),
+                    },
+                )
+            )
+        return sorted(models, key=lambda item: item.model)
 
     async def complete(
         self,

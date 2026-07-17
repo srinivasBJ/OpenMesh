@@ -159,6 +159,15 @@ ticks.
 
 The dashboard is optional and remains a visualization layer.
 
+On first launch with no provider API key configured, the dashboard shows an
+onboarding card: choose Anthropic, OpenAI, or OpenRouter, paste an API key,
+and press Save. The backend validates the key against the provider, stores it
+encrypted under `~/.openmesh/`, and hot-reloads the LLM provider — no `.env`
+edits or backend restart required. After saving, press **Start Agent** to spawn
+the default agent and watch the graph populate live. Keys pasted in the UI
+take precedence over `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
+`OPENROUTER_API_KEY` environment variables.
+
 ```bash
 cd frontend
 npm install

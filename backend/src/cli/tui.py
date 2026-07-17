@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import csv
+import json
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
-from textual.widget import Widget
-from textual.widgets import DataTable, Footer, Static
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.coordinate import Coordinate
+from textual.screen import ModalScreen
+from textual.widgets import DataTable, Footer, Input, RichLog, Static
 
 from ..db.openmesh_events import list_openmesh_events
 from ..db.session import AsyncSessionLocal
@@ -1108,11 +1115,216 @@ def _compact_span_tree(nodes: list[dict[str, Any]], prefix: str = "") -> list[st
     return rows
 
 
-class Panel(Static):
-    pass
+def _matches_query(query: str, *values: Any) -> bool:
+    """Case-insensitive substring match across candidate values."""
+    needle = query.strip().lower()
+    if not needle:
+        return True
+    return any(needle in str(value).lower() for value in values if value is not None)
+
+
+def event_stream_line(event: dict[str, Any]) -> str:
+    """One log-viewer line per OpenMesh event."""
+    source = (event.get("source") or {}).get("name") or "-"
+    target = (event.get("target") or {}).get("name")
+    severity = str(event.get("severity") or "info")
+    line = (
+        f"{_time(event.get('timestamp'))} "
+        f"{severity[:4]:<4} "
+        f"{_short(event.get('event_type'), 26):<26} "
+        f"{_short(source, 20)}"
+    )
+    if target:
+        line += f" -> {_short(target, 20)}"
+    return line
+
+
+def _memory_mb() -> float:
+    try:
+        import resource
+
+        usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    except Exception:
+        return 0.0
+    divisor = 1024 * 1024 if sys.platform == "darwin" else 1024
+    return usage / divisor
+
+
+def export_snapshot_files(snapshot: TuiSnapshot, directory: Path) -> list[Path]:
+    """Write events/traces/graph to JSON plus CSV tables. Returns written paths."""
+    directory.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+
+    for name, payload in (
+        ("events.json", snapshot.events),
+        ("traces.json", snapshot.traces),
+        ("graph.json", snapshot.graph),
+    ):
+        path = directory / name
+        path.write_text(json.dumps(payload, indent=2, default=str), "utf-8")
+        written.append(path)
+
+    events_csv = directory / "events.csv"
+    with events_csv.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(
+            ["timestamp", "event_type", "trace_id", "source", "target", "severity"]
+        )
+        for event in snapshot.events:
+            writer.writerow(
+                [
+                    event.get("timestamp"),
+                    event.get("event_type"),
+                    event.get("trace_id"),
+                    (event.get("source") or {}).get("name"),
+                    (event.get("target") or {}).get("name"),
+                    event.get("severity"),
+                ]
+            )
+    written.append(events_csv)
+
+    traces_csv = directory / "traces.csv"
+    with traces_csv.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["trace_id", "status", "event_count", "started_at", "ended_at"])
+        for trace in snapshot.traces:
+            writer.writerow(
+                [
+                    trace.get("trace_id"),
+                    trace.get("status"),
+                    trace.get("event_count"),
+                    trace.get("started_at"),
+                    trace.get("ended_at"),
+                ]
+            )
+    written.append(traces_csv)
+    return written
+
+
+# Sortable columns per table: (label, cell index, numeric-descending).
+TABLE_SORT_COLUMNS: dict[str, list[tuple[str, int, bool]]] = {
+    "agents-table": [
+        ("name", 0, False),
+        ("type", 1, False),
+        ("events", 3, True),
+        ("last", 4, False),
+    ],
+    "traces-table": [
+        ("trace", 0, False),
+        ("status", 1, False),
+        ("events", 2, True),
+        ("start", 3, False),
+    ],
+    "network-table": [
+        ("source", 0, False),
+        ("relationship", 1, False),
+        ("target", 2, False),
+        ("obs", 4, True),
+    ],
+}
+
+
+HELP_TEXT = """\
+OPENMESH CONTROL ROOM — KEYBOARD REFERENCE
+
+Navigation
+  Tab / Shift+Tab    cycle focus between panels
+  1 / 2 / 3 / 4      focus Agents · Traces · Network · Event Stream
+  Arrow keys         move row cursor / scroll
+  PgUp / PgDn        page through tables and logs
+  Home / End         jump to top / bottom
+  j / k              scroll detail view & event stream (vim)
+  Mouse / touchpad   wheel-scroll any panel, click to focus & select
+
+Inspect
+  Enter / click      inspect selected row (trace, node, relationship)
+  f                  focus graph on selected node
+  p / c              expand / collapse graph depth
+  o                  clear graph focus (show all)
+  k                  graph-search from selection (tables)
+  g                  cycle graph filter (agents, tools, workflows, …)
+
+Views
+  5 integrations   6 discovery      7 registry    8 MCP
+  9 MCP config     0 capabilities   w workflows   e ecosystem
+  s snapshots      d snapshot diff  l timeline    r replay
+  y queries        u next query     a / b diff selection
+
+Event Stream
+  z                  pause / resume the stream
+  Ctrl+L             clear the stream
+  Auto-scroll sticks to the bottom; scroll up to hold position,
+  press End to resume following.
+
+Replay
+  Space              play / pause      n / m   step forward / back
+  x                  stop
+
+Search, Sort & Export
+  /                  global search (agents, traces, relationships, events)
+  v                  cycle sort column on the focused table
+  E                  export events / traces / graph to JSON + CSV
+
+General
+  ?                  toggle this help
+  Esc                close overlay / clear search / back to event stream
+  q                  quit
+"""
+
+
+class Panel(Vertical):
+    """Titled panel container; highlighted via :focus-within when active."""
+
+
+class OMDataTable(DataTable):
+    """DataTable with the stock scrolling plus vim-style row movement."""
+
+    BINDINGS = [
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+    ]
+
+
+class DetailScroll(VerticalScroll):
+    """Scrollable, focusable body for the lower-right detail modes."""
+
+    BINDINGS = [
+        Binding("j", "scroll_down", "Down", show=False),
+        Binding("k", "scroll_up", "Up", show=False),
+    ]
+
+
+class EventLog(RichLog):
+    """Focusable event stream log with vim-style scrolling."""
+
+    can_focus = True
+
+    BINDINGS = [
+        Binding("j", "scroll_down", "Down", show=False),
+        Binding("k", "scroll_up", "Up", show=False),
+    ]
+
+
+class HelpScreen(ModalScreen[None]):
+    """Keyboard reference overlay. Opened with ?, closed with Esc."""
+
+    BINDINGS = [
+        Binding("escape", "close_help", "Close"),
+        Binding("question_mark", "close_help", "Close", show=False),
+        Binding("q", "close_help", "Close", show=False),
+    ]
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id="help-card"):
+            yield Static(HELP_TEXT, id="help-text")
+
+    def action_close_help(self) -> None:
+        self.dismiss(None)
 
 
 class OpenMeshTui(App):
+    REFRESH_INTERVAL = 2.0
+
     CSS = """
     Screen {
         background: #070605;
@@ -1120,7 +1332,8 @@ class OpenMeshTui(App):
     }
 
     #topbar {
-        height: 8;
+        height: auto;
+        max-height: 10;
         background: #11100e;
         color: #c56b2c;
         text-style: bold;
@@ -1128,13 +1341,13 @@ class OpenMeshTui(App):
         border-bottom: heavy #7a3f20;
     }
 
-    #logo-line {
-        color: #c56b2c;
-    }
-
-    #status-line {
-        color: #8f9aa0;
-        text-style: none;
+    #search-input {
+        display: none;
+        height: 3;
+        margin: 0 1;
+        border: heavy #7a3f20;
+        background: #0d0c0a;
+        color: #e8dcc8;
     }
 
     #grid {
@@ -1144,6 +1357,7 @@ class OpenMeshTui(App):
 
     .column {
         width: 1fr;
+        height: 1fr;
     }
 
     .panel {
@@ -1153,13 +1367,17 @@ class OpenMeshTui(App):
         padding: 0 1 1 1;
     }
 
-    .panel:focus {
+    .panel:focus-within {
         border: heavy #c56b2c;
     }
 
     #network-panel {
         border: heavy #9b5127;
         background: #100c09;
+    }
+
+    #network-panel:focus-within {
+        border: heavy #c56b2c;
     }
 
     .panel-title {
@@ -1173,6 +1391,8 @@ class OpenMeshTui(App):
         background: #0d0c0a;
         color: #b8afa2;
         height: 1fr;
+        scrollbar-size-vertical: 1;
+        scrollbar-size-horizontal: 1;
     }
 
     DataTable > .datatable--header {
@@ -1190,10 +1410,40 @@ class OpenMeshTui(App):
         background: #211a14;
     }
 
-    #network-table, #event-body {
+    #event-log {
         height: 1fr;
+        background: #0d0c0a;
         color: #b8afa2;
         padding-top: 1;
+        scrollbar-size-vertical: 1;
+    }
+
+    #detail-scroll {
+        height: 1fr;
+        scrollbar-size-vertical: 1;
+    }
+
+    #event-body {
+        height: auto;
+        color: #b8afa2;
+        padding-top: 1;
+    }
+
+    HelpScreen {
+        align: center middle;
+    }
+
+    #help-card {
+        width: 76;
+        max-width: 96%;
+        max-height: 90%;
+        border: heavy #c56b2c;
+        background: #11100e;
+        padding: 1 2;
+    }
+
+    #help-text {
+        color: #d8cdba;
     }
 
     Footer {
@@ -1204,44 +1454,51 @@ class OpenMeshTui(App):
     """
 
     BINDINGS = [
+        Binding("tab", "focus_next", "Next Panel", show=False, priority=True),
+        Binding("shift+tab", "focus_previous", "Prev Panel", show=False, priority=True),
+        Binding("escape", "back", "Back", show=False, priority=True),
+        Binding("question_mark", "show_help", "Help"),
+        Binding("slash", "open_search", "Search"),
+        Binding("E", "export_data", "Export"),
+        Binding("v", "cycle_sort", "Sort"),
+        Binding("z", "toggle_stream_pause", "Pause Stream"),
+        Binding("ctrl+l", "clear_stream", "Clear Stream", show=False),
         ("1", "focus_panel('agents')", "Overview"),
         ("2", "focus_panel('traces')", "Traces"),
         ("3", "focus_panel('network')", "Graph"),
         ("4", "focus_panel('events')", "Events"),
-        ("5", "show_integrations", "Integrations"),
-        ("6", "show_discovery", "Discovery"),
-        ("7", "show_registry", "Registry"),
-        ("8", "show_mcp", "MCP"),
-        ("9", "show_mcp_config", "MCP Config"),
-        ("0", "show_capabilities", "Capabilities"),
-        ("w", "show_workflows", "Workflows"),
-        ("e", "show_ecosystem", "Ecosystem"),
-        ("s", "show_snapshots", "Snapshots"),
-        ("d", "show_snapshot_diff", "Snapshot Diff"),
-        ("l", "show_timeline", "Timeline"),
-        ("r", "show_replay", "Replay"),
-        ("y", "show_query", "Query"),
-        ("g", "cycle_graph_filter", "Graph Filter"),
-        ("f", "focus_graph_node", "Focus Node"),
-        ("p", "expand_graph", "Expand"),
-        ("c", "collapse_graph", "Collapse"),
-        ("o", "clear_graph_focus", "All Graph"),
-        ("k", "search_graph_selection", "Search"),
-        ("u", "next_query", "Next Query"),
-        ("space", "toggle_replay", "Play/Pause"),
-        ("n", "step_replay", "Step"),
-        ("m", "previous_replay", "Previous"),
-        ("x", "stop_replay", "Stop"),
-        ("a", "select_snapshot_a", "Select A"),
-        ("b", "select_snapshot_b", "Select B"),
-        ("enter", "inspect_selected", "Inspect"),
+        Binding("5", "show_detail('integrations')", "Integrations", show=False),
+        Binding("6", "show_detail('discovery')", "Discovery", show=False),
+        Binding("7", "show_detail('registry')", "Registry", show=False),
+        Binding("8", "show_detail('mcp')", "MCP", show=False),
+        Binding("9", "show_detail('mcp_config')", "MCP Config", show=False),
+        Binding("0", "show_detail('capabilities')", "Capabilities", show=False),
+        Binding("w", "show_detail('workflows')", "Workflows", show=False),
+        Binding("e", "show_detail('ecosystem')", "Ecosystem", show=False),
+        Binding("s", "show_detail('snapshots')", "Snapshots", show=False),
+        Binding("d", "show_detail('snapshot_diff')", "Snapshot Diff", show=False),
+        Binding("l", "show_detail('timeline')", "Timeline", show=False),
+        Binding("r", "show_replay", "Replay", show=False),
+        Binding("y", "show_detail('query')", "Query", show=False),
+        Binding("g", "cycle_graph_filter", "Graph Filter", show=False),
+        Binding("f", "focus_graph_node", "Focus Node", show=False),
+        Binding("p", "expand_graph", "Expand", show=False),
+        Binding("c", "collapse_graph", "Collapse", show=False),
+        Binding("o", "clear_graph_focus", "All Graph", show=False),
+        Binding("k", "search_graph_selection", "Graph Search", show=False),
+        Binding("u", "next_query", "Next Query", show=False),
+        Binding("space", "toggle_replay", "Play/Pause", show=False),
+        Binding("n", "step_replay", "Step", show=False),
+        Binding("m", "previous_replay", "Previous", show=False),
+        Binding("x", "stop_replay", "Stop", show=False),
+        Binding("a", "select_snapshot_a", "Select A", show=False),
+        Binding("b", "select_snapshot_b", "Select B", show=False),
         ("q", "quit", "Quit"),
     ]
 
     def __init__(self) -> None:
         super().__init__()
         self.snapshot: TuiSnapshot | None = None
-        self.selected_detail = "Enter inspects the focused row. Network stays visible."
         self.lower_right_mode = "events"
         self.selected_trace_id: str | None = None
         self.selected_edge_id: str | None = None
@@ -1255,115 +1512,325 @@ class OpenMeshTui(App):
         self.graph_focus_node_id: str | None = None
         self.graph_depth = 1
         self.graph_search_query: str | None = None
+        self.search_query = ""
+        self.stream_paused = False
         self.agent_node_rows: list[dict[str, Any]] = []
+        self.trace_display_rows: list[dict[str, Any]] = []
         self.network_edge_rows: list[dict[str, Any]] = []
+        self._row_payloads: dict[str, dict[str, Any]] = {}
+        self._fingerprints: dict[str, Any] = {}
+        self._sort_index: dict[str, int | None] = {}
+        self._seen_event_ids: set[str] = set()
+        self._stream_has_content = False
+        self._pending_stream_count = 0
+        self._events_per_second = 0.0
+        self._load_ms = 0
+        self._refreshing = False
+        self._compact = False
+
+    # ── Layout ────────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
         yield Static("", id="topbar")
+        yield Input(
+            placeholder=(
+                "Search agents, traces, relationships, events…"
+                "  (Enter to apply, Esc to clear)"
+            ),
+            id="search-input",
+        )
         with Horizontal(id="grid"):
             with Vertical(classes="column"):
-                with Panel("", id="agents-panel", classes="panel"):
-                    yield Static("AGENTS / PROCESSES", classes="panel-title")
-                    yield DataTable(id="agents-table")
-                with Panel("", id="traces-panel", classes="panel"):
-                    yield Static("TRACES", classes="panel-title")
-                    yield DataTable(id="traces-table")
+                with Panel(id="agents-panel", classes="panel"):
+                    yield Static(
+                        "AGENTS / PROCESSES", id="agents-title", classes="panel-title"
+                    )
+                    yield OMDataTable(id="agents-table")
+                with Panel(id="traces-panel", classes="panel"):
+                    yield Static("TRACES", id="traces-title", classes="panel-title")
+                    yield OMDataTable(id="traces-table")
             with Vertical(classes="column"):
-                with Panel("", id="network-panel", classes="panel"):
+                with Panel(id="network-panel", classes="panel"):
                     yield Static("NETWORK", id="network-title", classes="panel-title")
-                    yield DataTable(id="network-table")
-                with Panel("", id="events-panel", classes="panel"):
+                    yield OMDataTable(id="network-table")
+                with Panel(id="events-panel", classes="panel"):
                     yield Static(
                         "EVENT STREAM", id="event-title", classes="panel-title"
                     )
-                    yield Static("", id="event-body")
+                    yield EventLog(
+                        id="event-log",
+                        markup=False,
+                        highlight=False,
+                        wrap=False,
+                        max_lines=2000,
+                        auto_scroll=False,
+                    )
+                    with DetailScroll(id="detail-scroll"):
+                        yield Static("", id="event-body")
         yield Footer()
 
     async def on_mount(self) -> None:
-        agents = self.query_one("#agents-table", DataTable)
-        agents.add_columns("name", "type", "status", "events", "last")
-        agents.cursor_type = "row"
-        traces = self.query_one("#traces-table", DataTable)
-        traces.add_columns("trace", "status", "events", "start")
-        traces.cursor_type = "row"
-        network = self.query_one("#network-table", DataTable)
-        network.add_columns("source", "relationship", "target", "state", "obs")
-        network.cursor_type = "row"
+        for table_id, columns in (
+            ("agents-table", ("name", "type", "status", "events", "last")),
+            ("traces-table", ("trace", "status", "events", "start")),
+            ("network-table", ("source", "relationship", "target", "state", "obs")),
+        ):
+            table = self.query_one(f"#{table_id}", DataTable)
+            table.add_columns(*columns)
+            table.cursor_type = "row"
+            table.zebra_stripes = True
+        self.query_one("#detail-scroll", DetailScroll).display = False
+        self._apply_layout(self.size)
         self.query_one("#agents-table", DataTable).focus()
         await self.refresh_data()
-        self.set_interval(2.0, self.refresh_data)
+        self.set_interval(self.REFRESH_INTERVAL, self.refresh_data)
+
+    def on_resize(self, event: Any) -> None:
+        self._apply_layout(event.size)
+
+    def _apply_layout(self, size: Any) -> None:
+        stacked = size.width < 100
+        grid = self.query_one("#grid", Horizontal)
+        grid.styles.layout = "vertical" if stacked else "horizontal"
+        compact = size.height < 28 or size.width < 90
+        if compact != self._compact:
+            self._compact = compact
+            if self.snapshot:
+                self._refresh_topbar()
+
+    def on_descendant_focus(self, event: Any) -> None:
+        if self.snapshot:
+            self._refresh_topbar()
+
+    # ── Data refresh ──────────────────────────────────────────────────────
 
     async def refresh_data(self) -> None:
-        self.snapshot = await load_snapshot()
-        health = self.snapshot.health
-        graph_filter = GRAPH_FILTERS[self.network_filter_index][0]
-        graph_focus = self._graph_focus_label()
-        graph_search = self.graph_search_query or "-"
-        self.query_one("#topbar", Static).update(
-            f"[#c56b2c]{OPENMESH_LOGO.strip()}[/]\n"
-            f"[#8f9aa0]CONTROL ROOM  events:{health['events']} traces:{health['traces']} "
-            f"nodes:{health['nodes']} edges:{health['edges']} sessions:{len(self.snapshot.sessions)} "
-            f"graph:{graph_focus} depth:{self.graph_depth} filter:{graph_filter} search:{_short(graph_search, 18)}  "
-            "observability for agent frameworks  "
-            "[1 overview] [2 traces] [3 graph] [4 events] [g filter] [f focus] [p expand] [c collapse] [o all] [k search] [r replay] [q quit][/]"
-        )
+        if self._refreshing:
+            return
+        self._refreshing = True
+        try:
+            started = perf_counter()
+            self.snapshot = await load_snapshot()
+            self._load_ms = int((perf_counter() - started) * 1000)
+        finally:
+            self._refreshing = False
+        self._refresh_all()
+
+    def _refresh_all(self) -> None:
+        self._refresh_tables()
+        self._refresh_event_stream()
+        self._refresh_detail()
+        self._refresh_topbar()
+
+    def _refresh_tables(self) -> None:
         self._refresh_agents()
         self._refresh_traces()
         self._refresh_network()
-        self._refresh_events()
+
+    def _refresh_topbar(self) -> None:
+        if not self.snapshot:
+            return
+        health = self.snapshot.health
+        graph_filter = GRAPH_FILTERS[self.network_filter_index][0]
+        stats = (
+            f"events:{health['events']} traces:{health['traces']} "
+            f"nodes:{health['nodes']} edges:{health['edges']} "
+            f"sessions:{len(self.snapshot.sessions)} "
+            f"evt/s:{self._events_per_second:.1f} "
+            f"refresh:{self.REFRESH_INTERVAL:.0f}s db:{self._load_ms}ms "
+            f"mem:{_memory_mb():.0f}MB"
+        )
+        state = (
+            f"focus:{self._focused_panel_name()} filter:{graph_filter} "
+            f"search:{_short(self.search_query or '-', 16)} "
+            f"graph:{_short(self._graph_focus_label(), 20)} depth:{self.graph_depth}"
+        )
+        if self.stream_paused:
+            state += "  · stream PAUSED"
+        hints = (
+            "\\[?] help  \\[/] search  \\[E] export  \\[z] pause  "
+            "\\[Tab] panels  \\[q] quit"
+        )
+        if self._compact:
+            text = (
+                "[#c56b2c]OPENMESH CONTROL ROOM[/]  "
+                f"[#8f9aa0]{stats}\n{state}  {hints}[/]"
+            )
+        else:
+            text = (
+                f"[#c56b2c]{OPENMESH_LOGO.strip()}[/]\n"
+                f"[#8f9aa0]CONTROL ROOM  {stats}\n{state}  {hints}[/]"
+            )
+        self.query_one("#topbar", Static).update(text)
+
+    def _focused_panel_name(self) -> str:
+        widget_id = getattr(self.focused, "id", None) or ""
+        return {
+            "agents-table": "agents",
+            "traces-table": "traces",
+            "network-table": "network",
+            "event-log": "events",
+            "detail-scroll": "detail",
+            "search-input": "search",
+        }.get(widget_id, "-")
+
+    # ── Table plumbing: fingerprints, cursor/scroll preservation, sorting ─
+
+    def _sorted_entries(
+        self,
+        table_id: str,
+        entries: list[tuple[Any, tuple[str, ...]]],
+    ) -> list[tuple[Any, tuple[str, ...]]]:
+        sort_index = self._sort_index.get(table_id)
+        if sort_index is None:
+            return entries
+        _, cell_index, numeric = TABLE_SORT_COLUMNS[table_id][sort_index]
+
+        def sort_key(entry: tuple[Any, tuple[str, ...]]) -> Any:
+            value = str(entry[1][cell_index])
+            if numeric:
+                digits = "".join(char for char in value if char.isdigit())
+                return -int(digits) if digits else 0
+            return value.lower()
+
+        return sorted(entries, key=sort_key)
+
+    def _sort_suffix(self, table_id: str) -> str:
+        sort_index = self._sort_index.get(table_id)
+        if sort_index is None:
+            return ""
+        label, _, numeric = TABLE_SORT_COLUMNS[table_id][sort_index]
+        return f"  ↓{label}" if numeric else f"  ↑{label}"
+
+    @staticmethod
+    def _cursor_row_key(table: DataTable) -> str | None:
+        if not table.row_count:
+            return None
+        try:
+            cell_key = table.coordinate_to_cell_key(Coordinate(table.cursor_row, 0))
+        except Exception:
+            return None
+        value = cell_key.row_key.value
+        return str(value) if value is not None else None
+
+    def _update_table(
+        self,
+        table_id: str,
+        rows: list[tuple[tuple[str, ...], str, Any]],
+        empty_message: str,
+    ) -> None:
+        """Rebuild a table only when its content changed, keeping cursor and
+        scroll position so periodic refreshes never yank the view around."""
+        table = self.query_one(f"#{table_id}", DataTable)
+        fingerprint = hash(tuple((cells, key) for cells, key, _ in rows))
+        if self._fingerprints.get(table_id) == fingerprint:
+            return
+        self._fingerprints[table_id] = fingerprint
+        previous_key = self._cursor_row_key(table)
+        scroll_y = table.scroll_y
+        table.clear()
+        payloads: dict[str, Any] = {}
+        self._row_payloads[table_id] = payloads
+        if not rows:
+            table.add_row(empty_message, *[""] * (len(table.columns) - 1))
+            return
+        key_index: dict[str, int] = {}
+        for index, (cells, key, payload) in enumerate(rows):
+            row_key = key
+            while row_key in payloads:
+                row_key = f"{key}#{index}"
+            payloads[row_key] = payload
+            table.add_row(*cells, key=row_key)
+            key_index.setdefault(key, index)
+        if previous_key is not None and previous_key in key_index:
+            table.move_cursor(row=key_index[previous_key], animate=False)
+        else:
+            table.scroll_to(y=min(scroll_y, table.max_scroll_y), animate=False)
+
+    def _set_panel_title(
+        self, title_id: str, base: str, count: int, table_id: str | None = None
+    ) -> None:
+        suffix = f" ({count})"
+        if table_id:
+            suffix += self._sort_suffix(table_id)
+        if self.search_query:
+            suffix += f"  match:{_short(self.search_query, 12)}"
+        self.query_one(f"#{title_id}", Static).update(base + suffix)
+
+    # ── Panel refreshes ───────────────────────────────────────────────────
 
     def _refresh_agents(self) -> None:
         assert self.snapshot is not None
-        table = self.query_one("#agents-table", DataTable)
-        table.clear()
         nodes, _ = _node_maps(self.snapshot)
         trace_counts = _trace_counts_by_node(self.snapshot)
-        self.agent_node_rows = [
-            node
-            for node in nodes.values()
-            if node["type"] in {"agent", "process", "service", "workflow"}
-        ]
-        self.agent_node_rows.sort(key=lambda node: (node["type"], node["name"]))
-        for node in self.agent_node_rows:
-            table.add_row(
+        entries: list[tuple[Any, tuple[str, ...]]] = []
+        for node in nodes.values():
+            if node["type"] not in {"agent", "process", "service", "workflow"}:
+                continue
+            status = _node_status(node, self.snapshot.sessions)
+            if not _matches_query(
+                self.search_query,
+                node.get("name"),
+                node.get("type"),
+                status,
+                node.get("id"),
+            ):
+                continue
+            cells = (
                 _short(node["name"], 28),
                 node["type"],
-                _status_label(_node_status(node, self.snapshot.sessions)),
+                _status_label(status),
                 str(node.get("event_count", 0)),
                 f"{_time(node.get('last_seen'))} / t:{trace_counts.get(node['id'], 0)}",
-                key=node["id"],
             )
+            entries.append((node, cells))
+        entries.sort(key=lambda entry: (entry[0]["type"], entry[0]["name"]))
+        entries = self._sorted_entries("agents-table", entries)
+        self.agent_node_rows = [node for node, _ in entries]
+        rows = [(cells, str(node["id"]), node) for node, cells in entries]
+        self._update_table("agents-table", rows, "Waiting for agents…")
+        self._set_panel_title(
+            "agents-title", "AGENTS / PROCESSES", len(rows), "agents-table"
+        )
 
     def _refresh_traces(self) -> None:
         assert self.snapshot is not None
-        table = self.query_one("#traces-table", DataTable)
-        table.clear()
+        entries: list[tuple[Any, tuple[str, ...]]] = []
         for trace in self.snapshot.traces:
-            table.add_row(
+            if not _matches_query(
+                self.search_query, trace.get("trace_id"), trace.get("status")
+            ):
+                continue
+            cells = (
                 _short(trace["trace_id"], 24),
                 _status_label(trace["status"]),
                 str(trace["event_count"]),
                 _time(trace["started_at"]),
-                key=trace["trace_id"],
             )
+            entries.append((trace, cells))
+        entries = self._sorted_entries("traces-table", entries)
+        self.trace_display_rows = [trace for trace, _ in entries]
+        rows = [(cells, str(trace["trace_id"]), trace) for trace, cells in entries]
+        self._update_table("traces-table", rows, "No active traces.")
+        self._set_panel_title("traces-title", "TRACES", len(rows), "traces-table")
 
     def _refresh_network(self) -> None:
         assert self.snapshot is not None
-        table = self.query_one("#network-table", DataTable)
-        table.clear()
         nodes, _ = _node_maps(self.snapshot)
         filter_name, node_types, relationship_types = GRAPH_FILTERS[
             self.network_filter_index
         ]
         title = "NETWORK"
         if self.graph_focus_node_id:
-            title = f"NETWORK  focus:{_short(self._graph_focus_label(), 24)} depth:{self.graph_depth}"
+            title = (
+                f"NETWORK  focus:{_short(self._graph_focus_label(), 24)} "
+                f"depth:{self.graph_depth}"
+            )
         elif self.graph_search_query:
             title = f"NETWORK  search:{_short(self.graph_search_query, 28)}"
         elif filter_name != "all":
             title = f"NETWORK  filter:{filter_name}"
-        self.query_one("#network-title", Static).update(title)
-        self.network_edge_rows = network_edges(
+        edges = network_edges(
             self.snapshot,
             focus_node_id=self.graph_focus_node_id,
             depth=self.graph_depth,
@@ -1371,145 +1838,211 @@ class OpenMeshTui(App):
             relationship_types=relationship_types,
             query=self.graph_search_query,
         )
-        for edge in self.network_edge_rows:
+        entries: list[tuple[Any, tuple[str, ...]]] = []
+        for edge in edges:
             source = nodes.get(edge["source"], {"name": edge["source"]})
             target = nodes.get(edge["target"], {"name": edge["target"]})
-            table.add_row(
+            if not _matches_query(
+                self.search_query,
+                source.get("name"),
+                edge.get("type"),
+                target.get("name"),
+            ):
+                continue
+            cells = (
                 _short(source["name"], 20),
-                edge["type"],
+                _short(edge["type"], 18),
                 _short(target["name"], 20),
-                edge.get("lifecycle_state", "unknown"),
+                _short(edge.get("lifecycle_state", "unknown"), 12),
                 str(edge.get("observation_count", edge.get("event_count", 0))),
-                key=edge["id"],
             )
+            entries.append((edge, cells))
+        entries = self._sorted_entries("network-table", entries)
+        self.network_edge_rows = [edge for edge, _ in entries]
+        rows = [(cells, str(edge["id"]), edge) for edge, cells in entries]
+        self._update_table("network-table", rows, "No relationships yet.")
+        suffix = f" ({len(rows)})" + self._sort_suffix("network-table")
+        if self.search_query:
+            suffix += f"  match:{_short(self.search_query, 12)}"
+        self.query_one("#network-title", Static).update(title + suffix)
 
-    def _refresh_events(self) -> None:
+    # ── Event stream (log viewer) ─────────────────────────────────────────
+
+    def _refresh_event_stream(self) -> None:
         assert self.snapshot is not None
-        if self.lower_right_mode == "graph":
-            self.query_one("#event-title", Static).update("GRAPH EXPLORER")
-            self.query_one("#event-body", Static).update(
-                "\n".join(
-                    graph_explorer_rows(
-                        self.snapshot,
-                        focus_node_id=self.graph_focus_node_id,
-                        depth=self.graph_depth,
-                        query=self.graph_search_query,
-                    )
+        log = self.query_one("#event-log", EventLog)
+        events = list(reversed(self.snapshot.events))  # chronological order
+        fresh = [
+            event
+            for event in events
+            if str(event.get("event_id")) not in self._seen_event_ids
+        ]
+        self._events_per_second = round(len(fresh) / self.REFRESH_INTERVAL, 2)
+
+        if self.search_query:
+            matching = [
+                event
+                for event in events
+                if _matches_query(
+                    self.search_query,
+                    event.get("event_type"),
+                    (event.get("source") or {}).get("name"),
+                    (event.get("target") or {}).get("name"),
+                    event.get("trace_id"),
                 )
+            ]
+            fingerprint = (
+                "search",
+                self.search_query,
+                tuple(str(event.get("event_id")) for event in matching),
             )
+            if self._fingerprints.get("event-log") != fingerprint:
+                self._fingerprints["event-log"] = fingerprint
+                log.clear()
+                if matching:
+                    for event in matching:
+                        log.write(event_stream_line(event))
+                else:
+                    log.write("No events match the current search.")
+                log.scroll_end(animate=False)
+            for event in fresh:
+                self._seen_event_ids.add(str(event.get("event_id")))
+            self._trim_seen_events()
+            self._update_event_title(len(matching))
             return
-        if self.lower_right_mode == "integrations":
-            self.query_one("#event-title", Static).update("INTEGRATIONS")
-            self.query_one("#event-body", Static).update(
-                "\n".join(integration_rows(self.snapshot))
+
+        if self.stream_paused:
+            self._pending_stream_count = len(fresh)
+            self._update_event_title(None)
+            return
+
+        if not fresh and not self._stream_has_content:
+            fingerprint = ("empty",)
+            if self._fingerprints.get("event-log") != fingerprint:
+                self._fingerprints["event-log"] = fingerprint
+                log.clear()
+                log.write("No events received yet.")
+                log.write("Backend connected — listening for OpenMesh events…")
+            self._update_event_title(0)
+            return
+
+        if fresh:
+            if not self._stream_has_content:
+                log.clear()
+                self._stream_has_content = True
+            at_end = log.is_vertical_scroll_end
+            for event in fresh:
+                log.write(event_stream_line(event))
+                self._seen_event_ids.add(str(event.get("event_id")))
+            self._trim_seen_events()
+            if at_end:
+                log.scroll_end(animate=False)
+            self._fingerprints["event-log"] = ("stream",)
+        self._update_event_title(None)
+
+    def _trim_seen_events(self) -> None:
+        if len(self._seen_event_ids) > 5000 and self.snapshot:
+            self._seen_event_ids = {
+                str(event.get("event_id")) for event in self.snapshot.events
+            }
+
+    def _update_event_title(self, count: int | None) -> None:
+        if self.lower_right_mode != "events":
+            return
+        title = "EVENT STREAM"
+        if count is not None:
+            title += f" ({count})"
+        if self.stream_paused:
+            title += f"  ⏸ paused +{self._pending_stream_count} new"
+        if self.search_query:
+            title += f"  match:{_short(self.search_query, 12)}"
+        self.query_one("#event-title", Static).update(title)
+
+    def _reset_stream(self) -> None:
+        self._seen_event_ids.clear()
+        self._stream_has_content = False
+        self._pending_stream_count = 0
+        self._fingerprints.pop("event-log", None)
+        self.query_one("#event-log", EventLog).clear()
+
+    # ── Detail view (lower-right modes) ───────────────────────────────────
+
+    def _detail_content(self) -> tuple[str, list[str]] | None:
+        assert self.snapshot is not None
+        snapshot = self.snapshot
+        mode = self.lower_right_mode
+        if mode == "graph":
+            return "GRAPH EXPLORER", graph_explorer_rows(
+                snapshot,
+                focus_node_id=self.graph_focus_node_id,
+                depth=self.graph_depth,
+                query=self.graph_search_query,
             )
-            return
-        if self.lower_right_mode == "discovery":
-            self.query_one("#event-title", Static).update("DISCOVERY")
-            self.query_one("#event-body", Static).update(
-                "\n".join(discovery_rows(self.snapshot))
+        if mode == "integrations":
+            return "INTEGRATIONS", integration_rows(snapshot)
+        if mode == "discovery":
+            return "DISCOVERY", discovery_rows(snapshot)
+        if mode == "registry":
+            return "REGISTRY", registry_rows(snapshot)
+        if mode == "mcp":
+            return "MCP", mcp_rows(snapshot)
+        if mode == "mcp_config":
+            return "MCP CONFIG", mcp_config_rows(snapshot)
+        if mode == "capabilities":
+            return "CAPABILITIES", capability_rows(snapshot)
+        if mode == "workflows":
+            return "WORKFLOWS", workflow_rows(snapshot)
+        if mode == "ecosystem":
+            return "ECOSYSTEM", ecosystem_rows(snapshot)
+        if mode == "snapshots":
+            return "SNAPSHOTS", snapshot_rows(snapshot)
+        if mode == "snapshot_diff":
+            return "SNAPSHOT DIFF", snapshot_diff_rows(
+                snapshot, self.snapshot_diff_a_index, self.snapshot_diff_b_index
             )
-            return
-        if self.lower_right_mode == "registry":
-            self.query_one("#event-title", Static).update("REGISTRY")
-            self.query_one("#event-body", Static).update(
-                "\n".join(registry_rows(self.snapshot))
-            )
-            return
-        if self.lower_right_mode == "mcp":
-            self.query_one("#event-title", Static).update("MCP")
-            self.query_one("#event-body", Static).update(
-                "\n".join(mcp_rows(self.snapshot))
-            )
-            return
-        if self.lower_right_mode == "mcp_config":
-            self.query_one("#event-title", Static).update("MCP CONFIG")
-            self.query_one("#event-body", Static).update(
-                "\n".join(mcp_config_rows(self.snapshot))
-            )
-            return
-        if self.lower_right_mode == "capabilities":
-            self.query_one("#event-title", Static).update("CAPABILITIES")
-            self.query_one("#event-body", Static).update(
-                "\n".join(capability_rows(self.snapshot))
-            )
-            return
-        if self.lower_right_mode == "workflows":
-            self.query_one("#event-title", Static).update("WORKFLOWS")
-            self.query_one("#event-body", Static).update(
-                "\n".join(workflow_rows(self.snapshot))
-            )
-            return
-        if self.lower_right_mode == "ecosystem":
-            self.query_one("#event-title", Static).update("ECOSYSTEM")
-            self.query_one("#event-body", Static).update(
-                "\n".join(ecosystem_rows(self.snapshot))
-            )
-            return
-        if self.lower_right_mode == "snapshots":
-            self.query_one("#event-title", Static).update("SNAPSHOTS")
-            self.query_one("#event-body", Static).update(
-                "\n".join(snapshot_rows(self.snapshot))
-            )
-            return
-        if self.lower_right_mode == "snapshot_diff":
-            self.query_one("#event-title", Static).update("SNAPSHOT DIFF")
-            self.query_one("#event-body", Static).update(
-                "\n".join(
-                    snapshot_diff_rows(
-                        self.snapshot,
-                        self.snapshot_diff_a_index,
-                        self.snapshot_diff_b_index,
-                    )
-                )
-            )
-            return
-        if self.lower_right_mode == "timeline":
-            self.query_one("#event-title", Static).update("TIMELINE")
-            self.query_one("#event-body", Static).update(
-                "\n".join(timeline_rows(self.snapshot))
-            )
-            return
-        if self.lower_right_mode == "replay":
+        if mode == "timeline":
+            return "TIMELINE", timeline_rows(snapshot)
+        if mode == "replay":
             replay = build_replay_from_timeline(
-                self.snapshot.timeline,
+                snapshot.timeline,
                 control=self.replay_control,
                 position=self.replay_position,
             )
             position = replay.get("state", {}).get("position")
             if isinstance(position, int) and position >= 0:
                 self.replay_position = position
-            self.query_one("#event-title", Static).update("REPLAY")
-            self.query_one("#event-body", Static).update("\n".join(replay_rows(replay)))
-            return
-        if self.lower_right_mode == "query":
-            self.query_one("#event-title", Static).update("QUERY")
-            self.query_one("#event-body", Static).update(
-                "\n".join(query_rows(self.snapshot, self.query_index))
+            return "REPLAY", replay_rows(replay)
+        if mode == "query":
+            return "QUERY", query_rows(snapshot, self.query_index)
+        if mode == "trace" and self.selected_trace_id:
+            return "TRACE DETAIL", trace_detail_rows(snapshot, self.selected_trace_id)
+        if mode == "edge" and self.selected_edge_id:
+            return "RELATIONSHIP DETAIL", edge_detail_rows(
+                snapshot, self.selected_edge_id
             )
+        if mode == "node" and self.selected_node_id:
+            return "NODE DETAIL", node_detail_rows(snapshot, self.selected_node_id)
+        return None
+
+    def _refresh_detail(self) -> None:
+        if self.snapshot is None:
             return
-        if self.lower_right_mode == "trace" and self.selected_trace_id:
-            self.query_one("#event-title", Static).update("TRACE DETAIL")
-            self.query_one("#event-body", Static).update(
-                "\n".join(trace_detail_rows(self.snapshot, self.selected_trace_id))
-            )
+        log = self.query_one("#event-log", EventLog)
+        detail = self.query_one("#detail-scroll", DetailScroll)
+        content = self._detail_content()
+        if content is None:
+            self.lower_right_mode = "events"
+            log.display = True
+            detail.display = False
+            self._update_event_title(None)
             return
-        if self.lower_right_mode == "edge" and self.selected_edge_id:
-            self.query_one("#event-title", Static).update("RELATIONSHIP DETAIL")
-            self.query_one("#event-body", Static).update(
-                "\n".join(edge_detail_rows(self.snapshot, self.selected_edge_id))
-            )
-            return
-        if self.lower_right_mode == "node" and self.selected_node_id:
-            self.query_one("#event-title", Static).update("NODE DETAIL")
-            self.query_one("#event-body", Static).update(
-                "\n".join(node_detail_rows(self.snapshot, self.selected_node_id))
-            )
-            return
-        self.query_one("#event-title", Static).update("EVENT STREAM")
-        self.query_one("#event-body", Static).update(
-            "\n".join(event_rows(self.snapshot, limit=50))
-        )
+        title, rows = content
+        log.display = False
+        detail.display = True
+        self.query_one("#event-title", Static).update(f"{title}  (Esc back)")
+        self.query_one("#event-body", Static).update("\n".join(rows))
+
+    # ── Selection helpers ─────────────────────────────────────────────────
 
     def _graph_focus_label(self) -> str:
         if not self.snapshot or not self.graph_focus_node_id:
@@ -1552,137 +2085,112 @@ class OpenMeshTui(App):
                 target = nodes.get(edge["target"], {})
                 return str(target.get("name") or edge.get("type") or "")
             if focused.id == "traces-table" and focused.cursor_row < len(
-                self.snapshot.traces
+                self.trace_display_rows
             ):
-                return str(self.snapshot.traces[focused.cursor_row].get("trace_id"))
+                return str(self.trace_display_rows[focused.cursor_row].get("trace_id"))
         if self.selected_node_id:
             node = nodes.get(self.selected_node_id)
             return str((node or {}).get("name") or self.selected_node_id)
         return None
 
+    # ── Row selection (Enter / click) ─────────────────────────────────────
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        table_id = event.data_table.id or ""
+        key = event.row_key.value
+        payload = (
+            self._row_payloads.get(table_id, {}).get(str(key))
+            if key is not None
+            else None
+        )
+        if payload is None:
+            return
+        if table_id == "traces-table":
+            self.selected_trace_id = payload["trace_id"]
+            self.action_show_detail("trace")
+        elif table_id == "network-table":
+            self.selected_edge_id = payload["id"]
+            self.action_show_detail("edge")
+        elif table_id == "agents-table":
+            self.selected_node_id = payload["id"]
+            self.graph_focus_node_id = payload["id"]
+            self.graph_search_query = None
+            self._refresh_network()
+            self.action_show_detail("node")
+
+    def action_inspect_selected(self) -> None:
+        focused = self.focused
+        if isinstance(focused, DataTable):
+            return  # DataTable's own Enter emits RowSelected, handled above
+        self.notify("Select a row in a table (1/2/3), then press Enter.", timeout=3)
+
+    # ── Panel focus & detail actions ──────────────────────────────────────
+
     def action_focus_panel(self, panel: str) -> None:
-        target = {
-            "agents": "#agents-table",
-            "traces": "#traces-table",
-            "network": "#network-table",
-            "events": "#event-body",
-        }[panel]
         if panel == "events":
             self.lower_right_mode = "events"
-            self._refresh_events()
+            self._refresh_detail()
+            if self.snapshot:
+                self._refresh_event_stream()
+            self.query_one("#event-log", EventLog).focus()
+            return
         if panel == "network":
             self.lower_right_mode = "graph"
-            self._refresh_events()
-        self.query_one(target, Widget).focus()
+            self._refresh_detail()
+            self.query_one("#network-table", DataTable).focus()
+            return
+        target = {"agents": "#agents-table", "traces": "#traces-table"}[panel]
+        self.query_one(target, DataTable).focus()
 
-    def action_show_integrations(self) -> None:
-        self.lower_right_mode = "integrations"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
-
-    def action_show_discovery(self) -> None:
-        self.lower_right_mode = "discovery"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
-
-    def action_show_registry(self) -> None:
-        self.lower_right_mode = "registry"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
-
-    def action_show_mcp(self) -> None:
-        self.lower_right_mode = "mcp"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
-
-    def action_show_mcp_config(self) -> None:
-        self.lower_right_mode = "mcp_config"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
-
-    def action_show_capabilities(self) -> None:
-        self.lower_right_mode = "capabilities"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
-
-    def action_show_workflows(self) -> None:
-        self.lower_right_mode = "workflows"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
-
-    def action_show_ecosystem(self) -> None:
-        self.lower_right_mode = "ecosystem"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
-
-    def action_show_snapshots(self) -> None:
-        self.lower_right_mode = "snapshots"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
-
-    def action_show_snapshot_diff(self) -> None:
-        self.lower_right_mode = "snapshot_diff"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
-
-    def action_show_timeline(self) -> None:
-        self.lower_right_mode = "timeline"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
+    def action_show_detail(self, mode: str) -> None:
+        self.lower_right_mode = mode
+        self._refresh_detail()
+        self.query_one("#detail-scroll", DetailScroll).focus()
 
     def action_show_replay(self) -> None:
-        self.lower_right_mode = "replay"
         self.replay_control = "start"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
+        self.action_show_detail("replay")
 
     def action_toggle_replay(self) -> None:
         if self.lower_right_mode != "replay":
             return
         self.replay_control = "pause" if self.replay_control == "start" else "start"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
+        self._refresh_detail()
 
     def action_step_replay(self) -> None:
         if self.lower_right_mode != "replay":
             return
         self.replay_control = "step"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
+        self._refresh_detail()
 
     def action_previous_replay(self) -> None:
         if self.lower_right_mode != "replay":
             return
         self.replay_control = "previous"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
+        self._refresh_detail()
 
     def action_stop_replay(self) -> None:
         if self.lower_right_mode != "replay":
             return
         self.replay_control = "stop"
         self.replay_position = 0
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
-
-    def action_show_query(self) -> None:
-        self.lower_right_mode = "query"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
+        self._refresh_detail()
 
     def action_next_query(self) -> None:
         if self.lower_right_mode != "query":
             return
         self.query_index = (self.query_index + 1) % max(len(SAVED_QUERIES), 1)
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
+        self._refresh_detail()
+
+    # ── Graph actions ─────────────────────────────────────────────────────
 
     def action_cycle_graph_filter(self) -> None:
         self.network_filter_index = (self.network_filter_index + 1) % len(GRAPH_FILTERS)
-        self._refresh_network()
         self.lower_right_mode = "graph"
-        self._refresh_events()
-        self.query_one("#network-table", Widget).focus()
+        self._refresh_network()
+        self._refresh_detail()
+        self._refresh_topbar()
+        self.query_one("#network-table", DataTable).focus()
 
     def action_focus_graph_node(self) -> None:
         node_id = self._selected_node_id_from_focus()
@@ -1694,8 +2202,8 @@ class OpenMeshTui(App):
         self.graph_search_query = None
         self.lower_right_mode = "node"
         self._refresh_network()
-        self._refresh_events()
-        self.query_one("#network-table", Widget).focus()
+        self._refresh_detail()
+        self.query_one("#network-table", DataTable).focus()
 
     def action_expand_graph(self) -> None:
         if not self.graph_focus_node_id:
@@ -1706,15 +2214,15 @@ class OpenMeshTui(App):
         self.graph_depth = min(self.graph_depth + 1, 4)
         self.lower_right_mode = "graph"
         self._refresh_network()
-        self._refresh_events()
-        self.query_one("#network-table", Widget).focus()
+        self._refresh_detail()
+        self.query_one("#network-table", DataTable).focus()
 
     def action_collapse_graph(self) -> None:
         self.graph_depth = max(self.graph_depth - 1, 1)
         self.lower_right_mode = "graph"
         self._refresh_network()
-        self._refresh_events()
-        self.query_one("#network-table", Widget).focus()
+        self._refresh_detail()
+        self.query_one("#network-table", DataTable).focus()
 
     def action_clear_graph_focus(self) -> None:
         self.graph_focus_node_id = None
@@ -1722,8 +2230,8 @@ class OpenMeshTui(App):
         self.graph_depth = 1
         self.lower_right_mode = "graph"
         self._refresh_network()
-        self._refresh_events()
-        self.query_one("#network-table", Widget).focus()
+        self._refresh_detail()
+        self.query_one("#network-table", DataTable).focus()
 
     def action_search_graph_selection(self) -> None:
         query = self._selected_graph_search_query()
@@ -1734,74 +2242,133 @@ class OpenMeshTui(App):
         self.graph_search_query = query
         self.lower_right_mode = "graph"
         self._refresh_network()
-        self._refresh_events()
-        self.query_one("#network-table", Widget).focus()
+        self._refresh_detail()
+        self.query_one("#network-table", DataTable).focus()
 
     def action_select_snapshot_a(self) -> None:
         if self.snapshot and len(self.snapshot.snapshots) > 1:
-            self.snapshot_diff_a_index = (self.snapshot_diff_a_index + 1) % len(
-                self.snapshot.snapshots[:5]
-            )
+            visible = len(self.snapshot.snapshots[:5])
+            self.snapshot_diff_a_index = (self.snapshot_diff_a_index + 1) % visible
             if self.snapshot_diff_a_index == self.snapshot_diff_b_index:
-                self.snapshot_diff_a_index = (self.snapshot_diff_a_index + 1) % len(
-                    self.snapshot.snapshots[:5]
-                )
-        self.lower_right_mode = "snapshot_diff"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
+                self.snapshot_diff_a_index = (self.snapshot_diff_a_index + 1) % visible
+        self.action_show_detail("snapshot_diff")
 
     def action_select_snapshot_b(self) -> None:
         if self.snapshot and len(self.snapshot.snapshots) > 1:
-            self.snapshot_diff_b_index = (self.snapshot_diff_b_index + 1) % len(
-                self.snapshot.snapshots[:5]
-            )
+            visible = len(self.snapshot.snapshots[:5])
+            self.snapshot_diff_b_index = (self.snapshot_diff_b_index + 1) % visible
             if self.snapshot_diff_b_index == self.snapshot_diff_a_index:
-                self.snapshot_diff_b_index = (self.snapshot_diff_b_index + 1) % len(
-                    self.snapshot.snapshots[:5]
-                )
-        self.lower_right_mode = "snapshot_diff"
-        self._refresh_events()
-        self.query_one("#event-body", Widget).focus()
+                self.snapshot_diff_b_index = (self.snapshot_diff_b_index + 1) % visible
+        self.action_show_detail("snapshot_diff")
 
-    def action_inspect_selected(self) -> None:
-        focused = self.focused
-        if isinstance(focused, DataTable) and focused.cursor_row >= 0:
-            if (
-                focused.id == "traces-table"
-                and self.snapshot
-                and focused.cursor_row < len(self.snapshot.traces)
-            ):
-                self.selected_trace_id = self.snapshot.traces[focused.cursor_row][
-                    "trace_id"
-                ]
-                self.lower_right_mode = "trace"
-                self._refresh_events()
-                self.query_one("#event-body", Widget).focus()
-                return
-            if focused.id == "network-table" and focused.cursor_row < len(
-                self.network_edge_rows
-            ):
-                edge = self.network_edge_rows[focused.cursor_row]
-                self.selected_edge_id = edge["id"]
-                self.lower_right_mode = "edge"
-                self._refresh_events()
-                self.query_one("#event-body", Widget).focus()
-                return
-            if focused.id == "agents-table" and focused.cursor_row < len(
-                self.agent_node_rows
-            ):
-                self.selected_node_id = self.agent_node_rows[focused.cursor_row]["id"]
-                self.graph_focus_node_id = self.selected_node_id
-                self.graph_search_query = None
-                self.lower_right_mode = "node"
-                self._refresh_network()
-                self._refresh_events()
-                self.query_one("#event-body", Widget).focus()
-                return
-            row = focused.get_row_at(focused.cursor_row)
-            self.notify(" | ".join(str(cell) for cell in row), timeout=4)
+    # ── Search ────────────────────────────────────────────────────────────
+
+    def action_open_search(self) -> None:
+        search = self.query_one("#search-input", Input)
+        search.display = True
+        search.focus()
+
+    def _apply_search(self, query: str) -> None:
+        query = query.strip()
+        if query == self.search_query:
+            return
+        self.search_query = query
+        self._reset_stream()
+        for table_id in TABLE_SORT_COLUMNS:
+            self._fingerprints.pop(table_id, None)
+        if self.snapshot:
+            self._refresh_all()
+
+    def _close_search(self, *, clear: bool) -> None:
+        search = self.query_one("#search-input", Input)
+        if clear and (search.value or self.search_query):
+            search.value = ""
+            self._apply_search("")
+        refocus = search.has_focus
+        search.display = False
+        if refocus:
+            self.query_one("#agents-table", DataTable).focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "search-input":
+            self._apply_search(event.value)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "search-input":
+            self._apply_search(event.value)
+            self.query_one("#search-input", Input).display = False
+            self.query_one("#agents-table", DataTable).focus()
+
+    # ── Event stream controls ─────────────────────────────────────────────
+
+    def action_toggle_stream_pause(self) -> None:
+        self.stream_paused = not self.stream_paused
+        if not self.stream_paused:
+            self._pending_stream_count = 0
+        if self.snapshot:
+            self._refresh_event_stream()
+            self._refresh_topbar()
+
+    def action_clear_stream(self) -> None:
+        self.query_one("#event-log", EventLog).clear()
+        self._stream_has_content = True  # keep the placeholder from reappearing
+        if self.snapshot:
+            for event in self.snapshot.events:
+                self._seen_event_ids.add(str(event.get("event_id")))
+        self._pending_stream_count = 0
+        self.notify("Event stream cleared.", timeout=2)
+
+    # ── Help / export / navigation ────────────────────────────────────────
+
+    def action_show_help(self) -> None:
+        if isinstance(self.screen, HelpScreen):
+            return
+        self.push_screen(HelpScreen())
+
+    def action_export_data(self) -> None:
+        if not self.snapshot:
+            self.notify("No data loaded yet.", timeout=3)
+            return
+        stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        directory = Path.cwd() / f"openmesh-export-{stamp}"
+        try:
+            written = export_snapshot_files(self.snapshot, directory)
+        except OSError as error:
+            self.notify(f"Export failed: {error}", severity="error", timeout=5)
+            return
+        self.notify(f"Exported {len(written)} files to {directory.name}/", timeout=5)
+
+    def action_cycle_sort(self) -> None:
+        table_id = getattr(self.focused, "id", None)
+        if table_id not in TABLE_SORT_COLUMNS:
+            self.notify("Focus a table (1/2/3) to sort it.", timeout=3)
+            return
+        options = TABLE_SORT_COLUMNS[table_id]
+        current = self._sort_index.get(table_id)
+        if current is None:
+            self._sort_index[table_id] = 0
+        elif current + 1 >= len(options):
+            self._sort_index[table_id] = None
         else:
-            self.notify(self.selected_detail, timeout=4)
+            self._sort_index[table_id] = current + 1
+        self._fingerprints.pop(table_id, None)
+        self._refresh_tables()
+
+    def action_back(self) -> None:
+        if isinstance(self.screen, HelpScreen):
+            self.pop_screen()
+            return
+        search = self.query_one("#search-input", Input)
+        if search.has_focus or search.display:
+            self._close_search(clear=True)
+            return
+        if self.lower_right_mode != "events":
+            self.lower_right_mode = "events"
+            self._refresh_detail()
+            if self.snapshot:
+                self._refresh_event_stream()
+
+
 
 
 async def run_tui(*, once: bool = False) -> int:

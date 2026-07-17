@@ -609,3 +609,26 @@
     transform: rotate(360deg);
   }
 }
+
+/* Rotating OpenMesh orb — GPU-composited transform only (no repaints).
+   Runs continuously on every page, including empty states. */
+.om-orb {
+  animation: om-orb-spin 14s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+@keyframes om-orb-spin {
+  from {
+    transform: rotate(0turn) translateZ(0);
+  }
+  to {
+    transform: rotate(1turn) translateZ(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .om-orb {
+    animation: none;
+  }
+}

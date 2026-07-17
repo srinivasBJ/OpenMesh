@@ -36,10 +36,30 @@ class AgentRole(str, enum.Enum):
 
 
 class AgentStatus(str, enum.Enum):
+    # Legacy simulation states (kept for existing rows)
     ACTIVE = "active"
     IDLE = "idle"
     SLEEPING = "sleeping"
     BUSY = "busy"
+    # Real lifecycle states — an API key can never produce these on its own
+    STARTING = "starting"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TERMINATED = "terminated"
+    DISCONNECTED = "disconnected"
+
+
+class AgentSource(str, enum.Enum):
+    """Where an agent comes from. A provider API key does NOT create agents;
+    only the demo simulation or a real integration reporting itself does."""
+
+    SIMULATION = "simulation"
+    SDK = "sdk"
+    MCP = "mcp"
+    CLAUDE_CODE = "claude_code"
+    OPENAI_AGENT = "openai_agent"
+    CUSTOM = "custom"
 
 
 class PostType(str, enum.Enum):
@@ -51,12 +71,48 @@ class PostType(str, enum.Enum):
     DEBATE = "debate"
 
 
+class Workspace(Base):
+    """Top-level container: a workspace groups projects and their agents."""
+
+    __tablename__ = "workspaces"
+    id = Column(String, primary_key=True, default=gen_id)
+    name = Column(String(200), nullable=False, unique=True)
+    kind = Column(String(20), nullable=False, default="standard")  # standard | demo
+    description = Column(Text)
+    created_at = Column(DateTime, server_default=func.now())
+    projects = relationship(
+        "Project", back_populates="workspace", cascade="all, delete"
+    )
+
+
+class Project(Base):
+    """A project inside a workspace, optionally bound to a repository and a
+    provider/model pair its agents should use."""
+
+    __tablename__ = "projects"
+    id = Column(String, primary_key=True, default=gen_id)
+    workspace_id = Column(
+        String, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    name = Column(String(200), nullable=False)
+    repository_path = Column(Text)
+    github_url = Column(Text)
+    provider = Column(String(50))
+    model = Column(String(200))
+    agent_type = Column(String(50))
+    created_at = Column(DateTime, server_default=func.now())
+    workspace = relationship("Workspace", back_populates="projects")
+
+
 class Agent(Base):
     __tablename__ = "agents"
     id = Column(String, primary_key=True, default=gen_id)
     name = Column(String(100), nullable=False, unique=True)
     role = Column(SAEnum(AgentRole), nullable=False)
     status = Column(SAEnum(AgentStatus), default=AgentStatus.ACTIVE)
+    source = Column(String(30), nullable=False, default="simulation", server_default="simulation")
+    workspace_id = Column(String, nullable=True, index=True)
+    project_id = Column(String, nullable=True, index=True)
     personality = Column(JSON, nullable=False)
     skills = Column(JSON, nullable=False, default=list)
     bio = Column(Text)
@@ -204,6 +260,9 @@ class OpenMeshEventRecord(Base):
     event_id = Column(String(100), nullable=False, unique=True, index=True)
     event_type = Column(String(100), nullable=False, index=True)
     timestamp = Column(DateTime, nullable=False, index=True)
+    workspace_id = Column(String(100), nullable=True, index=True)
+    project_id = Column(String(100), nullable=True, index=True)
+    agent_source = Column(String(30), nullable=True, index=True)
     trace_id = Column(String(100), nullable=False, index=True)
     session_id = Column(String(100), nullable=False, index=True)
     span_id = Column(String(100), nullable=True, index=True)

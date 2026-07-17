@@ -12,7 +12,13 @@ from sqlalchemy import text
 
 from .db.session import init_db, AsyncSessionLocal
 from .api.routes.main import router
+from .api.routes.settings import router as settings_router
+from .api.routes.control import router as control_router
+from .api.routes.providers import router as providers_router
+from .api.routes.workspaces import router as workspaces_router
+from .api.routes.filesystem import router as filesystem_router
 from .websocket.manager import manager
+from .services.agent_runner import runner
 from .services.scheduler import start_scheduler, stop_scheduler, scheduler_status
 from .services.seeder import seed_initial_data
 from .agents.simulator import run_simulation_tick
@@ -94,6 +100,7 @@ async def lifespan(app: FastAPI):
             with suppress(asyncio.CancelledError):
                 await warmup_task
     # Shutdown
+    await runner.stop()
     stop_scheduler()
     print("Application shutdown complete")
 
@@ -115,7 +122,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routes
+# Routes (settings/control first so their paths win over parameterized routes)
+app.include_router(settings_router, prefix="/api")
+app.include_router(control_router, prefix="/api")
+app.include_router(providers_router, prefix="/api")
+app.include_router(workspaces_router, prefix="/api")
+app.include_router(filesystem_router, prefix="/api")
 app.include_router(router, prefix="/api")
 
 

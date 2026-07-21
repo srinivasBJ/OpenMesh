@@ -28,10 +28,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...core.security import protect_write
 from ...db.models import Agent, AgentRole, AgentStatus
 from ...db.session import DATABASE_URL, get_db
-from ...providers.registry import configured_provider
+from ...providers.registry import configured_provider, list_providers
 from ...providers.runtime_settings import (
     effective_llm_mode,
-    load_runtime_provider_config,
+    selected_provider_id,
 )
 from ...services.agent_identity import (
     REAL_SOURCES,
@@ -220,10 +220,26 @@ async def agent_heartbeat(
     return {"id": agent.id, "status": effective_agent_status(agent)}
 
 
+def active_display_provider():
+    """The provider to show as the active model in the top bar.
+
+    Only a genuinely-connected provider counts: a cloud provider with an API
+    key, or a local runtime the user explicitly selected. An unselected local
+    default (e.g. Ollama's built-in localhost endpoint) must NOT be reported —
+    nobody connected it, and it may not even be running.
+    """
+    selected = selected_provider_id()
+    if selected:
+        return configured_provider(selected)
+    return next(
+        (p for p in list_providers() if p.configured and not p.is_local),
+        None,
+    )
+
+
 @router.get("/status/live")
 async def live_status(db: AsyncSession = Depends(get_db)):
-    stored = load_runtime_provider_config()
-    provider = configured_provider(stored.provider if stored else None)
+    provider = active_display_provider()
     agents = (await db.execute(select(Agent))).scalars().all()
     now = datetime.utcnow()
     active_agents = sum(1 for agent in agents if is_effectively_active(agent, now))

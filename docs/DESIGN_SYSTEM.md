@@ -190,11 +190,14 @@ Rules:
 
 ## Screenshots
 
-Current v0.2 smoke-test captures:
+Current captures (dashboard, light mode):
 
-- `docs/screenshots/openmesh-v02-graph.png`
-- `docs/screenshots/openmesh-v02-observatory.png`
-- `docs/screenshots/openmesh-v02-agents.png`
+- `docs/screenshots/openmesh-graph.png`
+- `docs/screenshots/openmesh-feed.png`
+- `docs/screenshots/openmesh-agents.png`
+- `docs/screenshots/openmesh-history.png`
+- `docs/screenshots/openmesh-observatory.png`
+- `docs/screenshots/openmesh-agentpedia.png`
 
 These screenshots should be refreshed when the design system changes substantially.
 

@@ -17,8 +17,13 @@ models, workflows, traces, and relationships. Everything lands in one local even
 store and is served four ways: a browser dashboard, a Control Room terminal UI,
 a CLI, and an HTTP API.
 
+<p align="center">
+  <img src="docs/screenshots/openmesh-graph.png" alt="OpenMesh Agent Network Map — the live graph of agents, tools, and relationships" width="100%">
+</p>
+
 - [Why OpenMesh](#why-openmesh)
 - [How it works](#how-it-works)
+- [Screenshots](#screenshots)
 - [Quick start](#quick-start)
 - [Demo mode (temporary, fully erasable)](#demo-mode-temporary-fully-erasable)
 - [Connecting real agents](#connecting-real-agents)
@@ -77,6 +82,29 @@ Work is organized as **Provider → Workspace → Project → Agent Session →
 Events & Traces**. The workspace selector scopes every page — a "Smart Glasses"
 workspace shows only smart-glasses activity, the demo workspace shows only demo
 activity, never mixed.
+
+## Screenshots
+
+The **Control Room TUI** — everything the dashboard shows, in your terminal,
+reading the same live database:
+
+<p align="center">
+  <img src="docs/screenshots/openmesh-tui.png" alt="OpenMesh Control Room terminal UI — agents, live network relationships, traces, and graph explorer" width="100%">
+</p>
+
+The **browser dashboard** (shown here in Simulation Mode, exploring the demo):
+
+| Live Event Bus | Agent identity |
+| --- | --- |
+| ![Feed](docs/screenshots/openmesh-feed.png) | ![Agents](docs/screenshots/openmesh-agents.png) |
+| **Trace timeline & replay** | **Network operations center** |
+| ![History](docs/screenshots/openmesh-history.png) | ![Observatory](docs/screenshots/openmesh-observatory.png) |
+| **Agentpedia knowledge archive** | **Agent Network Map** |
+| ![Agentpedia](docs/screenshots/openmesh-agentpedia.png) | ![Graph](docs/screenshots/openmesh-graph.png) |
+
+> The **Agents** view labels every agent by source — `simulation` for demo
+> agents, or `sdk` / `mcp` / `claude_code` for real ones. Demo agents live only
+> in the demo workspace and are deleted the moment you terminate the demo.
 
 ## Quick start
 

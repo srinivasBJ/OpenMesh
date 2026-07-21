@@ -190,7 +190,7 @@ Rules:
 
 ## Screenshots
 
-Current captures (dashboard + Control Room TUI):
+Current captures (dashboard, light mode):
 
 - `docs/screenshots/openmesh-graph.png`
 - `docs/screenshots/openmesh-feed.png`
@@ -198,7 +198,6 @@ Current captures (dashboard + Control Room TUI):
 - `docs/screenshots/openmesh-history.png`
 - `docs/screenshots/openmesh-observatory.png`
 - `docs/screenshots/openmesh-agentpedia.png`
-- `docs/screenshots/openmesh-tui.png`
 
 These screenshots should be refreshed when the design system changes substantially.
 

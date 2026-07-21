@@ -85,13 +85,6 @@ activity, never mixed.
 
 ## Screenshots
 
-The **Control Room TUI** — everything the dashboard shows, in your terminal,
-reading the same live database:
-
-<p align="center">
-  <img src="docs/screenshots/openmesh-tui.png" alt="OpenMesh Control Room terminal UI — agents, live network relationships, traces, and graph explorer" width="100%">
-</p>
-
 The **browser dashboard** (shown here in Simulation Mode, exploring the demo):
 
 | Live Event Bus | Agent identity |

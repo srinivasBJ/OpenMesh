@@ -6,7 +6,7 @@
 <a href="pyproject.toml"><img alt="Python 3.11-3.13" src="https://img.shields.io/badge/Python-3.11--3.13-3776AB?logo=python&logoColor=white"></a>
 <a href="backend/src/main.py"><img alt="FastAPI 0.135" src="https://img.shields.io/badge/FastAPI-0.135-009688?logo=fastapi&logoColor=white"></a>
 <a href="frontend/package.json"><img alt="React 19" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111111"></a>
-<a href="INSTALLATION.md"><img alt="PostgreSQL supported" src="https://img.shields.io/badge/PostgreSQL-supported-4169E1?logo=postgresql&logoColor=white"></a>
+<a href="docs/INSTALLATION.md"><img alt="PostgreSQL supported" src="https://img.shields.io/badge/PostgreSQL-supported-4169E1?logo=postgresql&logoColor=white"></a>
 <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"></a>
 
 **OpenMesh is open-source observability for AI agents — think OpenTelemetry, but for agent ecosystems.**
@@ -304,16 +304,16 @@ openmesh doctor
 
 ## Documentation
 
-[INSTALLATION.md](INSTALLATION.md) · [QUICKSTART.md](QUICKSTART.md) ·
-[STARTUP_GUIDE.md](STARTUP_GUIDE.md) · [FEATURES.md](FEATURES.md) ·
-[FAQ.md](FAQ.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) ·
-[ROADMAP.md](ROADMAP.md) · [docs/](docs/)
+[QUICKSTART.md](QUICKSTART.md) · [docs/INSTALLATION.md](docs/INSTALLATION.md) ·
+[FEATURES.md](FEATURES.md) · [FAQ.md](FAQ.md) ·
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md) · [ROADMAP.md](ROADMAP.md) ·
+[docs/showcases.md](docs/showcases.md) · [docs/vision/](docs/vision/) · [docs/](docs/)
 
 ## Contributing & license
 
 OpenMesh welcomes focused contributions that make the platform easier to
 install, validate, observe, and understand — start with
 [CONTRIBUTING.md](CONTRIBUTING.md) and
-[GOOD_FIRST_ISSUES.md](GOOD_FIRST_ISSUES.md).
+[.github/GOOD_FIRST_ISSUES.md](.github/GOOD_FIRST_ISSUES.md).
 
 MIT licensed. See [LICENSE](LICENSE).

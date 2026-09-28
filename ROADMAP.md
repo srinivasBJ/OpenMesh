@@ -248,6 +248,14 @@ fast, tested, and predictable:
 - Automated remediation.
 - Hosted multi-tenant governance.
 
+## Long-Term Vision: Agent Civilization & Governance
+
+OpenMesh's long-term conceptual destination is an operating and governance layer for heterogeneous AI societies.
+
+For the architectural specification covering structured deliberation, asymmetric roles, authority models, decision provenance, minority opinion preservation, and failure-triggered rethinking, see:
+
+- [docs/vision/AGENT_CIVILIZATION.md](docs/vision/AGENT_CIVILIZATION.md)
+
 ## Success Metrics
 
 V1 Alpha stabilization:

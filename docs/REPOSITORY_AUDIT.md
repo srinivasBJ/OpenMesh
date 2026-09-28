@@ -17,9 +17,9 @@ Date: 2026-06-04
 
 ## MOVE
 
-- Root release/audit docs such as `INSTALLATION_AUDIT.md`,
-  `PUBLIC_RELEASE_CHECKLIST.md`, `STARTUP_GUIDE.md`, and `TROUBLESHOOTING.md`
-  could eventually move under `docs/` for a cleaner root.
+- Historical release/audit docs (`INSTALLATION_AUDIT.md`,
+  `PUBLIC_RELEASE_CHECKLIST.md`, `STARTUP_GUIDE.md`, `MAINTAINER_REPORT.md`,
+  `PROJECT_ANALYSIS.md`) have been organized under `docs/archive/` for a cleaner root.
 - `ROADMAP.md` and `DECISIONS.md` exist in root and docs. Keep for now, but
   merge later into canonical `docs/ROADMAP.md` and `docs/DECISIONS.md`.
 

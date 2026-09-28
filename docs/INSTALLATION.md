@@ -26,7 +26,7 @@ This installs:
 - `from openmesh import OpenMeshClient`
 - the `openmesh` CLI command
 
-For the complete startup flow, see [../STARTUP_GUIDE.md](../STARTUP_GUIDE.md).
+For the fast 5-minute flow, see [../QUICKSTART.md](../QUICKSTART.md).
 
 ## Local SQLite Mode
 
@@ -161,6 +161,15 @@ npm run dev
 
 Open `http://localhost:5173`.
 
+On first launch with no provider API key configured, the dashboard shows an
+onboarding card: choose Anthropic, OpenAI, or OpenRouter, paste an API key,
+and press Save. The backend validates the key against the provider, stores it
+encrypted under `~/.openmesh/`, and hot-reloads the LLM provider — no `.env`
+edits or backend restart required. After saving, press **Start Agent** to spawn
+the default agent and watch the graph populate live. Keys pasted in the UI
+take precedence over `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
+`OPENROUTER_API_KEY` environment variables.
+
 Set `OPENMESH_SCHEDULER_ENABLED=1` only when you intentionally want the legacy
 scheduled simulator to run in the background.
 
@@ -229,6 +238,32 @@ openmesh ecosystem
 openmesh graph
 openmesh tui --once
 ```
+
+## Wheel Smoke
+
+```bash
+python -m pip install build
+python -m build --wheel
+python -m venv /tmp/openmesh-wheel-smoke
+/tmp/openmesh-wheel-smoke/bin/python -m pip install dist/openmesh-*.whl
+OPENMESH_DB_MODE=sqlite OPENMESH_SQLITE_PATH=/tmp/openmesh-wheel.db \
+  /tmp/openmesh-wheel-smoke/bin/openmesh doctor
+```
+
+If building from the repository root fails because a local ignored `build/`
+directory shadows the PyPI package, run the build from outside the repository:
+
+```bash
+cd /tmp
+python -m build --wheel --outdir /tmp/openmesh-dist /path/to/OpenMesh
+```
+
+## Schema Bootstrap & Migration Path
+
+The current local startup path uses SQLAlchemy schema bootstrap through
+`init_db()`. There is no separate first-user migration command. The packaged SQL
+migration files are used for diagnostics and release tracking, while CLI, SDK,
+and backend startup create the required local tables automatically.
 
 ## Troubleshooting
 

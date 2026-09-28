@@ -162,7 +162,7 @@ http://localhost:5173/graph
 More install detail:
 
 - [README.md](https://github.com/srinivasBJ/OpenMesh/blob/main/README.md)
-- [INSTALLATION.md](https://github.com/srinivasBJ/OpenMesh/blob/main/INSTALLATION.md)
+- [docs/INSTALLATION.md](https://github.com/srinivasBJ/OpenMesh/blob/main/docs/INSTALLATION.md)
 - [QUICKSTART.md](https://github.com/srinivasBJ/OpenMesh/blob/main/QUICKSTART.md)
 - [docs/FRESH_INSTALL_VALIDATION.md](https://github.com/srinivasBJ/OpenMesh/blob/main/docs/FRESH_INSTALL_VALIDATION.md)
 

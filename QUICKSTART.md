@@ -80,3 +80,8 @@ Reset local demo data:
 rm -f ./openmesh.db
 OPENMESH_DB_MODE=sqlite OPENMESH_SQLITE_PATH=./openmesh.db openmesh doctor
 ```
+
+## Next Steps & Full Installation
+
+For Postgres mode, live provider configuration (OpenAI, Anthropic, Ollama, LM Studio), wheel builds, and troubleshooting, see [docs/INSTALLATION.md](docs/INSTALLATION.md).
+

@@ -133,7 +133,7 @@ env | grep -E 'OPENMESH|WARMUP|MAX_ACTIVE_AGENTS'
 These files are not part of a clean clone unless they are present in your local
 working tree. Do not delete them blindly if you are carrying local work.
 
-See [INSTALLATION_AUDIT.md](INSTALLATION_AUDIT.md) for the current duplicate
+See [docs/archive/INSTALLATION_AUDIT.md](docs/archive/INSTALLATION_AUDIT.md) for the historical duplicate
 file classification.
 
 ## Reset Local SQLite State
